@@ -17,6 +17,7 @@ from .handlers.antminer_vnish import parse_antminer_vnish
 from .handlers.ipollo import parse_ipollo
 from .handlers.elphapex import scan_elphapex
 from .handlers.jasminer import parse_jasminer
+from .handlers.hammer import parse_hammer
 
 def send_avalon_cmd(ip, cmds):
     # (Функция без изменений, оставляем как есть)
@@ -96,11 +97,16 @@ def process_ip(ip):
         # По умолчанию считаем Antminer Stock
         return parse_antminer_stock(ip, resp)
 
-    # 3. WEB MINERS (Elphapex)
-    # Сюда попадем только если порты 4433, 8889 и 4028 ЗАКРЫТЫ
+    # 3. WEB MINERS (Elphapex & Hammer)
     if check_port(ip, 80):
+        # Сначала пробуем Elphapex
         res = scan_elphapex(ip)
         if res: return res
+        
+        # Если это не Elphapex, пробуем распарсить как Hammer D10
+        hammer_res = parse_hammer(ip)
+        if hammer_res: 
+            return hammer_res
 
     return None
 

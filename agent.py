@@ -34,18 +34,18 @@ try:
     from miner_scanner.core import process_ip
     
     # 1. Максимум потоков, чтобы "проглатывать" мертвые IP пачками
-    config_module.MAX_THREADS = 50  
+    config_module.MAX_THREADS = 50 
     
     # 2. Таймаут 2.0 сек (Живые отвечают за 0.01с, этого хватит)
-    config_module.TIMEOUT = 2.0       
+    config_module.TIMEOUT = 2    
     
     # 3. ВСЕГО 1 ПОПЫТКА! 
     # Если асик не ответил за 2 секунды - считаем его мертвым сразу.
     # Это сэкономит кучу времени на 166 мертвых устройствах.
-    config_module.RETRY_COUNT = 1     
+    config_module.RETRY_COUNT = 2    
     
     # 4. Быстрый пинг
-    config_module.PING_TIMEOUT = 0.5  
+    config_module.PING_TIMEOUT = 2  
     
     print(f"🔧 SYSTEM: Config patched (Threads=100, Timeout=2.0s, Retries=1)")
     SCANNER_AVAILABLE = True
@@ -112,7 +112,7 @@ def scan_worker(target):
     scan_thread.start()
     
     # Даем сканеру максимум 10.0 секунды (это ОЧЕНЬ много для локалки)
-    scan_thread.join(timeout=10.0) 
+    scan_thread.join(timeout=45.0) 
     
     if scan_thread.is_alive():
         # Если поток всё еще жив через 3 секунды - это зависание (timeout)
