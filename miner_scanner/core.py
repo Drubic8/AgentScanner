@@ -17,7 +17,7 @@ from .handlers.antminer_vnish import parse_antminer_vnish
 from .handlers.ipollo import parse_ipollo
 from .handlers.elphapex import scan_elphapex
 from .handlers.jasminer import parse_jasminer
-from .handlers.hammer import parse_hammer
+from .handlers.cgminer_web import parse_cgminer_web
 
 def send_avalon_cmd(ip, cmds):
     # (Функция без изменений, оставляем как есть)
@@ -97,16 +97,16 @@ def process_ip(ip):
         # По умолчанию считаем Antminer Stock
         return parse_antminer_stock(ip, resp)
 
-    # 3. WEB MINERS (Elphapex & Hammer)
+   # 3. WEB MINERS (Elphapex & CGminer Web: Hammer/Bluestar)
     if check_port(ip, 80):
         # Сначала пробуем Elphapex
         res = scan_elphapex(ip)
         if res: return res
         
-        # Если это не Elphapex, пробуем распарсить как Hammer D10
-        hammer_res = parse_hammer(ip)
-        if hammer_res: 
-            return hammer_res
+        # Если это не Elphapex, пробуем универсальный парсер CGminer Web
+        cg_res = parse_cgminer_web(ip)
+        if cg_res: 
+            return cg_res
 
     return None
 

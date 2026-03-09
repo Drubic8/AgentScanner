@@ -1,0 +1,110 @@
+import requests
+import ipaddress
+from requests.auth import HTTPBasicAuth, HTTPDigestAuth
+import re
+import json
+
+def parse_cgminer_web(ip, user="root", pwd="root"):
+    """
+    Универсальный парсер для старых веб-интерфейсов на базе CGminer
+    (Hammer D10, Bluestar L1 и другие подобные).
+    """
+    info_url = f"http://{ip}/cgi-bin/get_system_info.cgi"
+    status_url = f"http://{ip}/cgi-bin/minerStatus.cgi"
+    config_url = f"http://{ip}/cgi-bin/minerConfiguration.cgi"
+    
+    try:
+        # === 1. ГЛАВНАЯ ПРОВЕРКА НА СОВМЕСТИМОСТЬ ===
+        r_status = requests.get(status_url, auth=HTTPBasicAuth(user, pwd), timeout=5)
+        if r_status.status_code == 401:
+            r_status = requests.get(status_url, auth=HTTPDigestAuth(user, pwd), timeout=5)
+        
+        if r_status.status_code != 200:
+            return None
+            
+        html_status = r_status.text
+        m_uptime = re.search(r'<cite id="bb_elapsed">(.*?)</cite>', html_status)
+        if not m_uptime:
+            return None # Это не CGminer Web
+            
+        uptime_str = m_uptime.group(1).strip()
+
+        # === 2. ОПРЕДЕЛЯЕМ ПРОИЗВОДИТЕЛЯ И МОДЕЛЬ ===
+        make = "CGminer"
+        model = "Unknown Web Device"
+        
+        try:
+            # Стучимся в скрытый API за системной информацией
+            r_info = requests.get(info_url, auth=HTTPBasicAuth(user, pwd), timeout=3)
+            if r_info.status_code == 401:
+                r_info = requests.get(info_url, auth=HTTPDigestAuth(user, pwd), timeout=3)
+                
+            if r_info.status_code == 200:
+                info_data = r_info.json()
+                miner_type = info_data.get("minertype", "")
+                
+                if miner_type:
+                    model = miner_type # Например: "Bluestar L1" или "Hammer D10"
+                    # Берем первое слово как название производителя
+                    make = miner_type.split(" ")[0].capitalize() 
+        except Exception:
+            pass # Если не удалось получить инфо, останутся дефолтные значения
+
+        # === 3. ПАРСИМ СТАТУС (ХЕШРЕЙТ, КУЛЕРЫ, ТЕМПЕРАТУРЫ) ===
+        real_hr = 0.0
+        avg_hr = 0.0
+        m_real = re.search(r'<cite id="bb_ghs5s">([\d\,\.]+)</cite>', html_status)
+        if m_real: real_hr = float(m_real.group(1).replace(',', ''))
+        
+        m_avg = re.search(r'<cite id="bb_ghsav">([\d\,\.]+)</cite>', html_status)
+        if m_avg: avg_hr = float(m_avg.group(1).replace(',', ''))
+        
+        fans = re.findall(r'<td id="bb_fan\d+".*?>([\d\,\.]+)</td>', html_status)
+        fans_clean = [f.replace(',', '') for f in fans if f.strip() and f != '0']
+        
+        temps = re.findall(r'<div id="cbi-table-1-temp2?">([\d\,\.\s]+)</div>', html_status)
+        all_temps = []
+        for t_str in temps:
+            all_temps.extend([t.strip() for t in t_str.split(',') if t.strip().isdigit()])
+
+        # === 4. ПАРСИМ КОНФИГ (ПУЛЫ И АЛГОРИТМ) ===
+        pool, work = "", ""
+        algo = "Scrypt" # Для Hammer/Bluestar обычно Scrypt
+        
+        r_config = requests.get(config_url, auth=HTTPBasicAuth(user, pwd), timeout=5)
+        if r_config.status_code == 401:
+            r_config = requests.get(config_url, auth=HTTPDigestAuth(user, pwd), timeout=5)
+            
+        if r_config.status_code == 200:
+            html_config = r_config.text
+            json_match = re.search(r'bb_data_arr\s*=\s*(\[.*?\]);', html_config, re.DOTALL)
+            if json_match:
+                config_json = json.loads(json_match.group(1))[0]
+                coin_type = config_json.get("coin-type", "").lower()
+                if coin_type and coin_type != "ltc":
+                    algo = coin_type.upper()
+                    
+                if "pools" in config_json and len(config_json["pools"]) > 0:
+                    main_pool = config_json["pools"][0]
+                    pool = main_pool.get("url", "").replace("stratum+tcp://", "")
+                    work = main_pool.get("user", "")
+
+        # === ВОЗВРАТ РЕЗУЛЬТАТА ===
+        return {
+            "IP": ip, 
+            "Make": make, 
+            "Model": model,
+            "Uptime": uptime_str,
+            "Real": f"{real_hr} MH/s", 
+            "Avg": f"{avg_hr} MH/s",
+            "Fan": " ".join(fans_clean), 
+            "Temp": " ".join(all_temps),
+            "Pool": pool, 
+            "Worker": work,
+            "SortIP": int(ipaddress.IPv4Address(ip)), 
+            "Algo": algo,
+            "RawHash": real_hr
+        }
+
+    except Exception:
+        return None
