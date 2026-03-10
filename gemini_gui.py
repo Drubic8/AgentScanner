@@ -3,8 +3,14 @@ import re
 import os
 import json
 import time
+import subprocess
+import requests
 import pandas as pd
 from datetime import datetime
+
+# Константы автообновления
+CURRENT_VERSION = "1.0.0"
+UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -268,6 +274,13 @@ class GeminiApp(QMainWindow):
         
         side_layout.addSpacing(10)
 
+        # === КНОПКА ОБНОВЛЕНИЯ ===
+        self.btn_update = QPushButton("🔄 Проверить обновления")
+        self.btn_update.setObjectName("BtnUpdate")
+        self.btn_update.clicked.connect(lambda: self.check_for_updates(auto=False))
+        side_layout.addWidget(self.btn_update)
+        # ==========================
+
         header_layout = QHBoxLayout()
         lbl_ranges = QLabel("IP RANGES")
         lbl_ranges.setObjectName("SectionHeader")
@@ -402,6 +415,85 @@ class GeminiApp(QMainWindow):
 
         main_layout.addWidget(sidebar)
         main_layout.addWidget(content)
+
+        # === ДОБАВЛЯЕМ АВТОЗАПУСК ПРОВЕРКИ ОБНОВЛЕНИЙ ===
+        self.check_for_updates(auto=True)
+
+    # ==========================================
+    # ЛОГИКА АВТООБНОВЛЕНИЯ
+    # ==========================================
+    def check_for_updates(self, auto=False):
+        """Проверяет наличие новой версии на GitHub"""
+        try:
+            response = requests.get(UPDATE_INFO_URL, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                latest_version = data.get("version")
+                download_url = data.get("url")
+                changelog = data.get("changelog", "Обновление системы.")
+                
+                # Если версия в интернете больше нашей
+                if latest_version > CURRENT_VERSION:
+                    reply = QMessageBox.question(
+                        self, 
+                        'Доступно обновление!', 
+                        f'Найдена новая версия: {latest_version} (У вас {CURRENT_VERSION})\n\nЧто нового:\n{changelog}\n\nОбновить сейчас?',
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+                    if reply == QMessageBox.StandardButton.Yes:
+                        self.apply_update(download_url)
+                else:
+                    if not auto: # Если нажали кнопку вручную, скажем что всё ок
+                        QMessageBox.information(self, "Обновление", "У вас установлена самая актуальная версия!")
+        except Exception as e:
+            if not auto:
+                QMessageBox.warning(self, "Ошибка", f"Не удалось проверить обновления:\n{e}")
+
+    def apply_update(self, download_url):
+        """Скачивает новый EXE и выполняет подмену через BAT"""
+        if not getattr(sys, 'frozen', False):
+            QMessageBox.warning(self, "Внимание", "Автообновление работает только в скомпилированном .exe файле!")
+            return
+            
+        current_exe = sys.executable
+        new_exe = current_exe + ".new"
+        bat_file = os.path.join(os.path.dirname(current_exe), "updater.bat")
+        
+        try:
+            # Показываем окно ожидания
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Обновление")
+            msg.setText("Скачиваю обновление... Пожалуйста, подождите (программа может зависнуть на пару секунд).")
+            msg.setStandardButtons(QMessageBox.StandardButton.NoButton)
+            msg.show()
+            QApplication.processEvents() # Принудительно отрисовываем окно
+            
+            # Скачиваем файл
+            with requests.get(download_url, stream=True) as r:
+                r.raise_for_status()
+                with open(new_exe, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192): 
+                        f.write(chunk)
+            msg.close()
+        except Exception as e:
+            msg.close()
+            QMessageBox.warning(self, "Ошибка скачивания", str(e))
+            return
+
+        # Создаем батник для подмены
+        bat_content = f"""@echo off
+timeout /t 2 /nobreak > NUL
+del "{current_exe}"
+ren "{new_exe}" "{os.path.basename(current_exe)}"
+start "" "{current_exe}"
+del "%~f0"
+"""
+        with open(bat_file, 'w', encoding='utf-8') as f:
+            f.write(bat_content)
+            
+        # Запускаем скрипт и убиваем программу
+        subprocess.Popen(bat_file, shell=True)
+        sys.exit()
 
     # --- MENU & ACTIONS LOGIC ---
     def open_remote_panel(self):
