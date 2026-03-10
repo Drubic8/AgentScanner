@@ -9,7 +9,7 @@ import pandas as pd
 from datetime import datetime
 
 # Константы автообновления
-CURRENT_VERSION = "1.0.4"
+CURRENT_VERSION = "1.0.5"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
@@ -487,13 +487,15 @@ class GeminiApp(QMainWindow):
             QMessageBox.warning(self, "Ошибка скачивания", str(e))
             return
 
-        # Батник: простая подмена файлов с пуленепробиваемой паузой (ping)
+        # ВИДИМЫЙ БАТНИК: работает как часы, сообщает пользователю статус
         bat_content = f"""@echo off
 chcp 65001 > NUL
-cd /d "{exe_dir}"
+title Установка обновления...
+echo Пожалуйста, подождите пару секунд...
+echo Идет обновление программы {exe_name}
 :loop
-ping 127.0.0.1 -n 2 > NUL
-del "{exe_name}"
+timeout /t 1 /nobreak > NUL
+del "{exe_name}" > NUL 2>&1
 if exist "{exe_name}" goto loop
 ren "{exe_name}.new" "{exe_name}"
 start "" "{exe_name}"
@@ -502,18 +504,11 @@ del "%~f0"
         with open(bat_file, 'w', encoding='utf-8') as f:
             f.write(bat_content)
             
-        # === КОВРОВАЯ ЗАЧИСТКА ПАМЯТИ ===
-        clean_env = os.environ.copy()
-        keys_to_remove = [k for k in clean_env.keys() if 'MEI' in k.upper()]
-        for k in keys_to_remove:
-            clean_env.pop(k, None)
-            
-        # Запускаем батник полностью независимым процессом
-        subprocess.Popen(bat_file, shell=True, env=clean_env, creationflags=0x00000008)
+        # Запускаем батник средствами самой Windows (как двойной клик мышкой)
+        os.startfile(bat_file)
         
-        # === ЖЕСТКОЕ УБИЙСТВО ПРОЦЕССА ===
-        # Мгновенно выгружаем программу из памяти, чтобы батник мог удалить .exe
-        os._exit(0)
+        # Спокойно и штатно закрываем программу, чтобы отдать файл батнику
+        sys.exit()
 
     def show_changelog(self):
         """Отображает окно со списком изменений"""
