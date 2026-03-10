@@ -9,7 +9,7 @@ import pandas as pd
 from datetime import datetime
 
 # Константы автообновления
-CURRENT_VERSION = "1.0.0"
+CURRENT_VERSION = "1.0.1"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
@@ -63,8 +63,8 @@ except ImportError:
         ACTIONS_AVAIL = False
 
 CONFIG_FILE = "ip_ranges.json"
-APP_TITLE = "Gemini Tools Enterprise"
-VER = "3.8 (Remote Ctrl)"
+APP_TITLE = "ASIC_Monitor"
+VER = f"{CURRENT_VERSION}"  # Теперь версия в заголовке окна будет браться автоматически из CURRENT_VERSION
 
 # ==========================================
 # ДИАЛОГ КОМАНД (REMOTE CTRL)
@@ -281,6 +281,13 @@ class GeminiApp(QMainWindow):
         side_layout.addWidget(self.btn_update)
         # ==========================
 
+        # === КНОПКА ИСТОРИИ ИЗМЕНЕНИЙ ===
+        self.btn_changelog = QPushButton("📜 История изменений")
+        self.btn_changelog.setObjectName("BtnChangelog")
+        self.btn_changelog.clicked.connect(self.show_changelog)
+        side_layout.addWidget(self.btn_changelog)
+        # ==========================
+
         header_layout = QHBoxLayout()
         lbl_ranges = QLabel("IP RANGES")
         lbl_ranges.setObjectName("SectionHeader")
@@ -494,6 +501,25 @@ del "%~f0"
         # Запускаем скрипт и убиваем программу
         subprocess.Popen(bat_file, shell=True)
         sys.exit()
+
+    def show_changelog(self):
+        """Отображает окно со списком изменений"""
+        changelog_text = f"""
+        <h3>ASIC_Monitor v{CURRENT_VERSION}</h3>
+        <b>Версия 1.0.1 (Текущая)</b>
+        <ul>
+            <li>Изменено официальное название программы на ASIC_Monitor</li>
+            <li>Добавлена встроенная справка с историей версий (Changelog)</li>
+            <li>Синхронизация номера версии в заголовке программы</li>
+        </ul>
+        """
+        
+        msg = QMessageBox(self)
+        msg.setWindowTitle("История изменений")
+        # Включаем поддержку HTML, чтобы список был красивым
+        msg.setTextFormat(Qt.TextFormat.RichText) 
+        msg.setText(changelog_text)
+        msg.exec()    
 
     # --- MENU & ACTIONS LOGIC ---
     def open_remote_panel(self):
