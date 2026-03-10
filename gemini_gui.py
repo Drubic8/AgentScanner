@@ -9,7 +9,7 @@ import pandas as pd
 from datetime import datetime
 
 # Константы автообновления
-CURRENT_VERSION = "1.0.3"
+CURRENT_VERSION = "1.0.4"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
@@ -487,12 +487,12 @@ class GeminiApp(QMainWindow):
             QMessageBox.warning(self, "Ошибка скачивания", str(e))
             return
 
-        # Батник: простая подмена файлов
+        # Батник: простая подмена файлов с пуленепробиваемой паузой (ping)
         bat_content = f"""@echo off
 chcp 65001 > NUL
 cd /d "{exe_dir}"
 :loop
-timeout /t 1 /nobreak > NUL
+ping 127.0.0.1 -n 2 > NUL
 del "{exe_name}"
 if exist "{exe_name}" goto loop
 ren "{exe_name}.new" "{exe_name}"
@@ -504,14 +504,16 @@ del "%~f0"
             
         # === КОВРОВАЯ ЗАЧИСТКА ПАМЯТИ ===
         clean_env = os.environ.copy()
-        # Ищем и удаляем абсолютно все переменные, содержащие "MEI"
         keys_to_remove = [k for k in clean_env.keys() if 'MEI' in k.upper()]
         for k in keys_to_remove:
             clean_env.pop(k, None)
             
-        # Запускаем батник полностью независимым процессом (флаг 0x00000008 = DETACHED_PROCESS)
+        # Запускаем батник полностью независимым процессом
         subprocess.Popen(bat_file, shell=True, env=clean_env, creationflags=0x00000008)
-        sys.exit()
+        
+        # === ЖЕСТКОЕ УБИЙСТВО ПРОЦЕССА ===
+        # Мгновенно выгружаем программу из памяти, чтобы батник мог удалить .exe
+        os._exit(0)
 
     def show_changelog(self):
         """Отображает окно со списком изменений"""
