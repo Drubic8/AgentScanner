@@ -9,7 +9,7 @@ import pandas as pd
 from datetime import datetime
 
 # Константы автообновления
-CURRENT_VERSION = "1.0.1"
+CURRENT_VERSION = "1.0.2"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
@@ -489,9 +489,11 @@ class GeminiApp(QMainWindow):
             QMessageBox.warning(self, "Ошибка скачивания", str(e))
             return
 
-        # Умный батник: включает UTF-8 (chcp 65001) и ждет, пока старый EXE освободится
+        # Умный батник: включает UTF-8 и очищает память от старой папки PyInstaller
         bat_content = f"""@echo off
 chcp 65001 > NUL
+set _MEIPASS2=
+set _MEIPASS=
 cd /d "{exe_dir}"
 :loop
 timeout /t 1 /nobreak > NUL
