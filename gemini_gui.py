@@ -9,7 +9,7 @@ import pandas as pd
 from datetime import datetime
 
 # Константы автообновления
-CURRENT_VERSION = "0.9.0"
+CURRENT_VERSION = "1.0.0"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
