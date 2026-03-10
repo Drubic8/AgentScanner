@@ -463,8 +463,10 @@ class GeminiApp(QMainWindow):
             return
             
         current_exe = sys.executable
+        exe_dir = os.path.dirname(current_exe)
+        exe_name = os.path.basename(current_exe)
         new_exe = current_exe + ".new"
-        bat_file = os.path.join(os.path.dirname(current_exe), "updater.bat")
+        bat_file = os.path.join(exe_dir, "updater.bat")
         
         try:
             # Показываем окно ожидания
@@ -487,12 +489,16 @@ class GeminiApp(QMainWindow):
             QMessageBox.warning(self, "Ошибка скачивания", str(e))
             return
 
-        # Создаем батник для подмены
+        # Умный батник: включает UTF-8 (chcp 65001) и ждет, пока старый EXE освободится
         bat_content = f"""@echo off
-timeout /t 2 /nobreak > NUL
-del "{current_exe}"
-ren "{new_exe}" "{os.path.basename(current_exe)}"
-start "" "{current_exe}"
+chcp 65001 > NUL
+cd /d "{exe_dir}"
+:loop
+timeout /t 1 /nobreak > NUL
+del "{exe_name}"
+if exist "{exe_name}" goto loop
+ren "{exe_name}.new" "{exe_name}"
+start "" "{exe_name}"
 del "%~f0"
 """
         with open(bat_file, 'w', encoding='utf-8') as f:
