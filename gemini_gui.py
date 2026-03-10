@@ -9,7 +9,7 @@ import pandas as pd
 from datetime import datetime
 
 # Константы автообновления
-CURRENT_VERSION = "1.0.2"
+CURRENT_VERSION = "1.0.3"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
@@ -469,15 +469,13 @@ class GeminiApp(QMainWindow):
         bat_file = os.path.join(exe_dir, "updater.bat")
         
         try:
-            # Показываем окно ожидания
             msg = QMessageBox(self)
             msg.setWindowTitle("Обновление")
-            msg.setText("Скачиваю обновление... Пожалуйста, подождите (программа может зависнуть на пару секунд).")
+            msg.setText("Скачиваю обновление... Пожалуйста, подождите.")
             msg.setStandardButtons(QMessageBox.StandardButton.NoButton)
             msg.show()
-            QApplication.processEvents() # Принудительно отрисовываем окно
+            QApplication.processEvents()
             
-            # Скачиваем файл
             with requests.get(download_url, stream=True) as r:
                 r.raise_for_status()
                 with open(new_exe, 'wb') as f:
@@ -489,11 +487,9 @@ class GeminiApp(QMainWindow):
             QMessageBox.warning(self, "Ошибка скачивания", str(e))
             return
 
-        # Умный батник: включает UTF-8 и очищает память от старой папки PyInstaller
+        # Батник: простая подмена файлов
         bat_content = f"""@echo off
 chcp 65001 > NUL
-set _MEIPASS2=
-set _MEIPASS=
 cd /d "{exe_dir}"
 :loop
 timeout /t 1 /nobreak > NUL
@@ -506,8 +502,15 @@ del "%~f0"
         with open(bat_file, 'w', encoding='utf-8') as f:
             f.write(bat_content)
             
-        # Запускаем скрипт и убиваем программу
-        subprocess.Popen(bat_file, shell=True)
+        # === КОВРОВАЯ ЗАЧИСТКА ПАМЯТИ ===
+        clean_env = os.environ.copy()
+        # Ищем и удаляем абсолютно все переменные, содержащие "MEI"
+        keys_to_remove = [k for k in clean_env.keys() if 'MEI' in k.upper()]
+        for k in keys_to_remove:
+            clean_env.pop(k, None)
+            
+        # Запускаем батник полностью независимым процессом (флаг 0x00000008 = DETACHED_PROCESS)
+        subprocess.Popen(bat_file, shell=True, env=clean_env, creationflags=0x00000008)
         sys.exit()
 
     def show_changelog(self):
