@@ -9,7 +9,7 @@ import pandas as pd
 from datetime import datetime
 
 # Константы автообновления
-CURRENT_VERSION = "1.0.0"
+CURRENT_VERSION = "0.9.0"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
@@ -490,17 +490,12 @@ class GeminiApp(QMainWindow):
             QMessageBox.warning(self, "Ошибка скачивания", str(e))
             return
 
-        # Батник, который сам себе стирает память от PyInstaller перед запуском (set _MEIPASS=)
+        # Простой батник без костылей очистки
         bat_content = f"""@echo off
 chcp 65001 > NUL
 title Установка обновления...
 echo Пожалуйста, подождите пару секунд...
 echo Идет обновление программы {exe_name}
-
-:: === ОЧИСТКА ПАМЯТИ PYINSTALLER ===
-set _MEIPASS=
-set _MEIPASS2=
-
 cd /d "{exe_dir}"
 :loop
 timeout /t 1 /nobreak > NUL
@@ -513,14 +508,24 @@ del "%~f0"
         with open(bat_file, 'w', encoding='utf-8') as f:
             f.write(bat_content)
             
-        os.startfile(bat_file)
+        # === ТОТАЛЬНАЯ ЗАЧИСТКА В PYTHON ===
+        clean_env = os.environ.copy()
+        # Удаляем любые следы PyInstaller из памяти
+        keys_to_remove = [k for k in clean_env.keys() if 'MEI' in k.upper() or 'PYI' in k.upper()]
+        for k in keys_to_remove:
+            clean_env.pop(k, None)
+            
+        # Запускаем батник в НОВОМ видимом окне (0x00000010 = CREATE_NEW_CONSOLE)
+        subprocess.Popen(f'"{bat_file}"', shell=True, env=clean_env, creationflags=0x00000010)
+        
+        # Жесткое отключение программы, чтобы освободить файл .exe
         os._exit(0)
 
     def show_changelog(self):
         """Отображает окно со списком изменений"""
         changelog_text = f"""
         <h3>ASIC_Monitor v{CURRENT_VERSION}</h3>
-        <b>Версия 1.0.1 (Текущая)</b>
+        <b>Версия 1.0.0 (Текущая)</b>
         <ul>
             <li>Изменено официальное название программы на ASIC_Monitor</li>
             <li>Добавлена встроенная справка с историей версий (Changelog)</li>
