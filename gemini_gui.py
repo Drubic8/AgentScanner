@@ -9,7 +9,7 @@ import pandas as pd
 from datetime import datetime
 
 # Константы автообновления
-CURRENT_VERSION = "1.0.5"
+CURRENT_VERSION = "1.0.0"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
@@ -466,7 +466,10 @@ class GeminiApp(QMainWindow):
         exe_dir = os.path.dirname(current_exe)
         exe_name = os.path.basename(current_exe)
         new_exe = current_exe + ".new"
-        bat_file = os.path.join(exe_dir, "updater.bat")
+        
+        # Прячем батник в TEMP от OneDrive
+        temp_dir = os.environ.get("TEMP", exe_dir)
+        bat_file = os.path.join(temp_dir, f"updater_{int(time.time())}.bat")
         
         try:
             msg = QMessageBox(self)
@@ -487,12 +490,18 @@ class GeminiApp(QMainWindow):
             QMessageBox.warning(self, "Ошибка скачивания", str(e))
             return
 
-        # ВИДИМЫЙ БАТНИК: работает как часы, сообщает пользователю статус
+        # Батник, который сам себе стирает память от PyInstaller перед запуском (set _MEIPASS=)
         bat_content = f"""@echo off
 chcp 65001 > NUL
 title Установка обновления...
 echo Пожалуйста, подождите пару секунд...
 echo Идет обновление программы {exe_name}
+
+:: === ОЧИСТКА ПАМЯТИ PYINSTALLER ===
+set _MEIPASS=
+set _MEIPASS2=
+
+cd /d "{exe_dir}"
 :loop
 timeout /t 1 /nobreak > NUL
 del "{exe_name}" > NUL 2>&1
@@ -504,11 +513,8 @@ del "%~f0"
         with open(bat_file, 'w', encoding='utf-8') as f:
             f.write(bat_content)
             
-        # Запускаем батник средствами самой Windows (как двойной клик мышкой)
         os.startfile(bat_file)
-        
-        # Спокойно и штатно закрываем программу, чтобы отдать файл батнику
-        sys.exit()
+        os._exit(0)
 
     def show_changelog(self):
         """Отображает окно со списком изменений"""
