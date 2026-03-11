@@ -89,21 +89,29 @@ def parse_cgminer_web(ip, user="root", pwd="root"):
                     pool = main_pool.get("url", "").replace("stratum+tcp://", "")
                     work = main_pool.get("user", "")
 
+        # === 5. НОРМАЛИЗАЦИЯ ХЕШРЕЙТА ===
+        unit = "MH/s"
+        # Переводим MH/s в GH/s для алгоритма Scrypt
+        if algo.lower() == "scrypt":
+            real_hr = real_hr / 1000.0
+            avg_hr = avg_hr / 1000.0
+            unit = "GH/s"
+
         # === ВОЗВРАТ РЕЗУЛЬТАТА ===
         return {
             "IP": ip, 
             "Make": make, 
             "Model": model,
             "Uptime": uptime_str,
-            "Real": f"{real_hr} MH/s", 
-            "Avg": f"{avg_hr} MH/s",
+            "Real": f"{real_hr:.2f} {unit}", 
+            "Avg": f"{avg_hr:.2f} {unit}",
             "Fan": " ".join(fans_clean), 
             "Temp": " ".join(all_temps),
             "Pool": pool, 
             "Worker": work,
             "SortIP": int(ipaddress.IPv4Address(ip)), 
             "Algo": algo,
-            "RawHash": real_hr
+            "RawHash": real_hr  # Теперь здесь лежит нормализованное значение (GH/s)
         }
 
     except Exception:

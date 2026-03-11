@@ -5,11 +5,12 @@ import json
 import time
 import subprocess
 import requests
+import webbrowser
 import pandas as pd
 from datetime import datetime
 
 # Константы автообновления
-CURRENT_VERSION = "1.0.0"
+CURRENT_VERSION = "1.1.0"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
@@ -28,7 +29,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QPushButton, QLabel, QLineEdit, QFileDialog, 
                              QProgressBar, QMessageBox, QHeaderView, QCheckBox,
                              QListWidget, QAbstractItemView, QInputDialog, QFrame,
-                             QScrollArea, QSizePolicy, QMenu, QDialog, QRadioButton, QButtonGroup)
+                             QScrollArea, QSizePolicy, QMenu, QDialog, QRadioButton, 
+                             QButtonGroup, QTextEdit, QListWidgetItem) 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize
 from PyQt6.QtGui import QFont, QColor, QIcon, QAction
 
@@ -131,6 +133,67 @@ class CommandDialog(QDialog):
         elif self.rb_led_blink.isChecked(): self.selected_action = "led_on"
         elif self.rb_led_auto.isChecked(): self.selected_action = "led_off"
         self.accept()
+
+# ==========================================
+# ДИАЛОГ РЕДАКТОРА ПОДСЕТЕЙ (IP RANGE EDITOR)
+# ==========================================
+class IPRangeDialog(QDialog):
+    def __init__(self, name="", ranges=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("IP Range Editor")
+        self.setFixedSize(400, 350)
+        
+        layout = QVBoxLayout(self)
+        
+        # Название сети
+        lbl_name = QLabel("Название сети (Network Name):")
+        lbl_name.setStyleSheet("font-weight: bold;")
+        layout.addWidget(lbl_name)
+        
+        self.le_name = QLineEdit(name)
+        self.le_name.setPlaceholderText("Например: Клиент А")
+        layout.addWidget(self.le_name)
+        
+        layout.addSpacing(10)
+        
+        # Диапазоны (многострочное поле)
+        lbl_ranges = QLabel("IP Диапазоны (каждый с новой строки):")
+        lbl_ranges.setStyleSheet("font-weight: bold;")
+        layout.addWidget(lbl_ranges)
+        
+        self.te_ranges = QTextEdit()
+        self.te_ranges.setPlaceholderText("192.168.1.1-255\n10.10.33.2-255")
+        
+        if ranges:
+            if isinstance(ranges, list):
+                self.te_ranges.setPlainText("\n".join(ranges))
+            else:
+                self.te_ranges.setPlainText(ranges.replace(",", "\n"))
+                
+        layout.addWidget(self.te_ranges)
+        
+        layout.addSpacing(10)
+        
+        # Кнопки
+        btn_layout = QHBoxLayout()
+        btn_cancel = QPushButton("Отмена")
+        btn_cancel.clicked.connect(self.reject)
+        
+        btn_save = QPushButton("Сохранить")
+        btn_save.setStyleSheet("background-color: #0069D9; color: white; font-weight: bold;")
+        btn_save.clicked.connect(self.accept)
+        
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_cancel)
+        btn_layout.addWidget(btn_save)
+        layout.addLayout(btn_layout)
+        
+    def get_data(self):
+        name = self.le_name.text().strip()
+        # Разбиваем текст на строки и удаляем пустые
+        raw_ranges = self.te_ranges.toPlainText().split('\n')
+        ranges = [r.strip() for r in raw_ranges if r.strip()]
+        return name, ranges
 
 # ==========================================
 # WORKER: СКАНЕР
@@ -304,14 +367,25 @@ class GeminiApp(QMainWindow):
         self.list_ranges = QListWidget()
         self.list_ranges.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         self.refresh_ranges_list()
+        
+        # === ДВОЙНОЙ КЛИК ДЛЯ РЕДАКТИРОВАНИЯ ===
+        self.list_ranges.itemDoubleClicked.connect(self.edit_subnet)
+        
         side_layout.addWidget(self.list_ranges)
 
         btn_layout = QHBoxLayout()
         btn_add = QPushButton("+ Add")
         btn_add.clicked.connect(self.add_range_dialog)
+        
+        # === КНОПКА ИЗМЕНИТЬ ===
+        self.btn_edit_subnet = QPushButton("⚙️ Edit")
+        self.btn_edit_subnet.clicked.connect(lambda: self.edit_subnet())
+        
         btn_del = QPushButton("- Del")
         btn_del.clicked.connect(self.delete_range)
+        
         btn_layout.addWidget(btn_add)
+        btn_layout.addWidget(self.btn_edit_subnet) # Кнопка посередине
         btn_layout.addWidget(btn_del)
         side_layout.addLayout(btn_layout)
 
@@ -398,6 +472,8 @@ class GeminiApp(QMainWindow):
         
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_context_menu)
+
+        self.table.itemDoubleClicked.connect(self.open_web_interface)
         
         h = self.table.horizontalHeader()
         h.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
@@ -525,11 +601,9 @@ del "%~f0"
         """Отображает окно со списком изменений"""
         changelog_text = f"""
         <h3>ASIC_Monitor v{CURRENT_VERSION}</h3>
-        <b>Версия 1.0.0 (Текущая)</b>
+        <b>Версия 1.1.0 (Текущая)</b>
         <ul>
-            <li>Изменено официальное название программы на ASIC_Monitor</li>
-            <li>Добавлена встроенная справка с историей версий (Changelog)</li>
-            <li>Синхронизация номера версии в заголовке программы</li>
+            <li>Улучшен интерфейс программы</li>
         </ul>
         """
         
@@ -613,8 +687,16 @@ del "%~f0"
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 d = json.load(f)
-                if isinstance(d, list): return d
-                if isinstance(d, dict): return [{"name": k, "range": v} for k,v in d.items()]
+                res = []
+                if isinstance(d, list): 
+                    for item in d:
+                        # Автоматически обновляем старый формат на новый
+                        if "range" in item and "ranges" not in item:
+                            item["ranges"] = [item["range"]]
+                        res.append(item)
+                    return res
+                if isinstance(d, dict): 
+                    return [{"name": k, "ranges": [v]} for k,v in d.items()]
         except: return []
         return []
 
@@ -626,19 +708,29 @@ del "%~f0"
 
     def refresh_ranges_list(self):
         self.list_ranges.clear()
-        for r in self.ranges_config:
-            self.list_ranges.addItem(f"{r.get('name','?')} ({r.get('range','')})")
-
+        for idx, r in enumerate(self.ranges_config):
+            name = r.get('name', '?')
+            ranges = r.get('ranges', [])
+            
+            # Красивое отображение в списке
+            if len(ranges) > 1:
+                display_text = f"{name} ({len(ranges)} диапазонов)"
+            else:
+                display_text = f"{name} ({ranges[0] if ranges else 'Пусто'})"
+                
+            item = QListWidgetItem(display_text)
+            item.setData(Qt.ItemDataRole.UserRole, idx) # Надежно прячем индекс внутри элемента
+            self.list_ranges.addItem(item)
     def toggle_all_ranges(self, state):
         if state == 2: self.list_ranges.selectAll()
         else: self.list_ranges.clearSelection()
 
     def add_range_dialog(self):
-        n, ok1 = QInputDialog.getText(self, "New Range", "Name:")
-        if ok1 and n:
-            r, ok2 = QInputDialog.getText(self, "New Range", "IP Range (192.168.1.1-255):")
-            if ok2 and r:
-                self.ranges_config.append({"name": n, "range": r})
+        dlg = IPRangeDialog(parent=self)
+        if dlg.exec():
+            name, ranges = dlg.get_data()
+            if name and ranges:
+                self.ranges_config.append({"name": name, "ranges": ranges})
                 self.save_config()
                 self.refresh_ranges_list()
 
@@ -648,27 +740,53 @@ del "%~f0"
         self.save_config()
         self.refresh_ranges_list()
 
+    
+    # === ФУНКЦИЯ РЕДАКТИРОВАНИЯ ПОДСЕТИ ===
+    def edit_subnet(self, item=None):
+        """Открывает окно IPRangeDialog для редактирования"""
+        if item is None:
+            selected = self.list_ranges.selectedItems()
+            if not selected:
+                QMessageBox.warning(self, "Внимание", "Сначала выберите подсеть для редактирования!")
+                return
+            item = selected[0]
+            
+        # Достаем индекс из элемента
+        idx = item.data(Qt.ItemDataRole.UserRole)
+        if idx is None or idx >= len(self.ranges_config): return
+        
+        r_data = self.ranges_config[idx]
+        old_name = r_data.get("name", "")
+        old_ranges = r_data.get("ranges", [])
+        
+        # Открываем редактор с предзаполненными данными
+        dlg = IPRangeDialog(name=old_name, ranges=old_ranges, parent=self)
+        if dlg.exec():
+            new_name, new_ranges = dlg.get_data()
+            if new_name and new_ranges:
+                self.ranges_config[idx]["name"] = new_name
+                self.ranges_config[idx]["ranges"] = new_ranges
+                self.save_config()
+                self.refresh_ranges_list()
+    # ======================================    
+
     def start_scan(self):
         sel = self.list_ranges.selectedItems()
         to_scan = []
         scan_names = []
 
-        # 1. Логика сбора имен диапазонов для названия файла
+        # Теперь мы читаем данные напрямую из конфига, а не из текста кнопки!
         if not sel: 
-            # Если ничего не выбрано, берем всё
-            to_scan = [r['range'] for r in self.ranges_config]
+            for r in self.ranges_config:
+                to_scan.extend(r.get('ranges', []))
             self.last_scan_name = "All_Ranges"
         else:
             for item in sel:
-                txt = item.text()
-                # Формат строки: "Room 1 (192.168.1.1-50)"
-                if "(" in txt: 
-                    name_part = txt.split(" (")[0]
-                    ip_part = txt.split("(")[1].split(")")[0]
-                    to_scan.append(ip_part)
-                    scan_names.append(name_part)
-            
-            # Соединяем имена (например: "Room1_Room2")
+                idx = item.data(Qt.ItemDataRole.UserRole)
+                if idx is not None and idx < len(self.ranges_config):
+                    r_data = self.ranges_config[idx]
+                    to_scan.extend(r_data.get('ranges', []))
+                    scan_names.append(r_data.get('name', 'Net'))
             self.last_scan_name = "_".join(scan_names)
 
         if not to_scan: 
@@ -726,6 +844,20 @@ del "%~f0"
             self.table.setItem(r, 9, QTableWidgetItem(str(row.get('Uptime'))))
 
         self.update_stats()
+
+    def open_web_interface(self, item):
+        """Открывает веб-интерфейс асика в браузере по двойному клику на IP"""
+        # Получаем таблицу, в которой кликнули
+        table = item.tableWidget()
+        
+        # Проверяем, как называется заголовок колонки, по которой кликнули
+        header_item = table.horizontalHeaderItem(item.column())
+        
+        # Если кликнули именно по колонке "IP"
+        if header_item and header_item.text() == "IP":
+            ip_address = item.text().strip()
+            # Открываем дефолтный браузер
+            webbrowser.open(f"http://{ip_address}")
 
     def on_finished(self):
         self.btn_scan.setEnabled(True)
