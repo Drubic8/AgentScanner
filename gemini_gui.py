@@ -460,7 +460,7 @@ class GeminiApp(QMainWindow):
         content_layout.addLayout(ctrl_layout)
 
         # 3. Table
-        cols = ["IP", "Model", "Algo", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker", "Uptime"]
+        cols = ["IP", "Model", "Algo", "Error", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker", "Uptime"]
         self.table = QTableWidget()
         self.table.setColumnCount(len(cols))
         self.table.setHorizontalHeaderLabels(cols)
@@ -480,6 +480,7 @@ class GeminiApp(QMainWindow):
         h.setStretchLastSection(True)
         self.table.setColumnWidth(0, 130)
         self.table.setColumnWidth(1, 150)
+        self.table.setColumnWidth(3, 120) # Ширина для колонки Error
         
         content_layout.addWidget(self.table)
 
@@ -830,20 +831,42 @@ del "%~f0"
             self.table.setItem(r, 1, QTableWidgetItem(str(row.get('Model'))))
             self.table.setItem(r, 2, QTableWidgetItem(str(row.get('Algo', '-'))))
             
+            # === НОВАЯ КОЛОНКА 3: ОШИБКИ С TOOLTIP ===
+            err_str = str(row.get('Error', ''))
+            err_item = QTableWidgetItem(err_str)
+            if err_str and err_str != '-':
+                err_item.setForeground(QColor("#FF4444")) # Подсвечиваем ошибки красным
+                err_item.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+                
+                # Добавляем всплывающую подсказку, если есть описание
+                details = str(row.get('ErrorDetails', ''))
+                if details:
+                    err_item.setToolTip(details)
+            self.table.setItem(r, 3, err_item)
+            # ========================================
+            
+            # === СДВИНУТЫЕ КОЛОНКИ (4-10) ===
             hr = str(row.get('Real', '0'))
             hr_item = NumItem(hr)
-            if self.dark_mode: hr_item.setForeground(QColor("#00E676"))
-            else: hr_item.setForeground(QColor("#007e33")) 
-            self.table.setItem(r, 3, hr_item)
+            if getattr(self, 'dark_mode', False): 
+                hr_item.setForeground(QColor("#00E676"))
+            else: 
+                hr_item.setForeground(QColor("#007e33")) 
+            self.table.setItem(r, 4, hr_item) # Real HR теперь колонка 4
             
-            self.table.setItem(r, 4, NumItem(str(row.get('Avg'))))
-            self.table.setItem(r, 5, NumItem(str(row.get('Temp'))))
-            self.table.setItem(r, 6, QTableWidgetItem(str(row.get('Fan'))))
-            self.table.setItem(r, 7, QTableWidgetItem(str(row.get('Pool'))))
-            self.table.setItem(r, 8, QTableWidgetItem(str(row.get('Worker', '-'))))
-            self.table.setItem(r, 9, QTableWidgetItem(str(row.get('Uptime'))))
+            self.table.setItem(r, 5, NumItem(str(row.get('Avg'))))
+            self.table.setItem(r, 6, NumItem(str(row.get('Temp'))))
+            self.table.setItem(r, 7, QTableWidgetItem(str(row.get('Fan'))))
+            self.table.setItem(r, 8, QTableWidgetItem(str(row.get('Pool'))))
+            self.table.setItem(r, 9, QTableWidgetItem(str(row.get('Worker', '-'))))
+            self.table.setItem(r, 10, QTableWidgetItem(str(row.get('Uptime'))))
+            
+            # Прячем чистое значение RawHash в колонку с IP (нужно для расчетов графиков и статы)
+            if 'RawHash' in row:
+                self.table.item(r, 0).setData(Qt.ItemDataRole.UserRole, row.get('RawHash', 0))
 
-        self.update_stats()
+        if hasattr(self, 'update_stats'):
+            self.update_stats()
 
     def open_web_interface(self, item):
         """Открывает веб-интерфейс асика в браузере по двойному клику на IP"""
