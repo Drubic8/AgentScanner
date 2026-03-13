@@ -10,7 +10,7 @@ import pandas as pd
 from datetime import datetime
 
 # Константы автообновления
-CURRENT_VERSION = "1.1.0"
+CURRENT_VERSION = "1.2.0"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
@@ -460,7 +460,7 @@ class GeminiApp(QMainWindow):
         content_layout.addLayout(ctrl_layout)
 
         # 3. Table
-        cols = ["IP", "Model", "Algo", "Error", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker", "Uptime"]
+        cols = ["IP", "Model", "Algo", "Status", "Error", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker", "Uptime"]
         self.table = QTableWidget()
         self.table.setColumnCount(len(cols))
         self.table.setHorizontalHeaderLabels(cols)
@@ -480,7 +480,8 @@ class GeminiApp(QMainWindow):
         h.setStretchLastSection(True)
         self.table.setColumnWidth(0, 130)
         self.table.setColumnWidth(1, 150)
-        self.table.setColumnWidth(3, 120) # Ширина для колонки Error
+        self.table.setColumnWidth(3, 90)  # Status (Новая колонка)
+        self.table.setColumnWidth(4, 110) # Error (Сдвинулась)
         
         content_layout.addWidget(self.table)
 
@@ -831,37 +832,46 @@ del "%~f0"
             self.table.setItem(r, 1, QTableWidgetItem(str(row.get('Model'))))
             self.table.setItem(r, 2, QTableWidgetItem(str(row.get('Algo', '-'))))
             
-            # === НОВАЯ КОЛОНКА 3: ОШИБКИ С TOOLTIP ===
+            # === НОВАЯ КОЛОНКА 3: СТАТУС ===
+            status_str = str(row.get('Status', 'Running')) # Running по умолчанию для Antminer (пока мы его не доработали)
+            status_item = QTableWidgetItem(status_str)
+            status_item.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+            if status_str == "Running":
+                status_item.setForeground(QColor("#00E676") if getattr(self, 'dark_mode', False) else QColor("#007e33"))
+            elif status_str == "WaitWork":
+                status_item.setForeground(QColor("#FFA000")) # Оранжевый цвет для ожидающих
+            self.table.setItem(r, 3, status_item)
+            # ===============================
+            
+            # === КОЛОНКА 4: ОШИБКИ С TOOLTIP ===
             err_str = str(row.get('Error', ''))
             err_item = QTableWidgetItem(err_str)
             if err_str and err_str != '-':
                 err_item.setForeground(QColor("#FF4444")) # Подсвечиваем ошибки красным
                 err_item.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
                 
-                # Добавляем всплывающую подсказку, если есть описание
                 details = str(row.get('ErrorDetails', ''))
                 if details:
                     err_item.setToolTip(details)
-            self.table.setItem(r, 3, err_item)
+            self.table.setItem(r, 4, err_item)
             # ========================================
             
-            # === СДВИНУТЫЕ КОЛОНКИ (4-10) ===
+            # === СДВИНУТЫЕ КОЛОНКИ (5-11) ===
             hr = str(row.get('Real', '0'))
             hr_item = NumItem(hr)
             if getattr(self, 'dark_mode', False): 
                 hr_item.setForeground(QColor("#00E676"))
             else: 
                 hr_item.setForeground(QColor("#007e33")) 
-            self.table.setItem(r, 4, hr_item) # Real HR теперь колонка 4
+            self.table.setItem(r, 5, hr_item) 
             
-            self.table.setItem(r, 5, NumItem(str(row.get('Avg'))))
-            self.table.setItem(r, 6, NumItem(str(row.get('Temp'))))
-            self.table.setItem(r, 7, QTableWidgetItem(str(row.get('Fan'))))
-            self.table.setItem(r, 8, QTableWidgetItem(str(row.get('Pool'))))
-            self.table.setItem(r, 9, QTableWidgetItem(str(row.get('Worker', '-'))))
-            self.table.setItem(r, 10, QTableWidgetItem(str(row.get('Uptime'))))
+            self.table.setItem(r, 6, NumItem(str(row.get('Avg'))))
+            self.table.setItem(r, 7, NumItem(str(row.get('Temp'))))
+            self.table.setItem(r, 8, QTableWidgetItem(str(row.get('Fan'))))
+            self.table.setItem(r, 9, QTableWidgetItem(str(row.get('Pool'))))
+            self.table.setItem(r, 10, QTableWidgetItem(str(row.get('Worker', '-'))))
+            self.table.setItem(r, 11, QTableWidgetItem(str(row.get('Uptime'))))
             
-            # Прячем чистое значение RawHash в колонку с IP (нужно для расчетов графиков и статы)
             if 'RawHash' in row:
                 self.table.item(r, 0).setData(Qt.ItemDataRole.UserRole, row.get('RawHash', 0))
 

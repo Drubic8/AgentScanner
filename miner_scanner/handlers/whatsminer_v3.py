@@ -84,6 +84,8 @@ def parse_whatsminer_v3(ip, port=4433):
     
     # 1. ЗАПРОС ИНФО (Модель и Ошибки)
     resp_info = tcp.send_cmd("get.device.info")
+    working_status = "unknown" # <--- ДОБАВЛЯЕМ ПЕРЕМЕННУЮ СТАТУСА
+    
     if resp_info and resp_info.get('code') == 0:
         info = resp_info.get('msg', {})
         
@@ -92,6 +94,9 @@ def parse_whatsminer_v3(ip, port=4433):
                      info.get('sub_version') or \
                      info.get('product_type')
             if m_type: model_full = f"Whatsminer {m_type}"
+            
+            # --- СЧИТЫВАЕМ СТАТУС WORKING ---
+            working_status = str(info.get('miner', {}).get('working', 'unknown')).lower()
             
             ctype = info.get('miner', {}).get('cointype', 'SHA-256')
             if 'BTC' not in str(ctype).upper(): algo = str(ctype)
@@ -233,10 +238,24 @@ def parse_whatsminer_v3(ip, port=4433):
     final_real, u_r = normalize_hashrate(raw_hash * 1e12, "T")
     final_avg, u_a = normalize_hashrate(avg_hash * 1e12, "T")
 
+    if avg_hash == 0: avg_hash = raw_hash
+    final_real, u_r = normalize_hashrate(raw_hash * 1e12, "T")
+    final_avg, u_a = normalize_hashrate(avg_hash * 1e12, "T")
+
+    # === ОПРЕДЕЛЯЕМ ФИНАЛЬНЫЙ СТАТУС УСТРОЙСТВА ===
+    if working_status == "true":
+        final_status = "Running"
+    elif working_status == "false":
+        final_status = "WaitWork"
+    else:
+        final_status = "Unknown"
+
     return {
         "IP": ip, 
         "Make": "MicroBT", 
         "Model": model_full, 
+        "Algo": algo,
+        "Status": final_status,  # <--- ДОБАВЛЕНО ПОЛЕ СТАТУСА
         "Uptime": get_uptime_str(uptime),
         "Real": f"{final_real} {u_r}", 
         "Avg": f"{final_avg} {u_a}", 
@@ -245,7 +264,6 @@ def parse_whatsminer_v3(ip, port=4433):
         "Pool": pool, 
         "Worker": worker,
         "SortIP": int(ipaddress.IPv4Address(ip)),
-        "Algo": algo,
         "RawHash": float(raw_hash),
         "Error": error_code,
         "ErrorDetails": error_details_str

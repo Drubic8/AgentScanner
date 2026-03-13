@@ -41,10 +41,11 @@ def normalize_hashrate(val, unit_hint=""):
     except: return "0.00", "MH/s"
     if v == 0: return "0.00", "MH/s"
     
-    # 1. SCRYPT (L7/L9) -> GH/s
+    # 1. SCRYPT (L7/L9/L3+)
     if unit_hint == "SCRYPT":
-        if v > 1000: return f"{v/1000:.2f}", "GH/s"
-        return f"{v:.2f}", "GH/s"
+        if v >= 1000: 
+            return f"{v/1000:.2f}", "GH/s" # Для мощных L7/L9 (9050 MH/s -> 9.05 GH/s)
+        return f"{v:.2f}", "MH/s"          # Для старичков L3+ (504 MH/s -> 504.00 MH/s)
 
     # 2. X11 -> GH/s
     if unit_hint == "X11":

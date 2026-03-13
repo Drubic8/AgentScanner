@@ -47,14 +47,17 @@ def parse_antminer_vnish(ip, resp):
         elif "EQUIHASH" in s_algo or "ZEC" in s_algo: final_algo = "Equihash"; algo_unit = "SOL"
         else: final_algo = str(api_algo)
     else:
-        # Fallback по модели (ИСПРАВЛЕНО: Добавлен T21)
+        # Fallback по модели
         m_upper = model.upper()
-        if "L7" in m_upper or "L9" in m_upper: final_algo = "Scrypt"; algo_unit = "SCRYPT"
-        elif "D9" in m_upper: final_algo = "X11"; algo_unit = "X11"
-        elif "E9" in m_upper: final_algo = "Etchash"; algo_unit = "M"
-        elif "KS" in m_upper: final_algo = "kHeavyHash"
-        # Добавил T21, T19, S9
-        elif any(x in m_upper for x in ["S19", "S21", "T21", "T19", "S9"]): 
+        if any(x in m_upper for x in ["L3", "L7", "L9"]): 
+            final_algo = "Scrypt"; algo_unit = "SCRYPT"
+        elif "D9" in m_upper or "D7" in m_upper: 
+            final_algo = "X11"; algo_unit = "X11"
+        elif "E9" in m_upper: 
+            final_algo = "Etchash"; algo_unit = "M"
+        elif "KS" in m_upper: 
+            final_algo = "kHeavyHash"
+        elif any(x in m_upper for x in ["S19", "S21", "T21", "T19", "S9", "M30", "M50"]): 
             final_algo = "SHA-256"; algo_unit = "SHA"
 
     # Fans
