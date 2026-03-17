@@ -2,66 +2,29 @@ import ipaddress
 import json
 import re
 import requests
-from requests.auth import HTTPDigestAuth
-from ..utils import get_uptime_str, normalize_hashrate
+from requests.auth import HTTPDigestAuth, HTTPBasicAuth
+from ..utils import get_uptime_str
 
-# Импортируем наш новый справочник ошибок (если файл есть)
-try:
-    from .antminer_dict import get_antminer_error_desc
-except ImportError:
-    def get_antminer_error_desc(code): return ""
-
-# Функция для глубокого сканирования по WEB API
-def get_web_status(ip):
-    web_status = None
+# Функция для опроса порта 6060 (Ошибки)
+def get_6060_errors(ip):
     short_errors = []
     detailed_errors = []
-    
     try:
-        # 1. Проверяем режим Сна
-        try:
-            conf_resp = requests.get(f"http://{ip}/cgi-bin/get_miner_conf.cgi", auth=HTTPDigestAuth("root", "root"), timeout=2)
-            if conf_resp.status_code == 200:
-                if str(conf_resp.json().get("bitmain-work-mode")) == "1":
-                    return "WaitWork", "", ""
-        except:
-            pass
-            
-        # 2. Ищем скрытые ошибки
-        try:
-            sum_resp = requests.get(f"http://{ip}/cgi-bin/summary.cgi", auth=HTTPDigestAuth("root", "root"), timeout=2)
-            if sum_resp.status_code == 200:
-                status_array = sum_resp.json().get("SUMMARY", [{}])[0].get("status", [])
-                
-                for item in status_array:
-                    if str(item.get("status")).lower() != "s":
-                        msg = item.get("msg", "").strip()
-                        e_type = str(item.get("type", "unknown")).upper()
-                        
-                        if msg:
-                            # Пытаемся вытащить фирменный код Bitmain (например F040, E112)
-                            match = re.search(r'([F|E]\d{3,4})', msg)
-                            if match:
-                                short_code = match.group(1)
-                                dict_desc = get_antminer_error_desc(short_code)
-                                # Если есть расшифровка в словаре - добавляем её
-                                if dict_desc:
-                                    detailed_errors.append(f"[{short_code}] {dict_desc} ({msg})")
-                                else:
-                                    detailed_errors.append(f"[{short_code}] {msg}")
-                            else:
-                                short_code = f"{e_type[:4]} ERR"
-                                detailed_errors.append(f"[{short_code}] {msg}")
-                                
-                            short_errors.append(short_code)
-        except:
-            pass
-            
-    except Exception:
-        pass 
-        
-    return web_status, " + ".join(short_errors), "\n".join(detailed_errors)
-
+        resp_6060 = requests.get(f"http://{ip}:6060/warning", timeout=2)
+        if resp_6060.status_code == 200:
+            text = resp_6060.text.strip()
+            if text and "searchfailed" not in text:
+                parts = [p.strip() for p in text.split(';')]
+                if len(parts) >= 2:
+                    code = parts[0] 
+                    reason = parts[1] 
+                    sugg = parts[2] if len(parts) > 2 else "" 
+                    short_errors.append(f"ERR [{code}]")
+                    desc = f"{reason}. {sugg}".strip()
+                    detailed_errors.append(f"[{code}] {desc}")
+    except:
+        pass
+    return " + ".join(short_errors), "\n".join(detailed_errors)
 
 def parse_antminer_stock(ip, resp):
     summary_block = {}
@@ -74,6 +37,35 @@ def parse_antminer_stock(ip, resp):
             if isinstance(item, dict):
                 flat_data.update(item)
 
+    # === БАЗОВЫЕ ДАННЫЕ ===
+    r_val = float(summary_block.get('GHS 5s', summary_block.get('MHS 5s', 0)))
+    a_val = float(summary_block.get('GHS av', summary_block.get('MHS av', 0)))
+    uptime_sec = int(summary_block.get('Elapsed', flat_data.get('Elapsed', 0)))
+
+    # === АНАЛИЗ ПУЛОВ ===
+    pool, worker = "", ""
+    pools_disabled = False 
+    
+    if resp.get("pools", {}).get('POOLS'):
+        pools_list = resp["pools"]['POOLS']
+        if pools_list:
+            p = pools_list[0]
+            pool = p.get('URL', '')
+            worker = p.get('User', '')
+            
+            if all(str(px.get('Status', '')).lower() in ["disabled", "deed", "dead"] for px in pools_list):
+                pools_disabled = True
+
+    # === БЫСТРАЯ ПРОВЕРКА РЕЖИМА СНА ===
+    is_sleeping = False
+    
+    if flat_data.get('Mode') == 1:
+        is_sleeping = True
+    # Для новых L9 кулеры могут отдавать fan_num: 0
+    elif r_val == 0.0 and (pools_disabled or flat_data.get('fan_num', 0) == 0):
+        if uptime_sec > 60 or pools_disabled:
+            is_sleeping = True
+
     # === 1. ОПРЕДЕЛЯЕМ МОДЕЛЬ ===
     raw_type = flat_data.get('Type', summary_block.get('Type', ''))
     model = str(raw_type).replace("Antminer", "").strip()
@@ -82,43 +74,43 @@ def parse_antminer_stock(ip, resp):
     # === 2. ЛОГИКА АЛГОРИТМОВ ===
     api_algo = flat_data.get('algo', summary_block.get('algo', ''))
     final_algo = "SHA-256"
-    algo_unit = "SHA"
 
     if api_algo:
         s_algo = str(api_algo).upper().strip()
-        if "SHA" in s_algo or "BTC" in s_algo: final_algo = "SHA-256"; algo_unit = "SHA"
-        elif "SCRYPT" in s_algo or "LTC" in s_algo: final_algo = "Scrypt"; algo_unit = "SCRYPT"
-        elif "X11" in s_algo: final_algo = "X11"; algo_unit = "X11"
+        if "SHA" in s_algo or "BTC" in s_algo: final_algo = "SHA-256"
+        elif "SCRYPT" in s_algo or "LTC" in s_algo: final_algo = "Scrypt"
+        elif "X11" in s_algo: final_algo = "X11"
         elif "KAS" in s_algo or "HEAVY" in s_algo: final_algo = "kHeavyHash"
-        elif "ETH" in s_algo: final_algo = "Etchash"; algo_unit = "M"
-        elif "EQUIHASH" in s_algo or "ZEC" in s_algo: final_algo = "Equihash"; algo_unit = "SOL"
+        elif "ETH" in s_algo: final_algo = "Etchash"
+        elif "EQUIHASH" in s_algo or "ZEC" in s_algo: final_algo = "Equihash"
         else: final_algo = str(api_algo)
     else:
         m_upper = final_model.upper()
-        if any(x in m_upper for x in ["L3", "L7", "L9"]): final_algo = "Scrypt"; algo_unit = "SCRYPT"
-        elif "D9" in m_upper or "D7" in m_upper: final_algo = "X11"; algo_unit = "X11"
-        elif "E9" in m_upper: final_algo = "Etchash"; algo_unit = "M"
+        if any(x in m_upper for x in ["L3", "L7", "L9"]): final_algo = "Scrypt"
+        elif "D9" in m_upper or "D7" in m_upper: final_algo = "X11"
+        elif "E9" in m_upper: final_algo = "Etchash"
         elif "KS" in m_upper: final_algo = "kHeavyHash"
-        elif "K7" in m_upper: final_algo = "Eaglesong"; algo_unit = "EAGLESONG"
-        elif any(x in m_upper for x in ["S19", "S21", "T21", "T19", "S9"]): final_algo = "SHA-256"; algo_unit = "SHA"
+        elif "K7" in m_upper: final_algo = "Eaglesong"
+        elif any(x in m_upper for x in ["Z15", "Z11", "Z9"]): final_algo = "Equihash"
+        elif any(x in m_upper for x in ["S19", "S21", "T21", "T19", "S9"]): final_algo = "SHA-256"
 
-    # === 3. БАЗОВЫЕ ДАННЫЕ ===
-    r_val = summary_block.get('GHS 5s', summary_block.get('MHS 5s', 0))
-    a_val = summary_block.get('GHS av', summary_block.get('MHS av', 0))
-    uptime_sec = int(summary_block.get('Elapsed', flat_data.get('Elapsed', 0)))
+    # === 3. ТОЧНЫЙ ФОРМАТТЕР ХЕШРЕЙТА ===
+    def format_hr(val, algo, current_model):
+        if algo == "SHA-256": return f"{val/1000:.2f}", "TH/s"
+        elif algo == "Scrypt": 
+            # L9 отдает сразу GH/s (<500), L7 отдает MH/s (>1000)
+            if val < 500: return f"{val:.2f}", "GH/s"
+            else: return f"{val/1000:.2f}", "GH/s"
+        elif algo == "Equihash": 
+            if "Pro" in current_model or "Z15+" in current_model: return f"{val:.2f}", "kSol/s"
+            return f"{val/1000:.2f}", "kSol/s"
+        elif algo == "X11": return f"{val:.2f}", "GH/s"
+        elif algo == "Etchash": return f"{val:.2f}", "MH/s"
+        elif algo == "kHeavyHash": return f"{val/1000:.2f}", "TH/s"
+        else: return f"{val:.2f}", "H/s"
 
-    pool, worker = "", ""
-    pools_disabled = False
-    if resp.get("pools", {}).get('POOLS'):
-        pools_list = resp["pools"]['POOLS']
-        if pools_list:
-            p = pools_list[0]
-            pool = p.get('URL', ''); worker = p.get('User', '')
-            if str(p.get('Status', '')).lower() == "disabled":
-                pools_disabled = True
-
-    final_real, u_r = normalize_hashrate(r_val, algo_unit)
-    final_avg, u_a = normalize_hashrate(a_val, algo_unit)
+    final_real_val, u_r = format_hr(r_val, final_algo, final_model)
+    final_avg_val, u_a = format_hr(a_val, final_algo, final_model)
 
     # === 4. КУЛЕРЫ И ТЕМПЕРАТУРЫ ===
     fans = []
@@ -142,7 +134,7 @@ def parse_antminer_stock(ip, resp):
             else:
                 temps.append(str(t))
 
-    # === 5. СТАТУС И НОМЕРА СЛОМАННЫХ ПЛАТ ===
+    # === 5. НОМЕРА СЛОМАННЫХ ПЛАТ ===
     has_hw_error = False
     failed_boards = [] 
     error_str = ""
@@ -155,51 +147,37 @@ def parse_antminer_stock(ip, resp):
                 has_hw_error = True
                 failed_boards.append(str(i)) 
 
-    miner_ver = flat_data.get('Miner', 'unknown')
-
-    # Сначала просто записываем ошибку железа в колонку (если она есть)
     if has_hw_error:
         boards_str = ",".join(failed_boards) 
         error_str = f"HW ERR (B{boards_str})" 
         error_details = f"Сгоревшие чипы (крестики 'x') на плате {boards_str}"
 
-    # ТЕПЕРЬ ОПРЕДЕЛЯЕМ ГЛАВНЫЙ СТАТУС (Running, WaitWork, Error, Starting)
-    if float(r_val) > 0.0:
-        status = "Running" # <--- ЕСЛИ ЕСТЬ ХЕШРЕЙТ, ТО ОН RUNNING (даже с ошибками!)
+    # === 6. ЖЕСТКАЯ ЛОГИКА СТАТУСОВ ===
+    if is_sleeping:
+        status = "Sleep"
+        error_str = ""
+        error_details = ""
+    elif float(r_val) > 0.0:
+        status = "Running"
     else:
-        # Если хешрейт 0
-        if miner_ver == "" or 'fan_num' not in flat_data or pools_disabled or uptime_sec <= 1:
-            status = "WaitWork"
-            error_str = "" # Стираем ложные ошибки, если он просто спит
-            error_details = ""
-        elif uptime_sec > 900:
-            status = "Error"
-            if not error_str:
-                error_str = "NO HASH"
-                error_details = "Хешрейт равен 0 более 15 минут. Возможен сбой блока питания."
-        else:
-            status = "Starting"
+        status = "Error"
+        if not error_str:
+            error_str = "NO HASH"
+            error_details = "Устройство не спит, но хешрейт равен 0."
 
-    # === 6. ГЛУБОКИЙ ВЕБ-СКАН (Только если хешрейт 0) ===
-    if float(r_val) == 0.0:
-        web_status, short_web_err, detail_web_err = get_web_status(ip)
+    # === 7. ОПРОС ПОРТА 6060 ===
+    if not is_sleeping:
+        short_6060_err, detail_6060_err = get_6060_errors(ip)
         
-        if web_status == "WaitWork":
-            status = "WaitWork"
-            error_str = ""
-            error_details = ""
-        elif short_web_err:
-            status = "Error"
-            # Если уже была ошибка (например, крестики), объединяем их
+        if short_6060_err:
             if error_str and error_str != "NO HASH":
-                error_str = f"{error_str} + {short_web_err}"
-                error_details = f"{error_details}\n{detail_web_err}"
+                error_str = f"{error_str} + {short_6060_err}"
+                error_details = f"{error_details}\n{detail_6060_err}"
             else:
-                error_str = short_web_err
-                error_details = detail_web_err
+                error_str = short_6060_err
+                error_details = detail_6060_err
 
-    # Фикс запятой для сортировки
-    try: raw_h = float(str(final_real).replace(',', '.').strip())
+    try: raw_h = float(str(final_real_val).replace(',', '.').strip())
     except: raw_h = 0.0
 
     return {
@@ -210,7 +188,7 @@ def parse_antminer_stock(ip, resp):
         "Status": status, 
         "Uptime": get_uptime_str(uptime_sec),
         "Real": f"{raw_h} {u_r}", 
-        "Avg": f"{final_avg} {u_a}", 
+        "Avg": f"{final_avg_val} {u_a}",
         "Fan": " ".join(fans),
         "Temp": " ".join(temps), 
         "Pool": pool, 
@@ -219,4 +197,83 @@ def parse_antminer_stock(ip, resp):
         "RawHash": float(r_val),
         "Error": error_str, 
         "ErrorDetails": error_details
+    }
+
+# === НОВЫЙ БЛОК: ФОЛЛБЭК ДЛЯ СПЯЩИХ/ЗАВИСШИХ ANTMINER (ПОРТ 80) ===
+def parse_antminer_web_fallback(ip, user="root", pwd="root"):
+    """
+    Вызывается из core.py, если порт 4028 закрыт.
+    """
+    sys_info = {}
+    conf_info = {}
+    auth_failed = False
+
+    # 1. Читаем открытую информацию (Модель и Аптайм)
+    try:
+        url_sys = f"http://{ip}/cgi-bin/get_system_info.cgi"
+        r_sys = requests.get(url_sys, timeout=2)
+        if r_sys.status_code == 401:
+            r_sys = requests.get(url_sys, auth=HTTPDigestAuth(user, pwd), timeout=2)
+            if r_sys.status_code == 401:
+                r_sys = requests.get(url_sys, auth=HTTPBasicAuth(user, pwd), timeout=2)
+        
+        if r_sys.status_code == 200: sys_info = r_sys.json()
+    except: pass
+
+    # 2. Читаем конфигурацию (Пулы и Режим работы)
+    try:
+        url_conf = f"http://{ip}/cgi-bin/get_miner_conf.cgi"
+        r_conf = requests.get(url_conf, timeout=2)
+        if r_conf.status_code == 401:
+            r_conf = requests.get(url_conf, auth=HTTPDigestAuth(user, pwd), timeout=2)
+            if r_conf.status_code == 401:
+                r_conf = requests.get(url_conf, auth=HTTPBasicAuth(user, pwd), timeout=2)
+        
+        if r_conf.status_code == 200: conf_info = r_conf.json()
+        elif r_conf.status_code == 401: auth_failed = True
+    except: pass
+
+    if not sys_info and not conf_info: return None
+
+    model = sys_info.get("minertype", "Antminer Unknown")
+    uptime_sec = sys_info.get("uptime", 0)
+
+    status = "Error"
+    error_str = "API Offline"
+    error_details = "Порт 4028 закрыт. Майнинг крашнулся или устройство зависло."
+
+    work_mode = conf_info.get("bitmain-work-mode", None)
+    if str(work_mode) == "1":
+        status = "Sleep"
+        error_str = ""
+        error_details = "Устройство находится в спящем режиме."
+    elif auth_failed:
+        status = "Sleep"
+        error_str = "Auth Reqd"
+        error_details = "Порт 4028 закрыт. Вероятно сон, но стандартный пароль root:root не подошел."
+
+    pool, worker = "", ""
+    pools = conf_info.get("pools", [])
+    if pools:
+        pool = pools[0].get("url", "").replace("stratum+tcp://", "")
+        worker = pools[0].get("user", "")
+
+    algo_hint = str(conf_info.get("algo", "")).lower()
+    m_upper = model.upper()
+    
+    final_algo = "SHA-256"
+    if algo_hint == "ltc" or any(x in m_upper for x in ["L3", "L7", "L9"]): final_algo = "Scrypt"
+    elif any(x in m_upper for x in ["Z11", "Z15"]): final_algo = "Equihash"
+    elif "E9" in m_upper: final_algo = "Etchash"
+    elif "D9" in m_upper: final_algo = "X11"
+    elif "K" in m_upper and "KA3" not in m_upper: final_algo = "kHeavyHash"
+
+    return {
+        "IP": ip, "Make": "Bitmain", "Model": model, 
+        "Uptime": get_uptime_str(uptime_sec),
+        "Real": "0.00", "Avg": "0.00", "Fan": "0", "Temp": "0", 
+        "Pool": pool, "Worker": worker,
+        "SortIP": int(ipaddress.IPv4Address(ip)),
+        "Algo": final_algo, "Status": status,
+        "Error": error_str, "ErrorDetails": error_details, "RawHash": 0.0
     }

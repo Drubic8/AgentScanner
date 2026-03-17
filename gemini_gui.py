@@ -9,6 +9,40 @@ import webbrowser
 import pandas as pd
 from datetime import datetime
 
+import socket
+import platform
+
+# === ГЛОБАЛЬНЫЙ ПЕРЕХВАТ СОКЕТОВ ДЛЯ КНОПКИ STOP ===
+# Это позволяет моментально оборвать сканирование во всех 200 потоках
+_orig_connect = socket.socket.connect
+_orig_connect_ex = socket.socket.connect_ex
+
+def abortable_connect(self, address):
+    if getattr(socket, 'ABORT_SCAN', False):
+        raise InterruptedError("Scan aborted by user")
+    return _orig_connect(self, address)
+
+def abortable_connect_ex(self, address):
+    if getattr(socket, 'ABORT_SCAN', False):
+        return 10004  # Ошибка EINTR (вызов прерван)
+    return _orig_connect_ex(self, address)
+
+socket.socket.connect = abortable_connect
+socket.socket.connect_ex = abortable_connect_ex
+
+# === ФУНКЦИЯ ОПРЕДЕЛЕНИЯ ТЕМЫ WINDOWS ===
+def is_system_dark_mode():
+    if platform.system() == "Windows":
+        try:
+            import winreg
+            registry = winreg.ConnectRegistry(None, winreg.HKEY_CURRENT_USER)
+            key = winreg.OpenKey(registry, r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+            return value == 0  # 0 = Темная, 1 = Светлая
+        except Exception:
+            pass
+    return True # По умолчанию темная
+
 # Константы автообновления
 CURRENT_VERSION = "1.2.0"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
@@ -210,6 +244,7 @@ class ScanWorker(QThread):
         self.is_running = True
 
     def run(self):
+        socket.ABORT_SCAN = False # Сбрасываем блокировку сокетов при старте
         if not SCANNER_AVAIL:
             self.log_signal.emit("Error: Scanner core not found!")
             self.finished_signal.emit()
@@ -221,7 +256,8 @@ class ScanWorker(QThread):
             self.log_signal.emit(f"Scanning: {r_str}...")
             try:
                 res = scan_network_range(r_str)
-                if res: 
+                # Проверяем еще раз перед выдачей результатов, не нажал ли юзер STOP
+                if res and self.is_running: 
                     cleaned_res = []
                     for item in res:
                         model = str(item.get('Model', ''))
@@ -230,12 +266,14 @@ class ScanWorker(QThread):
                         cleaned_res.append(item)
                     self.result_signal.emit(cleaned_res)
             except Exception as e:
+                if not self.is_running: break # Игнорируем ошибки при обрыве
                 self.log_signal.emit(f"Error {r_str}: {e}")
             self.progress_signal.emit(i + 1, total)
         self.finished_signal.emit()
 
     def stop(self):
         self.is_running = False
+        socket.ABORT_SCAN = True # Моментально обрываем все текущие соединения в core.py!
 
 # ==========================================
 # WORKER: ACTIONS
@@ -305,7 +343,7 @@ class GeminiApp(QMainWindow):
         self.resize(1350, 850)
         self.scan_data = [] 
         self.ranges_config = self.load_config()
-        self.dark_mode = True 
+        self.dark_mode = is_system_dark_mode()  # <--- Автоопределение темы
         
         self.init_ui()
         self.apply_theme()
@@ -460,7 +498,7 @@ class GeminiApp(QMainWindow):
         content_layout.addLayout(ctrl_layout)
 
         # 3. Table
-        cols = ["IP", "Model", "Algo", "Status", "Error", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker", "Uptime"]
+        cols = ["IP", "Model", "Algo", "Status", "Error", "Uptime", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker"]
         self.table = QTableWidget()
         self.table.setColumnCount(len(cols))
         self.table.setHorizontalHeaderLabels(cols)
@@ -651,6 +689,8 @@ del "%~f0"
         menu.exec(self.table.viewport().mapToGlobal(pos))
 
     def run_action(self, action_type, rows=None, confirm_needed=True):
+        socket.ABORT_SCAN = False # <--- Снимаем блокировку сокетов перед отправкой команд
+        
         if not rows:
             rows = sorted(set(i.row() for i in self.table.selectedItems()))
         
@@ -823,57 +863,84 @@ del "%~f0"
             r = self.table.rowCount()
             self.table.insertRow(r)
             
-            class NumItem(QTableWidgetItem):
+            # УМНЫЙ КЛАСС СОРТИРОВКИ ЯЧЕЕК
+            class SmartSortItem(QTableWidgetItem):
                 def __lt__(self, other):
+                    # Проверяем, есть ли скрытое числовое значение (UserRole)
+                    my_val = self.data(Qt.ItemDataRole.UserRole)
+                    other_val = other.data(Qt.ItemDataRole.UserRole)
+                    if my_val is not None and other_val is not None:
+                        return my_val < other_val
+                        
+                    # Иначе пытаемся вытащить число из начала строки (например, "15.5 TH/s" -> 15.5)
                     try: return float(self.text().split()[0]) < float(other.text().split()[0])
                     except: return self.text() < other.text()
 
-            self.table.setItem(r, 0, QTableWidgetItem(str(row.get('IP'))))
-            self.table.setItem(r, 1, QTableWidgetItem(str(row.get('Model'))))
+            # === 0. IP (Сортировка по сырому числовому IP) ===
+            ip_str = str(row.get('IP', ''))
+            ip_item = SmartSortItem(ip_str)
+            ip_item.setData(Qt.ItemDataRole.UserRole, row.get('SortIP', 0))
+            self.table.setItem(r, 0, ip_item)
+            
+            # === 1, 2. Model, Algo ===
+            self.table.setItem(r, 1, QTableWidgetItem(str(row.get('Model', ''))))
             self.table.setItem(r, 2, QTableWidgetItem(str(row.get('Algo', '-'))))
             
-            # === НОВАЯ КОЛОНКА 3: СТАТУС ===
-            status_str = str(row.get('Status', 'Running')) # Running по умолчанию для Antminer (пока мы его не доработали)
+            # === 3. Status ===
+            status_str = str(row.get('Status', 'Running'))
             status_item = QTableWidgetItem(status_str)
             status_item.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
             if status_str == "Running":
                 status_item.setForeground(QColor("#00E676") if getattr(self, 'dark_mode', False) else QColor("#007e33"))
             elif status_str == "WaitWork":
-                status_item.setForeground(QColor("#FFA000")) # Оранжевый цвет для ожидающих
+                status_item.setForeground(QColor("#FFA000"))
             self.table.setItem(r, 3, status_item)
-            # ===============================
             
-            # === КОЛОНКА 4: ОШИБКИ С TOOLTIP ===
+            # === 4. Error ===
             err_str = str(row.get('Error', ''))
             err_item = QTableWidgetItem(err_str)
             if err_str and err_str != '-':
-                err_item.setForeground(QColor("#FF4444")) # Подсвечиваем ошибки красным
+                err_item.setForeground(QColor("#FF4444"))
                 err_item.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-                
                 details = str(row.get('ErrorDetails', ''))
                 if details:
                     err_item.setToolTip(details)
             self.table.setItem(r, 4, err_item)
-            # ========================================
             
-            # === СДВИНУТЫЕ КОЛОНКИ (5-11) ===
+            # === 5. Uptime (Переводим дни и часы в минуты для математической сортировки) ===
+            up_str = str(row.get('Uptime', ''))
+            up_minutes = 0
+            
+            # Умный и безопасный поиск чисел, даже если они написаны слитно
+            d_match = re.search(r'(\d+)d', up_str)
+            h_match = re.search(r'(\d+)h', up_str)
+            m_match = re.search(r'(\d+)m', up_str)
+            
+            if d_match: up_minutes += int(d_match.group(1)) * 1440
+            if h_match: up_minutes += int(h_match.group(1)) * 60
+            if m_match: up_minutes += int(m_match.group(1))
+            
+            up_item = SmartSortItem(up_str)
+            up_item.setData(Qt.ItemDataRole.UserRole, up_minutes)
+            self.table.setItem(r, 5, up_item)
+            
+            # === 6. Real HR ===
             hr = str(row.get('Real', '0'))
-            hr_item = NumItem(hr)
+            hr_item = SmartSortItem(hr)
             if getattr(self, 'dark_mode', False): 
                 hr_item.setForeground(QColor("#00E676"))
             else: 
                 hr_item.setForeground(QColor("#007e33")) 
-            self.table.setItem(r, 5, hr_item) 
+            # Скрытно передаем точный сырой хешрейт без текстовых "TH/s"
+            hr_item.setData(Qt.ItemDataRole.UserRole, row.get('RawHash', 0.0))
+            self.table.setItem(r, 6, hr_item) 
             
-            self.table.setItem(r, 6, NumItem(str(row.get('Avg'))))
-            self.table.setItem(r, 7, NumItem(str(row.get('Temp'))))
-            self.table.setItem(r, 8, QTableWidgetItem(str(row.get('Fan'))))
-            self.table.setItem(r, 9, QTableWidgetItem(str(row.get('Pool'))))
-            self.table.setItem(r, 10, QTableWidgetItem(str(row.get('Worker', '-'))))
-            self.table.setItem(r, 11, QTableWidgetItem(str(row.get('Uptime'))))
-            
-            if 'RawHash' in row:
-                self.table.item(r, 0).setData(Qt.ItemDataRole.UserRole, row.get('RawHash', 0))
+            # === 7, 8, 9, 10, 11 (Остальные) ===
+            self.table.setItem(r, 7, SmartSortItem(str(row.get('Avg'))))
+            self.table.setItem(r, 8, SmartSortItem(str(row.get('Temp'))))
+            self.table.setItem(r, 9, QTableWidgetItem(str(row.get('Fan'))))
+            self.table.setItem(r, 10, QTableWidgetItem(str(row.get('Pool'))))
+            self.table.setItem(r, 11, QTableWidgetItem(str(row.get('Worker', '-'))))
 
         if hasattr(self, 'update_stats'):
             self.update_stats()
@@ -901,23 +968,53 @@ del "%~f0"
     def update_stats(self):
         if not self.scan_data: return
         df = pd.DataFrame(self.scan_data)
-        if 'Algo' not in df.columns: return
-
-        algos = df['Algo'].dropna().unique()
+        
         stats = []
         stats.append({"title": "TOTAL DEVICES", "val": str(len(df))})
         
-        for algo in algos:
-            if not algo or str(algo) == 'nan': continue
-            sub = df[df['Algo'] == algo]
-            total_hash = sub['RawHash'].sum() if 'RawHash' in sub.columns else 0
+        # === 1. ДОБАВЛЯЕМ КАРТОЧКИ ПО БРЕНДАМ (МОДЕЛЯМ) ===
+        if 'Model' in df.columns:
+            makers = df['Model'].apply(lambda x: str(x).split()[0] if ' ' in str(x) else str(x)).value_counts()
+            for maker, count in makers.items():
+                if not maker or str(maker) == 'nan': continue
+                stats.append({"title": str(maker).upper(), "val": str(count)})
+
+        # === 2. БРОНЕБОЙНЫЙ ПОДСЧЕТ ХЕШРЕЙТА ПРЯМО ИЗ КОЛОНКИ REAL ===
+        if 'Algo' in df.columns and 'Real' in df.columns:
+            # Приводим все алгоритмы к ВЕРХНЕМУ регистру (чтобы "scrypt" и "Scrypt" стали одним целым)
+            df['Algo_Upper'] = df['Algo'].astype(str).str.upper()
+            algos = df['Algo_Upper'].dropna().unique()
             
-            val_str = "0"
-            if "SHA-256" in algo: val_str = f"{total_hash:,.1f} TH/s"
-            elif "Scrypt" in algo: val_str = f"{total_hash:,.1f} GH/s"
-            else: val_str = f"{total_hash:,.1f}"
-            
-            stats.append({"title": algo.upper(), "val": val_str})
+            for algo in algos:
+                if algo == 'NAN' or algo == 'UNKNOWN' or not algo: continue
+                sub = df[df['Algo_Upper'] == algo]
+                
+                total_hash = 0.0
+                unit = ""
+                
+                for val in sub['Real']:
+                    try:
+                        # Разделяем строку "199.22 TH/s" на число [0] и текст [1]
+                        parts = str(val).strip().split()
+                        if len(parts) >= 1:
+                            # Плюсуем уже готовые, красивые цифры, которые мы видим в таблице!
+                            total_hash += float(parts[0].replace(',', '.'))
+                        if len(parts) >= 2 and not unit:
+                            unit = parts[1] # Запоминаем единицу измерения (TH/s, GH/s и т.д.)
+                    except:
+                        pass
+                
+                # Если единицу измерения так и не нашли, задаем стандартную
+                if not unit:
+                    if "SHA" in algo: unit = "TH/s"
+                    elif "SCRYPT" in algo: unit = "GH/s"
+                    elif "EQUIHASH" in algo: unit = "kSol/s"
+                    elif "X11" in algo: unit = "GH/s"
+                    elif "ETCHASH" in algo: unit = "MH/s"
+                    else: unit = ""
+                
+                val_str = f"{total_hash:,.2f} {unit}".strip()
+                stats.append({"title": algo, "val": val_str})
             
         self.refresh_stats_cards(stats)
 

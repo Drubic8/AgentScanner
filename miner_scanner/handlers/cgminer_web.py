@@ -3,6 +3,7 @@ import ipaddress
 from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 import re
 import json
+from ..utils import get_uptime_str
 
 def parse_cgminer_web(ip, user="root", pwd="root"):
     """
@@ -27,7 +28,22 @@ def parse_cgminer_web(ip, user="root", pwd="root"):
         if not m_uptime:
             return None # Это не CGminer Web
             
-        uptime_str = m_uptime.group(1).strip()
+        # Распарсиваем слипшуюся строку вида "1218h35m6s" в секунды
+        raw_uptime = m_uptime.group(1).strip()
+        total_sec = 0
+        
+        d_match = re.search(r'(\d+)d', raw_uptime)
+        h_match = re.search(r'(\d+)h', raw_uptime)
+        m_match = re.search(r'(\d+)m', raw_uptime)
+        s_match = re.search(r'(\d+)s', raw_uptime)
+        
+        if d_match: total_sec += int(d_match.group(1)) * 86400
+        if h_match: total_sec += int(h_match.group(1)) * 3600
+        if m_match: total_sec += int(m_match.group(1)) * 60
+        if s_match: total_sec += int(s_match.group(1))
+        
+        # Переводим в единый красивый стандарт "Xd Xh Xm"
+        uptime_str = get_uptime_str(total_sec) if total_sec > 0 else raw_uptime
 
         # === 2. ОПРЕДЕЛЯЕМ ПРОИЗВОДИТЕЛЯ И МОДЕЛЬ ===
         make = "CGminer"

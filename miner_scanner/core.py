@@ -12,7 +12,7 @@ from .handlers.base_socket import get_socket_data
 from .detect import get_miner_make
 from .handlers.whatsminer_v3 import parse_whatsminer_v3
 from .handlers.avalon import parse_avalon
-from .handlers.antminer_stock import parse_antminer_stock
+from .handlers.antminer_stock import parse_antminer_stock, parse_antminer_web_fallback
 from .handlers.antminer_vnish import parse_antminer_vnish
 from .handlers.ipollo import parse_ipollo
 from .handlers.elphapex import scan_elphapex
@@ -107,6 +107,11 @@ def process_ip(ip):
         cg_res = parse_cgminer_web(ip)
         if cg_res: 
             return cg_res
+
+        # === УМНЫЙ ФОЛЛБЭК ДЛЯ СПЯЩИХ ANTMINER (У которых закрыт 4028) ===
+        ant_web_res = parse_antminer_web_fallback(ip)
+        if ant_web_res:
+            return ant_web_res
 
     return None
 
