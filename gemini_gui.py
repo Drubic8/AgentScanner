@@ -45,7 +45,7 @@ def is_system_dark_mode():
     return True # По умолчанию темная
 
 # Константы автообновления
-CURRENT_VERSION = "1.4.0"
+CURRENT_VERSION = "1.4.1"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
@@ -138,19 +138,28 @@ VER = f"{CURRENT_VERSION}"  # Теперь версия в заголовке о
 # ==========================================
 # ДИАЛОГ КОМАНД (REMOTE CTRL)
 # ==========================================
-class CommandDialog(QDialog):
-    def __init__(self, count, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Remote Control Panel")
-        self.setFixedSize(350, 240)
-        self.selected_action = None
+class GeminiApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle(f"{APP_TITLE} v{VER}")
+        self.resize(1350, 850)
+        
+        # --- ЦЕНТРИРОВАНИЕ ОКНА ---
+        qr = self.frameGeometry()
+        cp = self.screen().availableGeometry().center()
+        qr.moveCenter(cp)
+        self.move(qr.topLeft())
+        # --------------------------
+
+        self.scan_data = []
         
         # Стилизация
-        self.setStyleSheet("""
-            QDialog { background-color: #F5F7FA; }
-            QLabel { color: #333; }
-            QRadioButton { font-size: 13px; padding: 5px; color: #333; }
-        """)
+        # УДАЛИ ИЛИ ЗАКОММЕНТИРУЙ ЭТИ 5 СТРОК:
+        # self.setStyleSheet("""
+        #     QDialog { background-color: #F5F7FA; }
+        #     QLabel { color: #333; }
+        #     QRadioButton { font-size: 13px; padding: 5px; color: #333; }
+        # """)
         
         layout = QVBoxLayout(self)
         
@@ -919,21 +928,19 @@ del "%~f0"
         """Отображает окно со списком изменений"""
         changelog_text = f"""
         <h3>ASIC_Monitor v{CURRENT_VERSION}</h3>
-        <b>Версия 1.4.0 (Текущая)</b>
+        <b>Версия 1.4.1 (Hotfix)</b>
         <ul>
-            <li><b>Интерфейс:</b> Настройки программы разделены на 3 удобные вкладки (Сканер, Интерфейс, PDF).</li>
-            <li><b>Интерфейс:</b> Добавлена кнопка создания скриншота рабочей области в буфер обмена.</li>
-            <li><b>Интерфейс:</b> Улучшено мгновенное скрытие/отображение столбцов таблицы.</li>
-            <li><b>PDF Отчеты:</b> Добавлена итоговая сводка (Models, Algos, Statuses) в шапку первой страницы.</li>
-            <li><b>PDF Отчеты:</b> Добавлена опция автоматического копирования PDF файла в буфер обмена.</li>
-            <li><b>Сканер:</b> Исправлено дублирование данных кулеров и температур для Hammer и Bluestar.</li>
-            <li><b>Сканер:</b> Улучшено распознавание статуса для старых веб-интерфейсов (CGMiner).</li>
+            <li><b>Интерфейс:</b> Исправлена темная тема для диалоговых окон (Настройки, Редактор подсетей).</li>
+            <li><b>Сканер:</b> Исправлена логика сортировки для столбца Real HR.</li>
+            <li><b>Отчеты:</b> Исправлено появление "NaN" в отчетах для асиков Jasminer, iPollo и Avalon (добавлена генерация статусов).</li>
         </ul>
         <br>
-        <b>Версия 1.3.0</b>
+        <b>Версия 1.4.0</b>
         <ul>
-            <li>Полный реверс-инжиниринг протокола Elphapex (работа без паролей).</li>
-            <li>Добавлена поддержка темной темы оформления.</li>
+            <li>Настройки программы разделены на 3 удобные вкладки (Сканер, Интерфейс, PDF).</li>
+            <li>Добавлена кнопка мгновенного скриншота рабочей области в буфер обмена.</li>
+            <li>Добавлена итоговая сводка в шапку PDF-отчета и автокопирование файла.</li>
+            <li>Исправлено дублирование данных (кулеры/температура) для Hammer и Bluestar.</li>
         </ul>
         """
         
@@ -941,7 +948,7 @@ del "%~f0"
         msg.setWindowTitle("История изменений")
         msg.setTextFormat(Qt.TextFormat.RichText) 
         msg.setText(changelog_text)
-        msg.exec() 
+        msg.exec()
 
     # --- MENU & ACTIONS LOGIC ---
     def open_remote_panel(self):
@@ -1161,6 +1168,14 @@ del "%~f0"
 
     def on_result(self, res_list):
         for row in res_list:
+            # === ФИКС ДЛЯ JASMINER, IPOLLO И AVALON ===
+            # Принудительно задаем статус в базу, если парсер его не вернул
+            if 'Status' not in row:
+                row['Status'] = 'Running'
+            if 'Error' not in row:
+                row['Error'] = ''
+            # =========================================
+            
             self.scan_data.append(row)
             r = self.table.rowCount()
             self.table.insertRow(r)
@@ -1233,9 +1248,9 @@ del "%~f0"
                 hr_item.setForeground(QColor("#00E676"))
             else: 
                 hr_item.setForeground(QColor("#007e33")) 
-            # Скрытно передаем точный сырой хешрейт без текстовых "TH/s"
-            hr_item.setData(Qt.ItemDataRole.UserRole, row.get('RawHash', 0.0))
-            self.table.setItem(r, 6, hr_item) 
+            
+            # Мы удалили hr_item.setData(...), чтобы сортировка работала по тексту (как в Avg HR)
+            self.table.setItem(r, 6, hr_item)
             
             # === 7, 8, 9, 10, 11 (Остальные) ===
             self.table.setItem(r, 7, SmartSortItem(str(row.get('Avg'))))
@@ -1500,6 +1515,13 @@ del "%~f0"
                 QWidget { font-family: 'Segoe UI', sans-serif; font-size: 13px; color: #E0E0E0; }
                 QDialog { background-color: #1E1E1E; color: #E0E0E0; }
                 
+                /* Стили для окон настроек */
+                QLineEdit, QTextEdit, QComboBox { background-color: #2D2D2D; border: 1px solid #444; color: #E0E0E0; padding: 4px; border-radius: 4px; }
+                QTabWidget::pane { border: 1px solid #444; background: #1E1E1E; }
+                QTabBar::tab { background: #2D2D2D; color: #AAA; padding: 8px 15px; border: 1px solid #444; border-bottom: none; border-top-left-radius: 4px; border-top-right-radius: 4px; }
+                QTabBar::tab:selected { background: #1E1E1E; color: #00E676; font-weight: bold; }
+                QCheckBox, QRadioButton { color: #E0E0E0; }
+                
                 #Sidebar { background-color: #1E1E1E; border-right: 1px solid #333; }
                 #ContentArea { background-color: #121212; }
                 
@@ -1529,14 +1551,19 @@ del "%~f0"
                 QMenu { background-color: #1E1E1E; border: 1px solid #333; color: #E0E0E0; }
                 QMenu::item { padding: 5px 20px; }
                 QMenu::item:selected { background-color: #00E676; color: black; }
-                
-                QRadioButton { color: #E0E0E0; }
             """)
         else:
             self.setStyleSheet("""
                 QMainWindow { background-color: #F5F7FA; }
                 QWidget { font-family: 'Segoe UI', sans-serif; font-size: 13px; color: #333; }
                 QDialog { background-color: #FFF; color: #333; }
+                
+                /* Стили для окон настроек */
+                QLineEdit, QTextEdit, QComboBox { background-color: #FFF; border: 1px solid #CCC; color: #333; padding: 4px; border-radius: 4px; }
+                QTabWidget::pane { border: 1px solid #CCC; background: #FFF; }
+                QTabBar::tab { background: #F0F2F5; color: #555; padding: 8px 15px; border: 1px solid #CCC; border-bottom: none; border-top-left-radius: 4px; border-top-right-radius: 4px; }
+                QTabBar::tab:selected { background: #FFF; color: #0069D9; font-weight: bold; }
+                QCheckBox, QRadioButton { color: #333; }
                 
                 #Sidebar { background-color: #FFFFFF; border-right: 1px solid #E1E4E8; }
                 #ContentArea { background-color: #F5F7FA; }
@@ -1567,12 +1594,10 @@ del "%~f0"
                 QMenu { background-color: #FFFFFF; border: 1px solid #CCC; color: #333; }
                 QMenu::item { padding: 5px 20px; }
                 QMenu::item:selected { background-color: #0069D9; color: white; }
-                
-                QRadioButton { color: #333; }
             """)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = GeminiApp()
-    window.show()
+    window.showMaximized() # <--- Вот здесь изменили команду
     sys.exit(app.exec())
