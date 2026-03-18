@@ -45,7 +45,7 @@ def is_system_dark_mode():
     return True # По умолчанию темная
 
 # Константы автообновления
-CURRENT_VERSION = "1.3.0"
+CURRENT_VERSION = "1.4.0"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
@@ -65,8 +65,10 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QProgressBar, QMessageBox, QHeaderView, QCheckBox,
                              QListWidget, QAbstractItemView, QInputDialog, QFrame,
                              QScrollArea, QSizePolicy, QMenu, QDialog, QRadioButton, 
-                             QButtonGroup, QTextEdit,QTabWidget, QListWidgetItem) 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize
+                             QButtonGroup, QTextEdit, QTabWidget, QListWidgetItem,
+                             QComboBox) # <- ДОБАВИТЬ ЭТО
+
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QUrl, QMimeData # <- ДОБАВИТЬ QUrl, QMimeData
 from PyQt6.QtGui import QFont, QColor, QIcon, QAction
 
 # --- FPDF & PANDAS (Вместо ReportLab) ---
@@ -109,13 +111,20 @@ def load_app_settings():
             with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except: pass
+    
     # Настройки по умолчанию
+    all_cols = ["IP", "Model", "Algo", "Status", "Error", "Uptime", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker"]
     return {
         "scan_bitmain": True,
         "scan_whatsminer": True,
         "scan_elphapex": True,
         "scan_other": True,
-        "timeout": 2 # Для будущего
+        "timeout": 2,
+        "export_dir": "", # Пустая строка = папка по умолчанию
+        "copy_pdf": False,
+        "pdf_sort": "IP",
+        "ui_cols": all_cols.copy(),
+        "pdf_cols": all_cols.copy()
     }
 
 def save_app_settings(settings):
@@ -344,14 +353,40 @@ class ActionWorker(QThread):
             self.log_signal.emit(f"🔥 Critical Error {self.ip}: {str(e)}")
 
 # ==========================================
-# PDF REPORT CLASS (From Dashboard)
+# PDF REPORT CLASS (С умной шапкой и сводкой)
 # ==========================================
 class PDFReport(FPDF):
     def header(self):
+        # Главный заголовок
         self.set_font('Arial', 'B', 14)
-        self.cell(0, 10, 'MinerHotel Daily Report', 0, 1, 'L')
-        self.line(10, 20, 287, 20)
-        self.ln(5)
+        self.cell(0, 8, 'MinerHotel Daily Report', 0, 1, 'L')
+        self.line(10, 18, 287, 18)
+        self.ln(3)
+        
+        # Название скана
+        self.set_font("Arial", 'B', 12)
+        if hasattr(self, 'report_title'):
+            self.cell(0, 6, self.report_title, 0, 1, 'L')
+        
+        # СВОДКА (Рисуется ТОЛЬКО на первой странице)
+        if self.page_no() == 1 and hasattr(self, 'summary_text'):
+            self.set_font("Arial", '', 9)
+            self.multi_cell(0, 5, self.summary_text)
+            self.ln(3)
+        else:
+            self.ln(3)
+
+        # --- ШАПКА ТАБЛИЦЫ (На каждой странице) ---
+        self.set_font("Arial", 'B', 8)
+        self.set_fill_color(0, 51, 153)
+        self.set_text_color(255, 255, 255)
+        if hasattr(self, 'table_cols') and hasattr(self, 'table_widths'):
+            for i, c in enumerate(self.table_cols):
+                self.cell(self.table_widths[i], 8, c, 1, 0, 'C', fill=True)
+        self.ln()
+        
+        # Возврат цвета для обычных строк
+        self.set_text_color(0, 0, 0)
 
     def footer(self):
         self.set_y(-15)
@@ -365,7 +400,7 @@ class SettingsDialog(QDialog):
     def __init__(self, current_settings, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Настройки программы")
-        self.setFixedSize(450, 350)
+        self.setFixedSize(550, 480)
         self.settings = current_settings.copy()
         
         layout = QVBoxLayout(self)
@@ -382,9 +417,8 @@ class SettingsDialog(QDialog):
         self.cb_bitmain = QCheckBox("Искать Antminer (Bitmain, VNish)")
         self.cb_whatsminer = QCheckBox("Искать Whatsminer (MicroBT)")
         self.cb_elphapex = QCheckBox("Искать Elphapex (DG-серия)")
-        self.cb_other = QCheckBox("Искать остальные (Avalon, iPollo, Jasminer)")
+        self.cb_other = QCheckBox("Искать остальные (Avalon, iPollo, Jasminer, Hammer)")
         
-        # Загружаем текущие настройки
         self.cb_bitmain.setChecked(self.settings.get("scan_bitmain", True))
         self.cb_whatsminer.setChecked(self.settings.get("scan_whatsminer", True))
         self.cb_elphapex.setChecked(self.settings.get("scan_elphapex", True))
@@ -395,15 +429,71 @@ class SettingsDialog(QDialog):
         l_scan.addWidget(self.cb_elphapex)
         l_scan.addWidget(self.cb_other)
         l_scan.addStretch()
-        tabs.addTab(tab_scan, "Сканер и Фильтры")
+        tabs.addTab(tab_scan, "🔍 Сканер")
         
-        # --- ВКЛАДКА 2: ИНТЕРФЕЙС И ЭКСПОРТ (Задел на будущее) ---
+        # --- ВКЛАДКА 2: ИНТЕРФЕЙС (ТАБЛИЦА) ---
         tab_ui = QWidget()
         l_ui = QVBoxLayout(tab_ui)
-        l_ui.addWidget(QLabel("Здесь скоро появятся настройки столбцов таблицы\nи параметров экспорта PDF/CSV."))
-        l_ui.addStretch()
-        tabs.addTab(tab_ui, "Интерфейс и Экспорт")
         
+        lbl_ui = QLabel("Выберите столбцы для отображения в ГЛАВНОЙ ТАБЛИЦЕ:")
+        lbl_ui.setStyleSheet("font-weight: bold; margin-bottom: 5px;")
+        l_ui.addWidget(lbl_ui)
+        
+        all_cols = ["IP", "Model", "Algo", "Status", "Error", "Uptime", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker"]
+        ui_cols_checked = self.settings.get("ui_cols", all_cols)
+        
+        self.list_ui_cols = QListWidget()
+        for c in all_cols:
+            item = QListWidgetItem(c)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked if c in ui_cols_checked else Qt.CheckState.Unchecked)
+            self.list_ui_cols.addItem(item)
+        l_ui.addWidget(self.list_ui_cols)
+        
+        tabs.addTab(tab_ui, "🖥 Интерфейс")
+        
+        # --- ВКЛАДКА 3: PDF ОТЧЕТЫ ---
+        tab_pdf = QWidget()
+        l_pdf = QVBoxLayout(tab_pdf)
+        
+        box_dir = QHBoxLayout()
+        box_dir.addWidget(QLabel("Папка отчетов:"))
+        self.le_dir = QLineEdit(self.settings.get("export_dir", ""))
+        self.le_dir.setPlaceholderText("По умолчанию (папка программы/export_pdf)")
+        self.le_dir.setReadOnly(True)
+        btn_browse = QPushButton("Обзор...")
+        btn_browse.clicked.connect(self.browse_dir)
+        box_dir.addWidget(self.le_dir)
+        box_dir.addWidget(btn_browse)
+        l_pdf.addLayout(box_dir)
+        
+        self.cb_copy_pdf = QCheckBox("Копировать файл PDF в буфер обмена")
+        self.cb_copy_pdf.setChecked(self.settings.get("copy_pdf", False))
+        l_pdf.addWidget(self.cb_copy_pdf)
+        
+        box_sort = QHBoxLayout()
+        box_sort.addWidget(QLabel("Сортировать PDF по:"))
+        self.cmb_pdf_sort = QComboBox()
+        self.cmb_pdf_sort.addItems(["IP", "Model", "Uptime", "Real HR", "Temp", "Status"])
+        self.cmb_pdf_sort.setCurrentText(self.settings.get("pdf_sort", "IP"))
+        box_sort.addWidget(self.cmb_pdf_sort)
+        box_sort.addStretch()
+        l_pdf.addLayout(box_sort)
+        
+        lbl_pdf_cols = QLabel("Столбцы для экспорта в PDF:")
+        lbl_pdf_cols.setStyleSheet("font-weight: bold; margin-top: 5px;")
+        l_pdf.addWidget(lbl_pdf_cols)
+        
+        pdf_cols_checked = self.settings.get("pdf_cols", all_cols)
+        self.list_pdf_cols = QListWidget()
+        for c in all_cols:
+            item = QListWidgetItem(c)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked if c in pdf_cols_checked else Qt.CheckState.Unchecked)
+            self.list_pdf_cols.addItem(item)
+        l_pdf.addWidget(self.list_pdf_cols)
+        
+        tabs.addTab(tab_pdf, "📑 PDF Отчеты")
         layout.addWidget(tabs)
         
         # Кнопки Сохранить / Отмена
@@ -420,13 +510,33 @@ class SettingsDialog(QDialog):
         btn_box.addWidget(btn_save)
         layout.addLayout(btn_box)
         
+    def browse_dir(self):
+        folder = QFileDialog.getExistingDirectory(self, "Выберите папку для сохранения отчетов")
+        if folder:
+            self.le_dir.setText(folder)
+        
     def save_and_close(self):
         self.settings["scan_bitmain"] = self.cb_bitmain.isChecked()
         self.settings["scan_whatsminer"] = self.cb_whatsminer.isChecked()
         self.settings["scan_elphapex"] = self.cb_elphapex.isChecked()
         self.settings["scan_other"] = self.cb_other.isChecked()
+        self.settings["export_dir"] = self.le_dir.text()
+        self.settings["copy_pdf"] = self.cb_copy_pdf.isChecked()
+        self.settings["pdf_sort"] = self.cmb_pdf_sort.currentText()
+        
+        ui_cols = []
+        for i in range(self.list_ui_cols.count()):
+            item = self.list_ui_cols.item(i)
+            if item.checkState() == Qt.CheckState.Checked: ui_cols.append(item.text())
+        self.settings["ui_cols"] = ui_cols
+        
+        pdf_cols = []
+        for i in range(self.list_pdf_cols.count()):
+            item = self.list_pdf_cols.item(i)
+            if item.checkState() == Qt.CheckState.Checked: pdf_cols.append(item.text())
+        self.settings["pdf_cols"] = pdf_cols
+        
         self.accept()
-
 # ==========================================
 # ГЛАВНОЕ ОКНО
 # ==========================================
@@ -551,6 +661,10 @@ class GeminiApp(QMainWindow):
         btn_pdf.clicked.connect(self.export_pdf_pro)
         side_layout.addWidget(btn_pdf)
 
+        btn_screenshot = QPushButton("📸 Скриншот Таблицы")
+        btn_screenshot.clicked.connect(self.take_screenshot)
+        side_layout.addWidget(btn_screenshot)
+
         # === CONTENT AREA ===
         content = QWidget()
         content.setObjectName("ContentArea")
@@ -651,6 +765,7 @@ class GeminiApp(QMainWindow):
 
         # === ДОБАВЛЯЕМ АВТОЗАПУСК ПРОВЕРКИ ОБНОВЛЕНИЙ ===
         self.check_for_updates(auto=True)
+        self.apply_ui_settings()
 
     def create_menu_bar(self):
         menubar = self.menuBar()
@@ -683,7 +798,27 @@ class GeminiApp(QMainWindow):
         dlg = SettingsDialog(self.app_settings, self)
         if dlg.exec(): # Если нажали Сохранить
             self.app_settings = dlg.settings
-            save_app_settings(self.app_settings)    
+            save_app_settings(self.app_settings) 
+            self.apply_ui_settings() # <--- ТЕПЕРЬ ОНО ПРИМЕНИТЬСЯ МГНОВЕННО
+
+    def apply_ui_settings(self):
+        """Жестко скрывает/показывает столбцы таблицы"""
+        all_cols = ["IP", "Model", "Algo", "Status", "Error", "Uptime", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker"]
+        ui_cols = self.app_settings.get("ui_cols", all_cols)
+        
+        for i, col in enumerate(all_cols):
+            if col in ui_cols:
+                self.table.showColumn(i) # Явно показываем
+            else:
+                self.table.hideColumn(i) # Явно прячем
+
+    def take_screenshot(self):
+        """Делает снимок всей правой панели (Итоги + Таблица)"""
+        pixmap = self.table.parentWidget().grab() # <--- Фотаем РОДИТЕЛЬСКИЙ виджет
+        
+        QApplication.clipboard().setPixmap(pixmap)
+        self.status_bar.setText("📸 Скриншот скопирован в буфер обмена!")
+        QMessageBox.information(self, "Успех", "Скриншот дашборда и таблицы успешно скопирован в буфер обмена!")
     
     # ==========================================
     # ЛОГИКА АВТООБНОВЛЕНИЯ
@@ -784,18 +919,29 @@ del "%~f0"
         """Отображает окно со списком изменений"""
         changelog_text = f"""
         <h3>ASIC_Monitor v{CURRENT_VERSION}</h3>
-        <b>Версия 1.1.0 (Текущая)</b>
+        <b>Версия 1.4.0 (Текущая)</b>
         <ul>
-            <li>Улучшен интерфейс программы</li>
+            <li><b>Интерфейс:</b> Настройки программы разделены на 3 удобные вкладки (Сканер, Интерфейс, PDF).</li>
+            <li><b>Интерфейс:</b> Добавлена кнопка создания скриншота рабочей области в буфер обмена.</li>
+            <li><b>Интерфейс:</b> Улучшено мгновенное скрытие/отображение столбцов таблицы.</li>
+            <li><b>PDF Отчеты:</b> Добавлена итоговая сводка (Models, Algos, Statuses) в шапку первой страницы.</li>
+            <li><b>PDF Отчеты:</b> Добавлена опция автоматического копирования PDF файла в буфер обмена.</li>
+            <li><b>Сканер:</b> Исправлено дублирование данных кулеров и температур для Hammer и Bluestar.</li>
+            <li><b>Сканер:</b> Улучшено распознавание статуса для старых веб-интерфейсов (CGMiner).</li>
+        </ul>
+        <br>
+        <b>Версия 1.3.0</b>
+        <ul>
+            <li>Полный реверс-инжиниринг протокола Elphapex (работа без паролей).</li>
+            <li>Добавлена поддержка темной темы оформления.</li>
         </ul>
         """
         
         msg = QMessageBox(self)
         msg.setWindowTitle("История изменений")
-        # Включаем поддержку HTML, чтобы список был красивым
         msg.setTextFormat(Qt.TextFormat.RichText) 
         msg.setText(changelog_text)
-        msg.exec()    
+        msg.exec() 
 
     # --- MENU & ACTIONS LOGIC ---
     def open_remote_panel(self):
@@ -991,6 +1137,8 @@ del "%~f0"
 
         self.table.setRowCount(0)
         self.table.setSortingEnabled(False)
+        # ВАЖНО: Прячем столбцы СРАЗУ ПОСЛЕ очистки таблицы, чтобы они не появились снова!
+        self.apply_ui_settings() 
         self.scan_data = []
         self.refresh_dashboard({}, {}, {})
         
@@ -1118,6 +1266,7 @@ del "%~f0"
         self.btn_stop.setEnabled(False)
         self.table.setSortingEnabled(True)
         self.status_bar.setText(f"Done. Found {len(self.scan_data)} devices.")
+        self.apply_ui_settings()
 
     def update_stats(self):
         if not self.scan_data: return
@@ -1224,7 +1373,6 @@ del "%~f0"
             QMessageBox.information(self, "OK", "Exported.")
 
     def export_pdf_pro(self):
-        # 1. Проверка библиотеки
         if not FPDF_AVAIL:
             QMessageBox.critical(self, "Error", "FPDF library not installed!\nRun: pip install fpdf")
             return
@@ -1234,140 +1382,104 @@ del "%~f0"
             return
 
         try:
-            # --- АВТОМАТИЧЕСКИЙ ПУТЬ И ИМЯ ФАЙЛА ---
-            export_dir = os.path.join(current_dir, "export_pdf")
-            if not os.path.exists(export_dir):
-                os.makedirs(export_dir)
+            # --- ПУТЬ СОХРАНЕНИЯ ИЗ НАСТРОЕК ---
+            export_dir = self.app_settings.get("export_dir", "")
+            if not export_dir or not os.path.exists(export_dir):
+                export_dir = os.path.join(current_dir, "export_pdf")
+                if not os.path.exists(export_dir):
+                    os.makedirs(export_dir)
 
-            # Берем имя из start_scan
             base_name = getattr(self, 'last_scan_name', 'Manual_Scan')
-            # Убираем плохие символы
             clean_name = re.sub(r'[\\/*?:"<>|]', "", base_name)
             if len(clean_name) > 50: clean_name = clean_name[:50]
 
             timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
             filename = f"{clean_name}_{timestamp}.pdf"
             full_path = os.path.join(export_dir, filename)
-            # ---------------------------------------
 
-            # Функция для удаления кириллицы (защита от краша)
             def safe_text(text):
                 return str(text).encode('latin-1', 'ignore').decode('latin-1')
 
             df = pd.DataFrame(self.scan_data)
             
-            # --- СИНХРОНИЗАЦИЯ СОРТИРОВКИ С ТАБЛИЦЕЙ ---
-            # Узнаем, какая колонка отсортирована в интерфейсе
-            sort_col_idx = self.table.horizontalHeader().sortIndicatorSection()
-            sort_order = self.table.horizontalHeader().sortIndicatorOrder()
-            is_ascending = (sort_order == Qt.SortOrder.AscendingOrder)
-
-            # Карта: Индекс колонки -> Поле в базе данных
-            # 0:IP, 1:Model, 2:Algo, 3:Real, 4:Avg, 5:Temp, 6:Fan, 7:Pool, 8:Worker, 9:Uptime
-            col_map = {
-                0: 'SortIP',   # IP сортируем по числовому значению
-                1: 'Model',
-                2: 'Algo',
-                3: 'RawHash',  # Хешрейт по числу
-                4: 'RawHash',
-                5: 'Temp',
-                7: 'Pool',
-                8: 'Worker',
-                9: 'Uptime'
-            }
-
-            # Применяем сортировку к DataFrame
-            sort_key = col_map.get(sort_col_idx)
-            if sort_key and sort_key in df.columns:
-                # Заполняем пустоты для корректной сортировки
-                if sort_key in ['SortIP', 'RawHash']:
-                    df[sort_key] = df[sort_key].fillna(0)
-                
-                df = df.sort_values(by=sort_key, ascending=is_ascending)
-            # -------------------------------------------
+            # --- СОРТИРОВКА ИЗ НАСТРОЕК ---
+            sort_key = self.app_settings.get("pdf_sort", "IP")
+            sort_map = {"IP": "SortIP", "Model": "Model", "Uptime": "Uptime", "Real HR": "RawHash", "Temp": "Temp", "Status": "Status"}
+            actual_sort_key = sort_map.get(sort_key, "SortIP")
             
-            # ГЕНЕРАЦИЯ PDF
+            if actual_sort_key in df.columns:
+                if actual_sort_key in ['SortIP', 'RawHash']:
+                    df[actual_sort_key] = df[actual_sort_key].fillna(0)
+                df = df.sort_values(by=actual_sort_key, ascending=True)
+
+            # --- РАСЧЕТ ИТОГОВОЙ СВОДКИ ДЛЯ ШАПКИ ---
+            total_dev = len(df)
+            models_c = df['Model'].replace('', pd.NA).dropna().apply(lambda x: str(x).split()[0] if ' ' in str(x) else str(x)).value_counts()
+            models_str = " | ".join([f"{k}: {v}" for k, v in models_c.items()])
+            
+            algos_c = df['Algo'].replace('', pd.NA).dropna().value_counts()
+            algos_str = " | ".join([f"{k}: {v}" for k, v in algos_c.items()])
+            
+            status_c = df['Status'].replace('', pd.NA).dropna().value_counts()
+            status_str = " | ".join([f"{k}: {v}" for k, v in status_c.items()])
+            
+            summary_text = safe_text(
+                f"Total Devices: {total_dev}\n"
+                f"Models: {models_str}\n"
+                f"Algorithms: {algos_str}\n"
+                f"Statuses: {status_str}"
+            )
+
+            # --- ФИЛЬТРАЦИЯ СТОЛБЦОВ И ШИРИНА ---
+            all_cols = ["IP", "Model", "Algo", "Status", "Error", "Uptime", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker"]
+            pdf_cols_setting = self.app_settings.get("pdf_cols", all_cols)
+            selected_cols = [c for c in all_cols if c in pdf_cols_setting] 
+            
+            base_widths = {"IP": 28, "Model": 40, "Algo": 20, "Status": 20, "Error": 25, "Uptime": 20, "Real HR": 20, "Avg HR": 20, "Temp": 20, "Fan": 25, "Pool": 40, "Worker": 35}
+            widths = [base_widths.get(c, 20) for c in selected_cols]
+
+            # === ГЕНЕРАЦИЯ PDF ===
             pdf = PDFReport(orientation='L', unit='mm', format='A4')
-            pdf.add_page()
             
-            # Заголовок с именем диапазона
-            pdf.set_font("Arial", 'B', 12)
-            pdf.cell(0, 8, safe_text(f"REPORT: {clean_name}"), 0, 1, 'L')
+            # Передаем настройки напрямую в объект (это спасает от ошибки fpdf)
+            pdf.report_title = safe_text(f"REPORT: {clean_name}")
+            pdf.summary_text = summary_text
+            pdf.table_cols = selected_cols
+            pdf.table_widths = widths
             
-            pdf.set_font("Arial", size=10)
-            pdf.cell(0, 5, f"Total Devices: {len(df)}", 0, 1, 'L')
-            
-            if 'Model' in df.columns:
-                makers = df['Model'].apply(lambda x: x.split()[0] if ' ' in x else x).value_counts()
-                m_str = ", ".join([f"{k}: {v}" for k,v in makers.items()])
-                pdf.cell(0, 5, safe_text(f"Models: {m_str}"), 0, 1, 'L')
-            pdf.ln(2)
-            
-            # Итоги по хешрейту
-            if 'RawHash' in df.columns and 'Algo' in df.columns:
-                algos = {
-                    "SHA-256": "TH/s", "Scrypt": "GH/s", "kHeavyHash": "TH/s",
-                    "X11": "GH/s", "Equihash": "kSol/s", "Etchash": "MH/s"
-                }
-                for algo, unit in algos.items():
-                    rows = df[df['Algo'] == algo]
-                    if not rows.empty:
-                        total = rows['RawHash'].sum()
-                        pdf.cell(0, 5, f"Total {algo}: {total:,.2f} {unit}", 0, 1, 'L')
-                
-                # iPollo (в базе G/s деленные на 1000)
-                ipollo_algos = ["Cuckatoo31 (MWC)", "Cuckatoo32 (GRIN)"]
-                for algo in ipollo_algos:
-                    rows = df[df['Algo'] == algo]
-                    if not rows.empty:
-                        total = rows['RawHash'].sum() * 1000 
-                        pdf.cell(0, 5, f"Total {algo}: {total:,.2f} G/s", 0, 1, 'L')
-                    
-            pdf.ln(5)
-            
-            # Таблица
-            cols = ["IP", "Model", "Uptime", "Real", "Avg", "Temp", "Fan", "Pool", "Worker", "Algo"]
-            widths = [28, 40, 22, 20, 20, 20, 25, 45, 35, 20] 
-            
-            pdf.set_font("Arial", 'B', 8)
-            pdf.set_fill_color(0, 51, 153)
-            pdf.set_text_color(255, 255, 255)
-            for i, c in enumerate(cols):
-                pdf.cell(widths[i], 8, c, 1, 0, 'C', fill=True)
-            pdf.ln()
-            
-            pdf.set_text_color(0, 0, 0)
+            pdf.add_page() # Тут автоматически нарисуется шапка со сводкой
             pdf.set_font("Arial", size=7)
             
+            data_keys = {"IP": "IP", "Model": "Model", "Algo": "Algo", "Status": "Status", "Error": "Error", "Uptime": "Uptime", "Real HR": "Real", "Avg HR": "Avg", "Temp": "Temp", "Fan": "Fan", "Pool": "Pool", "Worker": "Worker"}
+            
             for _, row in df.iterrows():
-                data = [str(row.get(c, '')) for c in cols]
-                for i, raw_text in enumerate(data):
-                    text = safe_text(raw_text)
-                    col_name = cols[i]
+                for i, col_name in enumerate(selected_cols):
+                    dict_key = data_keys.get(col_name, col_name)
+                    text = safe_text(str(row.get(dict_key, '')))
                     
-                    # Логика обрезки для Worker (показываем хвост)
-                    if col_name == "Worker":
-                        limit = 22 
-                        if len(text) > limit:
-                            clean_text = "..." + text[-(limit-3):]
-                        else:
-                            clean_text = text
-                    else:
+                    if col_name == "Pool" and len(text) > 35:
+                        clean_text = "..." + text[-32:]
+                    elif col_name == "Worker" and len(text) > 25:
+                        clean_text = "..." + text[-22:]
+                    else: 
                         clean_text = text[:38]
 
                     pdf.cell(widths[i], 6, clean_text, 1, 0, 'C')
                 pdf.ln()
             
-            # Сохранение и открытие
             pdf.output(full_path)
             
-            if os.name == 'nt':
-                os.startfile(full_path)
-            
-            QMessageBox.information(self, "Saved", f"Report saved:\n{filename}")
+            # --- ЛОГИКА БУФЕРА ОБМЕНА ---
+            if self.app_settings.get("copy_pdf", False):
+                mime_data = QMimeData()
+                mime_data.setUrls([QUrl.fromLocalFile(full_path)])
+                QApplication.clipboard().setMimeData(mime_data)
+                QMessageBox.information(self, "Успех", f"Отчет сохранен и СКОПИРОВАН в буфер обмена!\n{filename}")
+            else:
+                if os.name == 'nt': os.startfile(full_path)
+                QMessageBox.information(self, "Успех", f"Отчет сохранен:\n{filename}")
 
         except Exception as e:
-            # Вывод деталей ошибки (если вдруг снова кириллица просочится)
             import traceback
             error_details = traceback.format_exc()
             QMessageBox.critical(self, "PDF Error", f"{str(e)}\n\nDetails:\n{error_details}")

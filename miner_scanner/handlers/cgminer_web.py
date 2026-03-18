@@ -75,13 +75,29 @@ def parse_cgminer_web(ip, user="root", pwd="root"):
         m_avg = re.search(r'<cite id="bb_ghsav">([\d\,\.]+)</cite>', html_status)
         if m_avg: avg_hr = float(m_avg.group(1).replace(',', ''))
         
-        fans = re.findall(r'<td id="bb_fan\d+".*?>([\d\,\.]+)</td>', html_status)
-        fans_clean = [f.replace(',', '') for f in fans if f.strip() and f != '0']
-        
-        temps = re.findall(r'<div id="cbi-table-1-temp2?">([\d\,\.\s]+)</div>', html_status)
-        all_temps = []
-        for t_str in temps:
-            all_temps.extend([t.strip() for t in t_str.split(',') if t.strip().isdigit()])
+        # --- ФИКС КУЛЕРОВ (Убираем запятые) ---
+        fans_raw = re.findall(r'id="bb_fan\d+"[^>]*>([^<]+)<', html_status)
+        unique_fans = []
+        for f_str in fans_raw:
+            clean_val = f_str.replace(',', '').strip() # Превращаем "5,700" в "5700"
+            if clean_val.isdigit() and clean_val != '0' and clean_val not in unique_fans:
+                unique_fans.append(clean_val)
+        fans_clean = unique_fans
+
+        # --- ФИКС ТЕМПЕРАТУР (Одна плата = один максимум) ---
+        # Ищем температуры чипов (temp2). Если их нет, ищем температуры плат (temp)
+        temps_raw = re.findall(r'id="cbi-table-1-temp2"[^>]*>([^<]+)<', html_status)
+        if not temps_raw:
+            temps_raw = re.findall(r'id="cbi-table-1-temp"[^>]*>([^<]+)<', html_status)
+            
+        board_temps = []
+        for t_str in temps_raw:
+            # t_str выглядит как "44,68,44,59"
+            nums = [int(x) for x in re.findall(r'\d+', t_str)]
+            if nums:
+                board_temps.append(str(max(nums))) # Берем самую горячую точку на плате
+                
+        all_temps = board_temps
 
         # === 4. ПАРСИМ КОНФИГ (ПУЛЫ И АЛГОРИТМ) ===
         pool, work = "", ""
@@ -113,21 +129,31 @@ def parse_cgminer_web(ip, user="root", pwd="root"):
             avg_hr = avg_hr / 1000.0
             unit = "GH/s"
 
+        # === 6. ЛОГИКА СТАТУСА ===
+        status = "Running" if real_hr > 0 else "WaitWork"
+
+        # ДОБАВЬ ЭТИ ДВЕ СТРОЧКИ: превращаем списки в строки
+        temp = " ".join(all_temps) if all_temps else ""
+        fan = " ".join(fans_clean) if fans_clean else ""
+
         # === ВОЗВРАТ РЕЗУЛЬТАТА ===
         return {
             "IP": ip, 
             "Make": make, 
             "Model": model,
+            "Algo": algo,
+            "Status": status,
+            "Error": "",
+            "ErrorDetails": "",
             "Uptime": uptime_str,
             "Real": f"{real_hr:.2f} {unit}", 
-            "Avg": f"{avg_hr:.2f} {unit}",
-            "Fan": " ".join(fans_clean), 
-            "Temp": " ".join(all_temps),
+            "Avg": f"{avg_hr:.2f} {unit}", 
+            "Temp": temp, 
+            "Fan": fan, 
             "Pool": pool, 
             "Worker": work,
-            "SortIP": int(ipaddress.IPv4Address(ip)), 
-            "Algo": algo,
-            "RawHash": real_hr  # Теперь здесь лежит нормализованное значение (GH/s)
+            "SortIP": int(ipaddress.IPv4Address(ip)),
+            "RawHash": real_hr
         }
 
     except Exception:
