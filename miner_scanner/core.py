@@ -20,7 +20,6 @@ from .handlers.jasminer import parse_jasminer
 from .handlers.cgminer_web import parse_cgminer_web
 
 def send_avalon_cmd(ip, cmds):
-    # (Функция без изменений, оставляем как есть)
     data = {}
     for cmd_key in cmds:
         try:
@@ -34,94 +33,111 @@ def send_avalon_cmd(ip, cmds):
                     chunk = s.recv(4096)
                     if not chunk: break
                     full_response += chunk
-                    if full_response.strip().endswith(b'}') and full_response.count(b'{') == full_response.count(b'}'): break
                 except: break
             s.close()
-            decoded = json.loads(full_response.decode('utf-8', errors='ignore').replace('\x00', '').strip())
-            key_name = list(cmd_key.values())[0]
-            data[key_name] = decoded
-        except: pass
+            text = full_response.decode('utf-8', errors='ignore').strip('\x00')
+            if text:
+                data[cmd_key['command']] = [text]
+        except:
+            pass
     return data
 
-def process_ip(ip):
-    # 1. WHATSMINER V3 (Специфические порты)
+def process_ip(ip, target_makes=None):
+    if target_makes is None:
+        target_makes = ["Bitmain", "MicroBT", "Elphapex", "Canaan", "iPollo", "Jasminer"]
+
+    # =========================================================
+    # 1. ЖЕСТКАЯ ФИЛЬТРАЦИЯ (Уникальные порты)
+    # =========================================================
     if check_port(ip, 4433):
-        res = parse_whatsminer_v3(ip, port=4433)
-        if res: return res
+        if "MicroBT" in target_makes:
+            res = parse_whatsminer_v3(ip)
+            if res: return res
+        return None 
+
+    if check_port(ip, 9588):
+        if "Elphapex" in target_makes:
+            res = scan_elphapex(ip, port_9588_open=True)
+            if res: return res
+        return None
+
+    # =========================================================
+    # 2. СТАНДАРТНЫЕ ASIC'И (Порт 4028)
+    # =========================================================
+    needs_4028 = any(m in target_makes for m in ["Bitmain", "Canaan", "iPollo", "Jasminer"])
+    if needs_4028 and check_port(ip, 4028):
         
-    # 2. STANDARD MINERS (Port 4028)
-    if check_port(ip, 4028):
-        # --- ФИКС ДЛЯ ANTMINER: DOUBLE CHECK ---
-        resp = get_socket_data(ip)
+        sock_data = get_socket_data(ip)
+        resp = {}
+        full_dump = ""
         
-        if not resp:
-            # Если с первого раза не ответил, ждем и пробуем второй раз
-            time.sleep(1.5)
-            resp = get_socket_data(ip)
-        
-        # Если после переопроса всё еще пусто
-        if not resp:
-            # Проверяем, может это Avalon (у него своя логика команд, если стандартные не прошли)
-            maker = get_miner_make(ip)
-            if maker == "Canaan":
-                payloads = [{"command": "stats"}, {"command": "version"}, {"command": "pools"}]
-                data = send_avalon_cmd(ip, payloads)
-                return parse_avalon(ip, data)
+        if isinstance(sock_data, tuple) and len(sock_data) == 2:
+            resp, full_dump = sock_data
+        elif sock_data:
+            resp = sock_data
+            full_dump = json.dumps(resp).lower() 
+
+        if resp:
+            if "Canaan" in target_makes and "canaan" in full_dump:
+                return parse_avalon(ip, resp)
+
+            if "iPollo" in target_makes:
+                stats_section = resp.get('stats', {}).get('STATS', [])
+                if stats_section:
+                    first_stat = stats_section[0]
+                    if 'ID' in first_stat and str(first_stat['ID']).startswith('G'):
+                        return parse_ipollo(ip, resp)
+                    if 'G-Model' in first_stat:
+                        return parse_ipollo(ip, resp)
+
+            if "Jasminer" in target_makes and "jasminer" in full_dump:
+                return parse_jasminer(ip, resp)
             
-            # Если порт 4028 открыт, но это не Авалон и он не отвечает на JSON,
-            # значит это "тупящий" Antminer. Выходим здесь, чтобы не уйти на порт 80.
-            return None
-        # ---------------------------------------
+            if "Bitmain" in target_makes and "vnish" in full_dump:
+                return parse_antminer_vnish(ip, resp)
 
-        full_dump = json.dumps(resp).lower()
+            if "Bitmain" in target_makes:
+                # 🛡️ ПРАВИЛЬНАЯ ЗАЩИТА НА ПОРТУ 4028 (Добавили hammer и bluestar)
+                if not any(x in full_dump for x in ["canaan", "jasminer", "ipollo", "g-model", "hammer", "bluestar"]):
+                    if "SUMMARY" in resp.get("summary", {}) or "STATS" in resp.get("stats", {}):
+                        return parse_antminer_stock(ip, resp)
+
+    # =========================================================
+    # 3. ФОЛЛБЭК ДЛЯ СПЯЩИХ И ЗАВИСШИХ (Порт 80)
+    # =========================================================
+    needs_80 = any(m in target_makes for m in ["Bitmain", "Canaan", "Jasminer", "iPollo", "Elphapex"])
+    if needs_80 and check_port(ip, 80):
         
-        # === [NEW] AVALON DETECT В ОСНОВНОМ ПОТОКЕ ===
-        # Если асик ответил на стандартные команды (stats), но это Avalon
-        if "avalon" in full_dump or "canaan" in full_dump or "mm id" in full_dump:
-             return parse_avalon(ip, resp)
-        # =============================================
+        if "Elphapex" in target_makes:
+            res = scan_elphapex(ip, port_9588_open=False)
+            if res: return res
 
-        # --- IPOLLO DETECT ---
-        stats_section = resp.get('stats', {}).get('STATS', [])
-        if stats_section:
-            first_stat = stats_section[0]
-            if 'ID' in first_stat and str(first_stat['ID']).startswith('G'):
-                return parse_ipollo(ip, resp)
-            if 'G-Model' in first_stat:
-                return parse_ipollo(ip, resp)
+        if "Canaan" in target_makes or "Jasminer" in target_makes or "iPollo" in target_makes:
+            cg_res = parse_cgminer_web(ip)
+            if cg_res: return cg_res
 
-        # --- КЛАССИФИКАЦИЯ SOCKET-МАЙНЕРОВ ---
-        if "jasminer" in full_dump: return parse_jasminer(ip, resp)
-        if "vnish" in full_dump: return parse_antminer_vnish(ip, resp)
-        
-        # По умолчанию считаем Antminer Stock
-        return parse_antminer_stock(ip, resp)
-
-   # 3. WEB MINERS (Elphapex & CGminer Web: Hammer/Bluestar)
-    if check_port(ip, 80):
-        # Сначала пробуем Elphapex
-        res = scan_elphapex(ip)
-        if res: return res
-        
-        # Если это не Elphapex, пробуем универсальный парсер CGminer Web
-        cg_res = parse_cgminer_web(ip)
-        if cg_res: 
-            return cg_res
-
-        # === УМНЫЙ ФОЛЛБЭК ДЛЯ СПЯЩИХ ANTMINER (У которых закрыт 4028) ===
-        ant_web_res = parse_antminer_web_fallback(ip)
-        if ant_web_res:
-            return ant_web_res
+        if "Bitmain" in target_makes:
+            # 🛡️ ПРАВИЛЬНЫЙ ВЫЗОВ ФОЛЛБЭКА АНТМАЙНЕРА!
+            from .handlers.antminer_stock import parse_antminer_web_fallback
+            ant_web_res = parse_antminer_web_fallback(ip)
+            if ant_web_res: return ant_web_res
 
     return None
 
-def scan_network_range(ip_range_str):
+def scan_network_range(ip_range_str, target_makes=None):
     ip_list = parse_ip_range(ip_range_str)
     results = []
+    
     with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
-        futures = {executor.submit(process_ip, ip): ip for ip in ip_list}
+        futures = {executor.submit(process_ip, ip, target_makes): ip for ip in ip_list}
+        
         for future in concurrent.futures.as_completed(futures):
-            res = future.result()
-            if res: results.append(res)
-    if results: results.sort(key=lambda x: x['SortIP'])
+            try:
+                res = future.result()
+                if res:
+                    results.append(res)
+            except Exception as e:
+                # Подушка безопасности: если один IP сломался, остальные продолжают работу!
+                pass
+                
     return results

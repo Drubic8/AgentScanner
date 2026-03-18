@@ -61,7 +61,6 @@ def parse_antminer_stock(ip, resp):
     
     if flat_data.get('Mode') == 1:
         is_sleeping = True
-    # Для новых L9 кулеры могут отдавать fan_num: 0
     elif r_val == 0.0 and (pools_disabled or flat_data.get('fan_num', 0) == 0):
         if uptime_sec > 60 or pools_disabled:
             is_sleeping = True
@@ -98,7 +97,6 @@ def parse_antminer_stock(ip, resp):
     def format_hr(val, algo, current_model):
         if algo == "SHA-256": return f"{val/1000:.2f}", "TH/s"
         elif algo == "Scrypt": 
-            # L9 отдает сразу GH/s (<500), L7 отдает MH/s (>1000)
             if val < 500: return f"{val:.2f}", "GH/s"
             else: return f"{val/1000:.2f}", "GH/s"
         elif algo == "Equihash": 
@@ -143,16 +141,34 @@ def parse_antminer_stock(ip, resp):
     for i in range(1, 9):
         chain_key = f"chain_acs{i}"
         if chain_key in flat_data:
-            if 'x' in str(flat_data[chain_key]).lower():
+            # Отвалившиеся чипы могут быть 'x' или '-'
+            val_str = str(flat_data[chain_key]).lower()
+            if 'x' in val_str or '-' in val_str:
                 has_hw_error = True
                 failed_boards.append(str(i)) 
 
     if has_hw_error:
         boards_str = ",".join(failed_boards) 
         error_str = f"HW ERR (B{boards_str})" 
-        error_details = f"Сгоревшие чипы (крестики 'x') на плате {boards_str}"
+        error_details = f"Сгоревшие или отвалившиеся чипы ('x', '-') на плате {boards_str}"
 
-    # === 6. ЖЕСТКАЯ ЛОГИКА СТАТУСОВ ===
+    # === 6. ОПРОС ПОРТА 6060 (ПРИОРИТЕТ НАД СНОМ) ===
+    short_6060_err, detail_6060_err = get_6060_errors(ip)
+    
+    if short_6060_err:
+        has_hw_error = True
+        if error_str:
+            error_str = f"{error_str} + {short_6060_err}"
+            error_details = f"{error_details}\n{detail_6060_err}"
+        else:
+            error_str = short_6060_err
+            error_details = detail_6060_err
+
+    # Если есть аппаратная ошибка (плата или порт 6060), то устройство ТОЧНО не спит!
+    if has_hw_error:
+        is_sleeping = False
+
+    # === 7. ЖЕСТКАЯ ЛОГИКА СТАТУСОВ ===
     if is_sleeping:
         status = "Sleep"
         error_str = ""
@@ -164,18 +180,6 @@ def parse_antminer_stock(ip, resp):
         if not error_str:
             error_str = "NO HASH"
             error_details = "Устройство не спит, но хешрейт равен 0."
-
-    # === 7. ОПРОС ПОРТА 6060 ===
-    if not is_sleeping:
-        short_6060_err, detail_6060_err = get_6060_errors(ip)
-        
-        if short_6060_err:
-            if error_str and error_str != "NO HASH":
-                error_str = f"{error_str} + {short_6060_err}"
-                error_details = f"{error_details}\n{detail_6060_err}"
-            else:
-                error_str = short_6060_err
-                error_details = detail_6060_err
 
     try: raw_h = float(str(final_real_val).replace(',', '.').strip())
     except: raw_h = 0.0
@@ -201,14 +205,10 @@ def parse_antminer_stock(ip, resp):
 
 # === НОВЫЙ БЛОК: ФОЛЛБЭК ДЛЯ СПЯЩИХ/ЗАВИСШИХ ANTMINER (ПОРТ 80) ===
 def parse_antminer_web_fallback(ip, user="root", pwd="root"):
-    """
-    Вызывается из core.py, если порт 4028 закрыт.
-    """
     sys_info = {}
     conf_info = {}
     auth_failed = False
 
-    # 1. Читаем открытую информацию (Модель и Аптайм)
     try:
         url_sys = f"http://{ip}/cgi-bin/get_system_info.cgi"
         r_sys = requests.get(url_sys, timeout=2)
@@ -217,10 +217,11 @@ def parse_antminer_web_fallback(ip, user="root", pwd="root"):
             if r_sys.status_code == 401:
                 r_sys = requests.get(url_sys, auth=HTTPBasicAuth(user, pwd), timeout=2)
         
-        if r_sys.status_code == 200: sys_info = r_sys.json()
+        if r_sys.status_code == 200: 
+            try: sys_info = r_sys.json()
+            except: pass # Если вернулся HTML, sys_info останется пустым
     except: pass
 
-    # 2. Читаем конфигурацию (Пулы и Режим работы)
     try:
         url_conf = f"http://{ip}/cgi-bin/get_miner_conf.cgi"
         r_conf = requests.get(url_conf, timeout=2)
@@ -229,21 +230,70 @@ def parse_antminer_web_fallback(ip, user="root", pwd="root"):
             if r_conf.status_code == 401:
                 r_conf = requests.get(url_conf, auth=HTTPBasicAuth(user, pwd), timeout=2)
         
-        if r_conf.status_code == 200: conf_info = r_conf.json()
-        elif r_conf.status_code == 401: auth_failed = True
+        if r_conf.status_code == 200: 
+            try: conf_info = r_conf.json()
+            except: pass
+        elif r_conf.status_code == 401: 
+            auth_failed = True
     except: pass
 
     if not sys_info and not conf_info: return None
 
-    model = sys_info.get("minertype", "Antminer Unknown")
+    # === 🛡️ 1. ЖЕСТКАЯ ЗАЩИТА ОТ HAMMER И BLUESTAR ===
+    host_name = str(sys_info.get("hostname", "")).lower()
+    m_type_lower = str(sys_info.get("minertype", sys_info.get("type", ""))).lower()
+    
+    if "hammer" in host_name or "hammer" in m_type_lower or "bluestar" in host_name or "bluestar" in m_type_lower:
+        return None # Мгновенно отбрасываем!
+        
+    # === 🛡️ 2. ЖЕСТКАЯ ПОЗИТИВНАЯ ИДЕНТИФИКАЦИЯ BITMAIN ===
+    is_bitmain = False
+    
+    # А) Проверка по уникальным ключам конфига (самый точный метод)
+    if conf_info:
+        if any(k.startswith('bitmain-') or k.startswith('ant_') for k in conf_info.keys()):
+            is_bitmain = True
+            
+    # Б) Проверка по системным данным (если конфиг закрыт паролем)
+    if not is_bitmain and sys_info:
+        m_type = str(sys_info.get("minertype", sys_info.get("type", ""))).upper()
+        fs_ver = str(sys_info.get("system_filesystem_version", "")).upper()
+        h_name = str(sys_info.get("hostname", "")).upper() # <--- Наша находка с hostname
+        
+        # Если есть прямое упоминание бренда
+        if "ANTMINER" in m_type or "BITMAIN" in m_type or "ANTMINER" in fs_ver or "BITMAIN" in fs_ver or "ANTMINER" in h_name:
+            is_bitmain = True
+        else:
+            # Проверяем на популярные префиксы моделей
+            ant_prefixes = ["S9", "S11", "S15", "S17", "S19", "S21", "T9", "T11", "T15", "T17", "T19", "T21", "L3", "L7", "L9", "D3", "D5", "D7", "D9", "E3", "E9", "K5", "K7", "KA3", "KS3", "KS5", "Z9", "Z11", "Z15"]
+            if any(m_type.startswith(p) for p in ant_prefixes):
+                is_bitmain = True
+
+    # Если устройство не смогло доказать, что оно Bitmain - отбрасываем!
+    if not is_bitmain:
+        return None
+
+    model = sys_info.get("minertype", sys_info.get("type", "Antminer Unknown"))
+    
+    # === 🛡️ 3. ЗАЩИТА ОТ ELPHAPEX (На всякий случай) ===
+    if "DG" in str(model).upper() or "ELPHAPEX" in str(model).upper():
+        return None
+
     uptime_sec = sys_info.get("uptime", 0)
+    
+    short_6060_err, detail_6060_err = get_6060_errors(ip)
 
     status = "Error"
     error_str = "API Offline"
     error_details = "Порт 4028 закрыт. Майнинг крашнулся или устройство зависло."
-
+    
     work_mode = conf_info.get("bitmain-work-mode", None)
-    if str(work_mode) == "1":
+
+    if short_6060_err:
+        status = "Error"
+        error_str = f"API Offline + {short_6060_err}"
+        error_details = f"Порт 4028 закрыт. Аппаратная ошибка:\n{detail_6060_err}"
+    elif str(work_mode) == "1":
         status = "Sleep"
         error_str = ""
         error_details = "Устройство находится в спящем режиме."
@@ -269,11 +319,20 @@ def parse_antminer_web_fallback(ip, user="root", pwd="root"):
     elif "K" in m_upper and "KA3" not in m_upper: final_algo = "kHeavyHash"
 
     return {
-        "IP": ip, "Make": "Bitmain", "Model": model, 
+        "IP": ip, 
+        "Make": "Bitmain", 
+        "Model": model, 
+        "Algo": final_algo, 
+        "Status": status,
         "Uptime": get_uptime_str(uptime_sec),
-        "Real": "0.00", "Avg": "0.00", "Fan": "0", "Temp": "0", 
-        "Pool": pool, "Worker": worker,
+        "Real": "0.00", 
+        "Avg": "0.00", 
+        "Fan": "", 
+        "Temp": "", 
+        "Pool": pool, 
+        "Worker": worker,
         "SortIP": int(ipaddress.IPv4Address(ip)),
-        "Algo": final_algo, "Status": status,
-        "Error": error_str, "ErrorDetails": error_details, "RawHash": 0.0
+        "RawHash": 0.0,
+        "Error": error_str, 
+        "ErrorDetails": error_details
     }

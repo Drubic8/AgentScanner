@@ -9,6 +9,7 @@ import webbrowser
 import pandas as pd
 from datetime import datetime
 
+
 import socket
 import platform
 
@@ -64,7 +65,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QProgressBar, QMessageBox, QHeaderView, QCheckBox,
                              QListWidget, QAbstractItemView, QInputDialog, QFrame,
                              QScrollArea, QSizePolicy, QMenu, QDialog, QRadioButton, 
-                             QButtonGroup, QTextEdit, QListWidgetItem) 
+                             QButtonGroup, QTextEdit,QTabWidget, QListWidgetItem) 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize
 from PyQt6.QtGui import QFont, QColor, QIcon, QAction
 
@@ -99,7 +100,30 @@ except ImportError:
         ACTIONS_AVAIL = False
 
 CONFIG_FILE = "ip_ranges.json"
+SETTINGS_FILE = "app_settings.json" # <--- НОВЫЙ ФАЙЛ НАСТРОЕК
 APP_TITLE = "ASIC_Monitor"
+
+def load_app_settings():
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except: pass
+    # Настройки по умолчанию
+    return {
+        "scan_bitmain": True,
+        "scan_whatsminer": True,
+        "scan_elphapex": True,
+        "scan_other": True,
+        "timeout": 2 # Для будущего
+    }
+
+def save_app_settings(settings):
+    try:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(settings, f, indent=4)
+    except: pass
+
 VER = f"{CURRENT_VERSION}"  # Теперь версия в заголовке окна будет браться автоматически из CURRENT_VERSION
 
 # ==========================================
@@ -238,9 +262,10 @@ class ScanWorker(QThread):
     finished_signal = pyqtSignal()
     log_signal = pyqtSignal(str)
 
-    def __init__(self, ranges):
+    def __init__(self, ranges, filters): # <--- Добавили filters
         super().__init__()
         self.ranges = ranges
+        self.filters = filters           # <--- Сохранили
         self.is_running = True
 
     def run(self):
@@ -255,7 +280,7 @@ class ScanWorker(QThread):
             if not self.is_running: break
             self.log_signal.emit(f"Scanning: {r_str}...")
             try:
-                res = scan_network_range(r_str)
+                res = scan_network_range(r_str, target_makes=self.filters)
                 # Проверяем еще раз перед выдачей результатов, не нажал ли юзер STOP
                 if res and self.is_running: 
                     cleaned_res = []
@@ -334,6 +359,75 @@ class PDFReport(FPDF):
         self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
 
 # ==========================================
+# ДИАЛОГ НАСТРОЕК ПРОГРАММЫ
+# ==========================================
+class SettingsDialog(QDialog):
+    def __init__(self, current_settings, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Настройки программы")
+        self.setFixedSize(450, 350)
+        self.settings = current_settings.copy()
+        
+        layout = QVBoxLayout(self)
+        tabs = QTabWidget()
+        
+        # --- ВКЛАДКА 1: СКАНЕР (ФИЛЬТРЫ) ---
+        tab_scan = QWidget()
+        l_scan = QVBoxLayout(tab_scan)
+        
+        lbl_info = QLabel("Ускорьте сканирование, отключив ненужное оборудование:")
+        lbl_info.setStyleSheet("font-weight: bold; margin-bottom: 10px;")
+        l_scan.addWidget(lbl_info)
+        
+        self.cb_bitmain = QCheckBox("Искать Antminer (Bitmain, VNish)")
+        self.cb_whatsminer = QCheckBox("Искать Whatsminer (MicroBT)")
+        self.cb_elphapex = QCheckBox("Искать Elphapex (DG-серия)")
+        self.cb_other = QCheckBox("Искать остальные (Avalon, iPollo, Jasminer)")
+        
+        # Загружаем текущие настройки
+        self.cb_bitmain.setChecked(self.settings.get("scan_bitmain", True))
+        self.cb_whatsminer.setChecked(self.settings.get("scan_whatsminer", True))
+        self.cb_elphapex.setChecked(self.settings.get("scan_elphapex", True))
+        self.cb_other.setChecked(self.settings.get("scan_other", True))
+        
+        l_scan.addWidget(self.cb_bitmain)
+        l_scan.addWidget(self.cb_whatsminer)
+        l_scan.addWidget(self.cb_elphapex)
+        l_scan.addWidget(self.cb_other)
+        l_scan.addStretch()
+        tabs.addTab(tab_scan, "Сканер и Фильтры")
+        
+        # --- ВКЛАДКА 2: ИНТЕРФЕЙС И ЭКСПОРТ (Задел на будущее) ---
+        tab_ui = QWidget()
+        l_ui = QVBoxLayout(tab_ui)
+        l_ui.addWidget(QLabel("Здесь скоро появятся настройки столбцов таблицы\nи параметров экспорта PDF/CSV."))
+        l_ui.addStretch()
+        tabs.addTab(tab_ui, "Интерфейс и Экспорт")
+        
+        layout.addWidget(tabs)
+        
+        # Кнопки Сохранить / Отмена
+        btn_box = QHBoxLayout()
+        btn_save = QPushButton("Сохранить")
+        btn_save.setStyleSheet("background-color: #0069D9; color: white; font-weight: bold;")
+        btn_save.clicked.connect(self.save_and_close)
+        
+        btn_cancel = QPushButton("Отмена")
+        btn_cancel.clicked.connect(self.reject)
+        
+        btn_box.addStretch()
+        btn_box.addWidget(btn_cancel)
+        btn_box.addWidget(btn_save)
+        layout.addLayout(btn_box)
+        
+    def save_and_close(self):
+        self.settings["scan_bitmain"] = self.cb_bitmain.isChecked()
+        self.settings["scan_whatsminer"] = self.cb_whatsminer.isChecked()
+        self.settings["scan_elphapex"] = self.cb_elphapex.isChecked()
+        self.settings["scan_other"] = self.cb_other.isChecked()
+        self.accept()
+
+# ==========================================
 # ГЛАВНОЕ ОКНО
 # ==========================================
 class GeminiApp(QMainWindow):
@@ -343,6 +437,7 @@ class GeminiApp(QMainWindow):
         self.resize(1350, 850)
         self.scan_data = [] 
         self.ranges_config = self.load_config()
+        self.app_settings = load_app_settings()
         self.dark_mode = is_system_dark_mode()  # <--- Автоопределение темы
         
         self.init_ui()
@@ -354,6 +449,8 @@ class GeminiApp(QMainWindow):
         main_layout = QHBoxLayout(main_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
+        
+        self.create_menu_bar()
 
         # === SIDEBAR ===
         sidebar = QWidget()
@@ -427,7 +524,7 @@ class GeminiApp(QMainWindow):
         btn_layout.addWidget(btn_del)
         side_layout.addLayout(btn_layout)
 
-        side_layout.addSpacing(20)
+        side_layout.addSpacing(15)
 
         self.btn_scan = QPushButton("START SCAN")
         self.btn_scan.setObjectName("BtnScan")
@@ -461,23 +558,36 @@ class GeminiApp(QMainWindow):
         content_layout.setContentsMargins(20, 20, 20, 20)
         content_layout.setSpacing(15)
 
-        # 1. Stats Scroll
-        self.stats_scroll = QScrollArea()
-        self.stats_scroll.setWidgetResizable(True)
-        self.stats_scroll.setFixedHeight(110)
-        self.stats_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        
-        self.stats_widget = QWidget()
-        self.stats_widget.setObjectName("StatsWidget")
-        self.stats_layout = QHBoxLayout(self.stats_widget)
-        self.stats_layout.setContentsMargins(0, 0, 0, 0)
-        self.stats_layout.setSpacing(15)
-        self.stats_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        
-        self.stats_scroll.setWidget(self.stats_widget)
-        content_layout.addWidget(self.stats_scroll)
+        # 1. DASHBOARD (3 секции: Статусы, Производители, Хешрейт)
+        self.dash_layout = QHBoxLayout()
+        self.dash_layout.setSpacing(15)
 
-        self.refresh_stats_cards([]) 
+        # Блок 1: Статусы
+        self.box_status = QFrame()
+        self.box_status.setObjectName("DashBox")
+        self.layout_status = QVBoxLayout(self.box_status)
+        self.layout_status.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        # Блок 2: Производители
+        self.box_models = QFrame()
+        self.box_models.setObjectName("DashBox")
+        self.layout_models = QVBoxLayout(self.box_models)
+        self.layout_models.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        # Блок 3: Хешрейты
+        self.box_hashrate = QFrame()
+        self.box_hashrate.setObjectName("DashBox")
+        self.layout_hashrate = QVBoxLayout(self.box_hashrate)
+        self.layout_hashrate.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        self.dash_layout.addWidget(self.box_status)
+        self.dash_layout.addWidget(self.box_models)
+        self.dash_layout.addWidget(self.box_hashrate)
+        
+        content_layout.addLayout(self.dash_layout)
+
+        # Инициализируем пустой дашборд
+        self.refresh_dashboard({}, {}, {})
 
         # 2. CONTROL BAR (Новая панель управления)
         ctrl_layout = QHBoxLayout()
@@ -542,6 +652,39 @@ class GeminiApp(QMainWindow):
         # === ДОБАВЛЯЕМ АВТОЗАПУСК ПРОВЕРКИ ОБНОВЛЕНИЙ ===
         self.check_for_updates(auto=True)
 
+    def create_menu_bar(self):
+        menubar = self.menuBar()
+
+        # Меню Файл
+        file_menu = menubar.addMenu("Файл")
+
+        export_csv_act = QAction("📄 Экспорт в CSV/Excel", self)
+        export_csv_act.triggered.connect(self.export_csv)
+        file_menu.addAction(export_csv_act)
+
+        export_pdf_act = QAction("📑 Экспорт в PDF", self)
+        export_pdf_act.triggered.connect(self.export_pdf_pro)
+        file_menu.addAction(export_pdf_act)
+
+        file_menu.addSeparator()
+
+        exit_act = QAction("🚪 Выход", self)
+        exit_act.triggered.connect(self.close)
+        file_menu.addAction(exit_act)
+
+        # Меню Инструменты
+        tools_menu = menubar.addMenu("Инструменты")
+
+        settings_act = QAction("⚙️ Настройки программы...", self)
+        settings_act.triggered.connect(self.open_settings_dialog)
+        tools_menu.addAction(settings_act)
+
+    def open_settings_dialog(self):
+        dlg = SettingsDialog(self.app_settings, self)
+        if dlg.exec(): # Если нажали Сохранить
+            self.app_settings = dlg.settings
+            save_app_settings(self.app_settings)    
+    
     # ==========================================
     # ЛОГИКА АВТООБНОВЛЕНИЯ
     # ==========================================
@@ -835,12 +978,23 @@ del "%~f0"
             QMessageBox.warning(self, "No Range", "Please select IP range.")
             return
 
+        # === СОБИРАЕМ ВЫБРАННОЕ ОБОРУДОВАНИЕ ИЗ НАСТРОЕК ===
+        target_filters = []
+        if self.app_settings.get("scan_bitmain", True): target_filters.append("Bitmain")
+        if self.app_settings.get("scan_whatsminer", True): target_filters.append("MicroBT")
+        if self.app_settings.get("scan_elphapex", True): target_filters.append("Elphapex")
+        if self.app_settings.get("scan_other", True): target_filters.extend(["Canaan", "iPollo", "Jasminer"])
+
+        if not target_filters:
+            QMessageBox.warning(self, "Ошибка", "В настройках отключены все типы оборудования!")
+            return
+
         self.table.setRowCount(0)
         self.table.setSortingEnabled(False)
         self.scan_data = []
-        self.refresh_stats_cards([])
+        self.refresh_dashboard({}, {}, {})
         
-        self.worker = ScanWorker(to_scan)
+        self.worker = ScanWorker(to_scan, target_filters)
         self.worker.progress_signal.connect(self.on_progress)
         self.worker.result_signal.connect(self.on_result)
         self.worker.log_signal.connect(self.status_bar.setText)
@@ -969,82 +1123,94 @@ del "%~f0"
         if not self.scan_data: return
         df = pd.DataFrame(self.scan_data)
         
-        stats = []
-        stats.append({"title": "TOTAL DEVICES", "val": str(len(df))})
-        
-        # === 1. ДОБАВЛЯЕМ КАРТОЧКИ ПО БРЕНДАМ (МОДЕЛЯМ) ===
+        # --- Группа 1: СТАТУСЫ ---
+        statuses_data = {"TOTAL DEVICES": {"val": str(len(df)), "color": None}}
+        if 'Status' in df.columns:
+            st = df['Status'].value_counts()
+            if st.get("Running", 0) > 0: 
+                statuses_data["✅ RUNNING"] = {"val": str(st["Running"]), "color": "#00E676" if getattr(self, 'dark_mode', False) else "#007e33"}
+            if st.get("Sleep", 0) > 0: 
+                statuses_data["💤 SLEEP"] = {"val": str(st["Sleep"]), "color": "#FFA000"}
+            if st.get("WaitWork", 0) > 0: 
+                statuses_data["⏳ WAIT WORK"] = {"val": str(st["WaitWork"]), "color": "#17A2B8"}
+            if st.get("Error", 0) > 0: 
+                statuses_data["❌ ERROR"] = {"val": str(st["Error"]), "color": "#FF4444"}
+
+        # --- Группа 2: БРЕНДЫ ---
+        models_data = {}
         if 'Model' in df.columns:
             makers = df['Model'].apply(lambda x: str(x).split()[0] if ' ' in str(x) else str(x)).value_counts()
             for maker, count in makers.items():
-                if not maker or str(maker) == 'nan': continue
-                stats.append({"title": str(maker).upper(), "val": str(count)})
+                if maker and str(maker) != 'nan':
+                    models_data[str(maker).upper()] = {"val": str(count), "color": None}
 
-        # === 2. БРОНЕБОЙНЫЙ ПОДСЧЕТ ХЕШРЕЙТА ПРЯМО ИЗ КОЛОНКИ REAL ===
+        # --- Группа 3: ХЕШРЕЙТ ---
+        hashrates_data = {}
         if 'Algo' in df.columns and 'Real' in df.columns:
-            # Приводим все алгоритмы к ВЕРХНЕМУ регистру (чтобы "scrypt" и "Scrypt" стали одним целым)
             df['Algo_Upper'] = df['Algo'].astype(str).str.upper()
             algos = df['Algo_Upper'].dropna().unique()
             
             for algo in algos:
-                if algo == 'NAN' or algo == 'UNKNOWN' or not algo: continue
+                if algo in ['NAN', 'UNKNOWN', ''] or not algo: continue
                 sub = df[df['Algo_Upper'] == algo]
-                
                 total_hash = 0.0
                 unit = ""
                 
                 for val in sub['Real']:
                     try:
-                        # Разделяем строку "199.22 TH/s" на число [0] и текст [1]
                         parts = str(val).strip().split()
-                        if len(parts) >= 1:
-                            # Плюсуем уже готовые, красивые цифры, которые мы видим в таблице!
-                            total_hash += float(parts[0].replace(',', '.'))
-                        if len(parts) >= 2 and not unit:
-                            unit = parts[1] # Запоминаем единицу измерения (TH/s, GH/s и т.д.)
-                    except:
-                        pass
+                        if len(parts) >= 1: total_hash += float(parts[0].replace(',', '.'))
+                        if len(parts) >= 2 and not unit: unit = parts[1] 
+                    except: pass
                 
-                # Если единицу измерения так и не нашли, задаем стандартную
                 if not unit:
                     if "SHA" in algo: unit = "TH/s"
                     elif "SCRYPT" in algo: unit = "GH/s"
                     elif "EQUIHASH" in algo: unit = "kSol/s"
                     elif "X11" in algo: unit = "GH/s"
                     elif "ETCHASH" in algo: unit = "MH/s"
-                    else: unit = ""
                 
-                val_str = f"{total_hash:,.2f} {unit}".strip()
-                stats.append({"title": algo, "val": val_str})
-            
-        self.refresh_stats_cards(stats)
+                hashrates_data[algo] = {"val": f"{total_hash:,.2f} {unit}".strip(), "color": "#00E676" if getattr(self, 'dark_mode', False) else "#007e33"}
 
-    def refresh_stats_cards(self, stats_list):
-        while self.stats_layout.count():
-            item = self.stats_layout.takeAt(0)
-            widget = item.widget()
-            if widget: widget.deleteLater()
-            
-        if not stats_list:
-            stats_list = [{"title": "TOTAL DEVICES", "val": "0"}]
+        self.refresh_dashboard(statuses_data, models_data, hashrates_data)
 
-        for item in stats_list:
-            card = QFrame()
-            card.setObjectName("StatCard")
-            card.setFixedSize(180, 90)
+    def refresh_dashboard(self, statuses, models, hashrates):
+        # Очистка старых данных
+        for layout in [self.layout_status, self.layout_models, self.layout_hashrate]:
+            while layout.count():
+                item = layout.takeAt(0)
+                if item.widget(): item.widget().deleteLater()
+                elif item.layout():
+                    while item.layout().count():
+                        subitem = item.layout().takeAt(0)
+                        if subitem.widget(): subitem.widget().deleteLater()
+
+        # Вспомогательная функция для добавления строчки "Ключ: Значение"
+        def add_row(layout, title, data):
+            row = QHBoxLayout()
+            lbl_t = QLabel(title)
+            lbl_t.setObjectName("DashTitle")
             
-            l = QVBoxLayout(card)
-            l.setContentsMargins(15, 15, 15, 15)
-            l.setSpacing(5)
+            lbl_v = QLabel(data["val"])
+            lbl_v.setObjectName("DashValue")
+            lbl_v.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             
-            t = QLabel(item['title'])
-            t.setObjectName("CardTitle")
-            v = QLabel(item['val'])
-            v.setObjectName("CardValue")
+            if data["color"]:
+                lbl_v.setStyleSheet(f"color: {data['color']};")
+                
+            row.addWidget(lbl_t)
+            row.addWidget(lbl_v)
+            layout.addLayout(row)
+
+        # Заполнение блоков
+        if not statuses: statuses = {"TOTAL DEVICES": {"val": "0", "color": None}}
+        for title, data in statuses.items(): add_row(self.layout_status, title, data)
+        
+        if not models: models = {"NO DEVICES": {"val": "-", "color": None}}
+        for title, data in models.items(): add_row(self.layout_models, title, data)
             
-            l.addWidget(t)
-            l.addWidget(v)
-            self.stats_layout.addWidget(card)
-        self.stats_layout.addStretch()
+        if not hashrates: hashrates = {"NO HASH": {"val": "0.00", "color": None}}
+        for title, data in hashrates.items(): add_row(self.layout_hashrate, title, data)
 
     def export_csv(self):
         if not self.scan_data: return
@@ -1240,9 +1406,9 @@ del "%~f0"
                 #BtnScan { background-color: #00E676; color: #000; font-weight: bold; font-size: 14px; }
                 #BtnScan:hover { background-color: #00C853; }
                 
-                #StatCard { background-color: #1E1E1E; border-radius: 8px; border: 1px solid #333; }
-                #CardTitle { color: #888; font-size: 11px; font-weight: bold; }
-                #CardValue { color: #00E676; font-size: 18px; font-weight: bold; }
+                #DashBox { background-color: #1E1E1E; border-radius: 8px; border: 1px solid #333; padding: 5px; }
+                #DashTitle { color: #AAA; font-size: 13px; font-weight: bold; }
+                #DashValue { color: #FFF; font-size: 14px; font-weight: bold; }
                 
                 QTableWidget { background-color: #1E1E1E; border: 1px solid #333; gridline-color: #2D2D2D; alternate-background-color: #252525; }
                 QHeaderView::section { background-color: #2D2D2D; color: #BBB; border: none; padding: 6px; font-weight: bold; }
@@ -1278,9 +1444,9 @@ del "%~f0"
                 #BtnScan { background-color: #0069D9; color: #FFF; font-weight: bold; font-size: 14px; border: none; }
                 #BtnScan:hover { background-color: #0056b3; }
                 
-                #StatCard { background-color: #FFFFFF; border-radius: 8px; border: 1px solid #E1E4E8; }
-                #CardTitle { color: #6B7280; font-size: 11px; font-weight: bold; }
-                #CardValue { color: #0069D9; font-size: 18px; font-weight: bold; }
+                #DashBox { background-color: #FFFFFF; border-radius: 8px; border: 1px solid #E1E4E8; padding: 5px; }
+                #DashTitle { color: #6B7280; font-size: 13px; font-weight: bold; }
+                #DashValue { color: #333; font-size: 14px; font-weight: bold; }
                 
                 QTableWidget { background-color: #FFFFFF; border: 1px solid #E1E4E8; gridline-color: #F0F2F5; alternate-background-color: #F9FAFB; color: #333; }
                 QHeaderView::section { background-color: #F3F4F6; color: #4B5563; border: none; padding: 6px; font-weight: bold; }
