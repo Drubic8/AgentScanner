@@ -1,11 +1,28 @@
 import ipaddress
+import requests
+from requests.auth import HTTPDigestAuth
 from ..utils import get_uptime_str, normalize_hashrate
 
+def fetch_jasminer_web(ip):
+    """
+    Молниеносный веб-запрос напрямую к API Jasminer.
+    Используем эндпоинт, найденный через Wireshark.
+    """
+    # Мы используем minerStatus_all.cgi, так как он отдает полный JSON
+    url = f"http://{ip}/cgi-bin/minerStatus_all.cgi"
+    try:
+        # Таймаут 1.5 сек достаточен для локальной сети. 
+        # DigestAuth позволяет пройти проверку пароля за один цикл общения.
+        resp = requests.get(url, auth=HTTPDigestAuth("root", "root"), timeout=1.5)
+        if resp.status_code == 200:
+            return resp.json()
+    except:
+        pass
+    return None
+
 def parse_jasminer(ip, resp):
-    # Теперь у нас есть 3 источника данных:
-    # 1. summary (хешрейт)
-    # 2. pools (воркер)
-    # 3. boards (кулеры, температуры)
+    """Парсинг JSON данных, полученных от Jasminer"""
+    if not resp: return None
     
     # --- 1. ХЕШРЕЙТ и МОДЕЛЬ (из summary) ---
     sum_data = resp.get('summary', {})
@@ -19,19 +36,18 @@ def parse_jasminer(ip, resp):
         try: return float(str(val).split()[0])
         except: return 0.0
 
+    # Берем Real-time (rt) и Average (avg) хешрейт
     r_val = parse_h(sum_data.get("rt"))
     a_val = parse_h(sum_data.get("avg"))
     
     # --- 2. ВЕНТИЛЯТОРЫ и ТЕМПЕРАТУРЫ (из boards) ---
     boards_root = resp.get('boards', {})
-    # Иногда это список, иногда словарь
     if isinstance(boards_root, list): boards_root = boards_root[0]
     
     fans = []
     temps = []
     
-    # A. Вентиляторы (лежат в корне boards: fan1, fan2...)
-    # В логе было видно: fan1: 1080, fan4: 0
+    # Собираем обороты вентиляторов
     for i in range(1, 9):
         key = f"fan{i}"
         if key in boards_root:
@@ -40,17 +56,15 @@ def parse_jasminer(ip, resp):
                 if v > 0: fans.append(str(v))
             except: pass
             
-    # B. Температуры (лежат внутри списка 'board')
+    # Собираем температуры чипов
     board_list = boards_root.get('board', [])
     if isinstance(board_list, list):
         for b in board_list:
-            # Собираем температуры чипов (asic0_temp...)
             for k, v in b.items():
-                if '_temp' in k and 'asic' in k: # asic0_temp, asic1_temp
+                if '_temp' in k and 'asic' in k:
                     try: temps.append(int(float(v)))
                     except: pass
     
-    # Если в boards температур не нашли, берем из summary (temp_min/max)
     if not temps:
         if sum_data.get("temp_min"): temps.append(int(sum_data["temp_min"]))
         if sum_data.get("temp_max"): temps.append(int(sum_data["temp_max"]))
@@ -65,18 +79,7 @@ def parse_jasminer(ip, resp):
     pools_list = pools_root.get('pool') if isinstance(pools_root, dict) else pools_root
     
     if isinstance(pools_list, list) and pools_list:
-        # Ищем активный пул (In use или Alive)
-        active_pool = None
-        for p in pools_list:
-            status = str(p.get('status', '')).lower()
-            if status == 'in use' or status == 'alive':
-                active_pool = p
-                break
-        
-        # Если активного нет, берем первый (pool: 0)
-        if not active_pool and len(pools_list) > 0:
-            active_pool = pools_list[0]
-            
+        active_pool = next((p for p in pools_list if str(p.get('status', '')).lower() in ['in use', 'alive']), pools_list[0])
         if active_pool:
             pool_url = active_pool.get('url', '')
             worker = active_pool.get('user', '')

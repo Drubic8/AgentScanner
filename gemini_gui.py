@@ -13,6 +13,8 @@ from datetime import datetime
 import socket
 import platform
 
+os.environ["QT_LOGGING_RULES"] = "*.warning=false" # Отключаем спам-варнинги Qt
+
 # === ГЛОБАЛЬНЫЙ ПЕРЕХВАТ СОКЕТОВ ДЛЯ КНОПКИ STOP ===
 # Это позволяет моментально оборвать сканирование во всех 200 потоках
 _orig_connect = socket.socket.connect
@@ -45,7 +47,7 @@ def is_system_dark_mode():
     return True # По умолчанию темная
 
 # Константы автообновления
-CURRENT_VERSION = "1.4.1"
+CURRENT_VERSION = "1.5.0"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
@@ -92,11 +94,11 @@ except ImportError:
 
 # --- ИМПОРТ ACTIONS ---
 try:
-    from miner_scanner.handlers.miner_actions import WhatsminerManager
+    from miner_scanner.handlers.miner_actions import send_command
     ACTIONS_AVAIL = True
 except ImportError:
     try:
-        from handlers.miner_actions import WhatsminerManager
+        from handlers.miner_actions import send_command
         ACTIONS_AVAIL = True
     except ImportError:
         ACTIONS_AVAIL = False
@@ -136,30 +138,58 @@ def save_app_settings(settings):
 VER = f"{CURRENT_VERSION}"  # Теперь версия в заголовке окна будет браться автоматически из CURRENT_VERSION
 
 # ==========================================
+# ДИАЛОГ ЛОГОВ ПРОГРАММЫ
+# ==========================================
+class LogDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Журнал событий (Logs)")
+        self.resize(650, 400)
+        
+        layout = QVBoxLayout(self)
+        
+        self.text_edit = QTextEdit()
+        self.text_edit.setReadOnly(True)
+        self.text_edit.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap) # Чтобы строчки не ломались
+        layout.addWidget(self.text_edit)
+        
+        btn_layout = QHBoxLayout()
+        
+        btn_save = QPushButton("💾 Сохранить в файл")
+        btn_save.clicked.connect(self.save_log)
+        
+        btn_clear = QPushButton("🗑 Очистить лог")
+        btn_clear.clicked.connect(self.text_edit.clear)
+        
+        btn_layout.addWidget(btn_save)
+        btn_layout.addWidget(btn_clear)
+        layout.addLayout(btn_layout)
+        
+    def append_log(self, text):
+        self.text_edit.append(text)
+        # Автоскролл в самый низ при добавлении
+        scrollbar = self.text_edit.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+
+    def save_log(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Сохранить лог", "ASIC_Scanner_Log.txt", "Text Files (*.txt)")
+        if path:
+            try:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(self.text_edit.toPlainText())
+                QMessageBox.information(self, "Успех", "Лог успешно сохранен!")
+            except Exception as e:
+                QMessageBox.critical(self, "Ошибка", f"Не удалось сохранить файл:\n{e}")
+
+# ==========================================
 # ДИАЛОГ КОМАНД (REMOTE CTRL)
 # ==========================================
-class GeminiApp(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle(f"{APP_TITLE} v{VER}")
-        self.resize(1350, 850)
-        
-        # --- ЦЕНТРИРОВАНИЕ ОКНА ---
-        qr = self.frameGeometry()
-        cp = self.screen().availableGeometry().center()
-        qr.moveCenter(cp)
-        self.move(qr.topLeft())
-        # --------------------------
-
-        self.scan_data = []
-        
-        # Стилизация
-        # УДАЛИ ИЛИ ЗАКОММЕНТИРУЙ ЭТИ 5 СТРОК:
-        # self.setStyleSheet("""
-        #     QDialog { background-color: #F5F7FA; }
-        #     QLabel { color: #333; }
-        #     QRadioButton { font-size: 13px; padding: 5px; color: #333; }
-        # """)
+class CommandDialog(QDialog):
+    def __init__(self, count, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Remote Control Panel")
+        self.setFixedSize(350, 240)
+        self.selected_action = None
         
         layout = QVBoxLayout(self)
         
@@ -176,7 +206,6 @@ class GeminiApp(QMainWindow):
         self.rb_led_auto = QRadioButton("🌑 LED: Normal (Auto)")
         self.rb_reboot = QRadioButton("⚡ Reboot Device")
         
-        # По умолчанию выбрана подсветка
         self.rb_led_blink.setChecked(True)
         
         layout.addWidget(self.rb_led_blink)
@@ -191,7 +220,6 @@ class GeminiApp(QMainWindow):
         
         # Кнопки
         btn_layout = QHBoxLayout()
-        
         btn_cancel = QPushButton("Cancel")
         btn_cancel.setStyleSheet("background-color: #DDD; border: 1px solid #CCC; border-radius: 4px; padding: 6px;")
         btn_cancel.clicked.connect(self.reject)
@@ -324,39 +352,25 @@ class ScanWorker(QThread):
 class ActionWorker(QThread):
     log_signal = pyqtSignal(str)
     
-    def __init__(self, ip, action_type):
+    def __init__(self, ip, make, action_type):
         super().__init__()
         self.ip = ip
+        self.make = make
         self.action = action_type 
 
     def run(self):
         if not ACTIONS_AVAIL:
-            self.log_signal.emit(f"❌ {self.ip}: Library missing!")
+            self.log_signal.emit(f"❌ {self.ip}: Library miner_actions missing!")
             return
 
         try:
-            wm = WhatsminerManager(self.ip)
+            self.log_signal.emit(f"⏳ {self.ip}: Выполнение {self.action}...")
             
-            if self.action == "reboot":
-                self.log_signal.emit(f"⚡ {self.ip}: Rebooting...")
-                ok, msg = wm.reboot()
-                act_name = "Reboot"
+            # Универсальный диспетчер команд!
+            ok, msg = send_command(self.ip, self.make, self.action)
             
-            elif self.action == "led_on":
-                self.log_signal.emit(f"💡 {self.ip}: LED Blink...")
-                ok, msg = wm.blink_led(True)
-                act_name = "LED ON"
-                
-            elif self.action == "led_off":
-                self.log_signal.emit(f"🌑 {self.ip}: LED Auto...")
-                ok, msg = wm.blink_led(False)
-                act_name = "LED OFF"
-            else:
-                ok, msg = False, "Unknown action"
-                act_name = "?"
-
             icon = "✅" if ok else "❌"
-            self.log_signal.emit(f"{icon} {self.ip}: {act_name} -> {msg}")
+            self.log_signal.emit(f"{icon} {self.ip}: {msg}")
             
         except Exception as e:
             self.log_signal.emit(f"🔥 Critical Error {self.ip}: {str(e)}")
@@ -554,10 +568,14 @@ class GeminiApp(QMainWindow):
         super().__init__()
         self.setWindowTitle(f"{APP_TITLE} v{VER}")
         self.resize(1350, 850)
+        
         self.scan_data = [] 
         self.ranges_config = self.load_config()
         self.app_settings = load_app_settings()
-        self.dark_mode = is_system_dark_mode()  # <--- Автоопределение темы
+        self.dark_mode = is_system_dark_mode()  
+        
+        # --- ИНИЦИАЛИЗАЦИЯ ОКНА ЛОГОВ ---
+        self.log_dialog = LogDialog(self) 
         
         self.init_ui()
         self.apply_theme()
@@ -674,6 +692,8 @@ class GeminiApp(QMainWindow):
         btn_screenshot.clicked.connect(self.take_screenshot)
         side_layout.addWidget(btn_screenshot)
 
+        main_layout.addWidget(sidebar)
+
         # === CONTENT AREA ===
         content = QWidget()
         content.setObjectName("ContentArea")
@@ -716,15 +736,24 @@ class GeminiApp(QMainWindow):
         ctrl_layout = QHBoxLayout()
         ctrl_layout.setContentsMargins(0, 5, 0, 5)
         
-        lbl_ctrl = QLabel("Device Actions:")
-        lbl_ctrl.setStyleSheet("font-weight: bold; color: #888;")
+        self.btn_select_all = QPushButton("☑ Выделить всё")
+        self.btn_select_all.setCheckable(True)
+        self.btn_select_all.clicked.connect(self.toggle_select_all)
         
-        btn_remote = QPushButton("🛠 Remote Ctrl")
-        btn_remote.setFixedWidth(140)
+        btn_remote = QPushButton("🛠 Управление (Ctrl)")
+        btn_remote.setFixedWidth(160)
         btn_remote.setStyleSheet("background-color: #555; color: white; font-weight: bold; border-radius: 4px; padding: 6px;")
-        btn_remote.clicked.connect(self.open_remote_panel)
         
-        ctrl_layout.addWidget(lbl_ctrl)
+        # Вместо открытия CommandDialog, вешаем сразу выпадающее меню!
+        ctrl_menu = QMenu(self)
+        ctrl_menu.addAction("💡 LED On (Поиск)", lambda: self.run_action("led_on"))
+        ctrl_menu.addAction("🌑 LED Off (Авто)", lambda: self.run_action("led_off"))
+        ctrl_menu.addAction("🔄 Restart", lambda: self.run_action("reboot"))
+        ctrl_menu.addAction("💤 Sleep (Сон)", lambda: self.run_action("sleep"))
+        ctrl_menu.addAction("▶️ Normal (Работа)", lambda: self.run_action("normal"))
+        btn_remote.setMenu(ctrl_menu)
+        
+        ctrl_layout.addWidget(self.btn_select_all)
         ctrl_layout.addWidget(btn_remote)
         ctrl_layout.addStretch()
         
@@ -765,11 +794,16 @@ class GeminiApp(QMainWindow):
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         
+        # Добавляем кнопку логов
+        self.btn_logs = QPushButton("📋 Логи")
+        self.btn_logs.setFixedWidth(80)
+        self.btn_logs.clicked.connect(self.log_dialog.show)
+        
         footer.addWidget(self.status_bar)
         footer.addWidget(self.progress)
+        footer.addWidget(self.btn_logs)
         content_layout.addLayout(footer)
 
-        main_layout.addWidget(sidebar)
         main_layout.addWidget(content)
 
         # === ДОБАВЛЯЕМ АВТОЗАПУСК ПРОВЕРКИ ОБНОВЛЕНИЙ ===
@@ -828,6 +862,17 @@ class GeminiApp(QMainWindow):
         QApplication.clipboard().setPixmap(pixmap)
         self.status_bar.setText("📸 Скриншот скопирован в буфер обмена!")
         QMessageBox.information(self, "Успех", "Скриншот дашборда и таблицы успешно скопирован в буфер обмена!")
+
+    def add_log(self, message):
+        """Добавляет запись в окно логов с отметкой времени"""
+        timestamp = datetime.now().strftime('%H:%M:%S')
+        full_msg = f"[{timestamp}] {message}"
+        self.log_dialog.append_log(full_msg)
+
+    def handle_worker_log(self, message):
+        """Дублирует сообщения и в статус-бар, и в логи"""
+        self.status_bar.setText(message)
+        self.add_log(message)
     
     # ==========================================
     # ЛОГИКА АВТООБНОВЛЕНИЯ
@@ -928,13 +973,26 @@ del "%~f0"
         """Отображает окно со списком изменений"""
         changelog_text = f"""
         <h3>ASIC_Monitor v{CURRENT_VERSION}</h3>
+        
+        <b>Версия 1.5.0 (Major Update)</b>
+        <ul>
+            <li><b>Управление:</b> Добавлена панель массового управления асиками (LED Blink, Sleep, Wake, Reboot) через систему чекбоксов.</li>
+            <li><b>Оптимизация:</b> Колоссальное ускорение сканирования Jasminer (с 35 до 4 секунд) благодаря прямому API-запросу.</li>
+            <li><b>Whatsminer:</b> Внедрено управление режимом сна (API v3) и точная детекция статуса 'Sleep'.</li>
+            <li><b>Интеграция:</b> Добавлена поддержка управляющих REST API команд для кастомных прошивок VNish и Elphapex.</li>
+            <li><b>Ядро:</b> Переработана архитектура сканера (core.py) — устранены пропуски устройств Antminer при сканировании веб-портов.</li>
+            <li><b>Интерфейс:</b> Убран системный спам PyQt в консоли разработчика.</li>
+        </ul>
+        <br>
+        
         <b>Версия 1.4.1 (Hotfix)</b>
         <ul>
             <li><b>Интерфейс:</b> Исправлена темная тема для диалоговых окон (Настройки, Редактор подсетей).</li>
             <li><b>Сканер:</b> Исправлена логика сортировки для столбца Real HR.</li>
-            <li><b>Отчеты:</b> Исправлено появление "NaN" в отчетах для асиков Jasminer, iPollo и Avalon (добавлена генерация статусов).</li>
+            <li><b>Отчеты:</b> Исправлено появление "NaN" в отчетах для асиков Jasminer, iPollo и Avalon.</li>
         </ul>
         <br>
+        
         <b>Версия 1.4.0</b>
         <ul>
             <li>Настройки программы разделены на 3 удобные вкладки (Сканер, Интерфейс, PDF).</li>
@@ -949,7 +1007,7 @@ del "%~f0"
         msg.setTextFormat(Qt.TextFormat.RichText) 
         msg.setText(changelog_text)
         msg.exec()
-
+        
     # --- MENU & ACTIONS LOGIC ---
     def open_remote_panel(self):
         # Получаем выбранные строки
@@ -965,55 +1023,57 @@ del "%~f0"
             if action:
                 self.run_action(action, rows, confirm_needed=True)
 
-    def show_context_menu(self, pos):
-        menu = QMenu()
-        
-        act_reboot = QAction("⚡ Reboot Device", self)
-        act_reboot.triggered.connect(lambda: self.run_action("reboot"))
-        menu.addAction(act_reboot)
-        
-        menu.addSeparator()
-        
-        act_led_on = QAction("💡 LED: Blink", self)
-        act_led_on.triggered.connect(lambda: self.run_action("led_on"))
-        menu.addAction(act_led_on)
+    def toggle_select_all(self):
+        """Галочка Выделить все / Снять выделение"""
+        is_checked = self.btn_select_all.isChecked()
+        state = Qt.CheckState.Checked if is_checked else Qt.CheckState.Unchecked
+        self.btn_select_all.setText("☐ Снять выделение" if is_checked else "☑ Выделить всё")
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            if item: item.setCheckState(state)
 
-        act_led_off = QAction("🌑 LED: Auto", self)
-        act_led_off.triggered.connect(lambda: self.run_action("led_off"))
-        menu.addAction(act_led_off)
-        
+    def show_context_menu(self, pos):
+        # Контекстное меню (ПКМ) в таблице
+        menu = QMenu()
+        menu.addAction("💡 LED: Blink", lambda: self.run_action("led_on"))
+        menu.addAction("🌑 LED: Auto", lambda: self.run_action("led_off"))
+        menu.addAction("🔄 Reboot Device", lambda: self.run_action("reboot"))
+        menu.addAction("💤 Sleep", lambda: self.run_action("sleep"))
+        menu.addAction("▶️ Normal", lambda: self.run_action("normal"))
         menu.exec(self.table.viewport().mapToGlobal(pos))
 
-    def run_action(self, action_type, rows=None, confirm_needed=True):
-        socket.ABORT_SCAN = False # <--- Снимаем блокировку сокетов перед отправкой команд
+    def run_action(self, action_type, confirm_needed=True):
+        socket.ABORT_SCAN = False 
+        
+        # Собираем отмеченные галочками строки!
+        rows = []
+        for r in range(self.table.rowCount()):
+            item = self.table.item(r, 0)
+            if item and item.checkState() == Qt.CheckState.Checked:
+                rows.append(r)
         
         if not rows:
-            rows = sorted(set(i.row() for i in self.table.selectedItems()))
+            QMessageBox.warning(self, "Внимание", "Сначала отметьте галочками устройства в таблице!")
+            return
+
+        nice_names = {"reboot": "REBOOT", "led_on": "FLASH LED", "led_off": "NORMAL LED", "sleep": "SLEEP MODE", "normal": "NORMAL RUNNING"}
         
-        if not rows: return
-
-        # Определяем красивое имя для подтверждения
-        nice_name = {
-            "reboot": "REBOOT",
-            "led_on": "FLASH LED",
-            "led_off": "NORMAL LED"
-        }.get(action_type, action_type)
-
-        # Финальное подтверждение
         if confirm_needed:
             confirm = QMessageBox.question(
-                self, 
-                "Confirm Action", 
-                f"Are you sure you want to apply {nice_name} to {len(rows)} devices?", 
+                self, "Подтверждение", 
+                f"Выполнить '{nice_names.get(action_type, action_type)}' для {len(rows)} устройств?", 
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
             if confirm != QMessageBox.StandardButton.Yes: return
 
-        # Запуск задач
+        self.add_log(f"🛠 Отправка команды '{action_type}' на {len(rows)} устройств...") 
+        
         for r in rows:
             ip = self.table.item(r, 0).text()
-            worker = ActionWorker(ip, action_type)
-            worker.log_signal.connect(self.status_bar.setText)
+            make = self.table.item(r, 1).text() # Берем модель, чтобы знать кому слать команду
+            
+            worker = ActionWorker(ip, make, action_type)
+            worker.log_signal.connect(self.handle_worker_log) 
             worker.finished.connect(worker.deleteLater)
             worker.start()
             if not hasattr(self, 'workers'): self.workers = []
@@ -1152,12 +1212,16 @@ del "%~f0"
         self.worker = ScanWorker(to_scan, target_filters)
         self.worker.progress_signal.connect(self.on_progress)
         self.worker.result_signal.connect(self.on_result)
-        self.worker.log_signal.connect(self.status_bar.setText)
+        self.worker.log_signal.connect(self.handle_worker_log)
         self.worker.finished_signal.connect(self.on_finished)
         
         self.btn_scan.setEnabled(False)
         self.btn_stop.setEnabled(True)
         self.progress.setValue(0)
+
+        self.scan_start_time = time.perf_counter()
+        self.add_log(f"🚀 Начато сканирование. Выбрано диапазонов: {len(to_scan)}")
+        
         self.worker.start()
 
     def stop_scan(self):
@@ -1196,6 +1260,8 @@ del "%~f0"
             # === 0. IP (Сортировка по сырому числовому IP) ===
             ip_str = str(row.get('IP', ''))
             ip_item = SmartSortItem(ip_str)
+            ip_item.setFlags(ip_item.flags() | Qt.ItemFlag.ItemIsUserCheckable) # <--- ДОБАВИТЬ
+            ip_item.setCheckState(Qt.CheckState.Unchecked)                      # <--- ДОБАВИТЬ
             ip_item.setData(Qt.ItemDataRole.UserRole, row.get('SortIP', 0))
             self.table.setItem(r, 0, ip_item)
             
@@ -1280,7 +1346,25 @@ del "%~f0"
         self.btn_scan.setEnabled(True)
         self.btn_stop.setEnabled(False)
         self.table.setSortingEnabled(True)
-        self.status_bar.setText(f"Done. Found {len(self.scan_data)} devices.")
+        
+        # --- ОСТАНОВКА ТАЙМЕРА ---
+        elapsed = time.perf_counter() - getattr(self, 'scan_start_time', time.perf_counter())
+        msg = f"Done. Found {len(self.scan_data)} devices in {elapsed:.3f} seconds."
+        self.status_bar.setText(msg)
+        self.add_log(f"⏱️ {msg}") 
+        
+        # --- АНАЛИТИКА: СРЕДНЕЕ ВРЕМЯ ОПРОСА И КОЛИЧЕСТВО ---
+        if self.scan_data:
+            df = pd.DataFrame(self.scan_data)
+            if 'ScanTime' in df.columns and 'Make' in df.columns:
+                # Группируем, считаем среднее (mean) и количество (count)
+                grouped = df.groupby('Make')['ScanTime'].agg(['mean', 'count'])
+                
+                # Формируем красивую строку: "Bitmain: 4.454s (10 шт.)"
+                log_text = " | ".join([f"{make}: {row['mean']:.3f}s ({int(row['count'])} шт.)" 
+                                      for make, row in grouped.iterrows()])
+                self.add_log(f"📊 Аналитика отклика: {log_text}")
+                
         self.apply_ui_settings()
 
     def update_stats(self):
@@ -1509,8 +1593,11 @@ del "%~f0"
                 else: item.setForeground(QColor("#007e33"))
 
     def apply_theme(self):
+        # Получаем глобальный инстанс всего приложения
+        app = QApplication.instance()
+        
         if self.dark_mode:
-            self.setStyleSheet("""
+            app.setStyleSheet("""
                 QMainWindow { background-color: #121212; }
                 QWidget { font-family: 'Segoe UI', sans-serif; font-size: 13px; color: #E0E0E0; }
                 QDialog { background-color: #1E1E1E; color: #E0E0E0; }
@@ -1553,7 +1640,7 @@ del "%~f0"
                 QMenu::item:selected { background-color: #00E676; color: black; }
             """)
         else:
-            self.setStyleSheet("""
+            app.setStyleSheet("""
                 QMainWindow { background-color: #F5F7FA; }
                 QWidget { font-family: 'Segoe UI', sans-serif; font-size: 13px; color: #333; }
                 QDialog { background-color: #FFF; color: #333; }

@@ -16,7 +16,7 @@ from .handlers.antminer_stock import parse_antminer_stock, parse_antminer_web_fa
 from .handlers.antminer_vnish import parse_antminer_vnish
 from .handlers.ipollo import parse_ipollo
 from .handlers.elphapex import scan_elphapex
-from .handlers.jasminer import parse_jasminer
+from .handlers.jasminer import parse_jasminer, fetch_jasminer_web  # ✅ ИМПОРТ ДОБАВЛЕН
 from .handlers.cgminer_web import parse_cgminer_web
 
 def send_avalon_cmd(ip, cmds):
@@ -43,6 +43,14 @@ def send_avalon_cmd(ip, cmds):
     return data
 
 def process_ip(ip, target_makes=None):
+    t0 = time.perf_counter() # Запускаем микро-таймер
+    res = _process_ip_internal(ip, target_makes)
+    
+    if res:
+        res['ScanTime'] = round(time.perf_counter() - t0, 3) 
+    return res
+
+def _process_ip_internal(ip, target_makes=None):
     if target_makes is None:
         target_makes = ["Bitmain", "MicroBT", "Elphapex", "Canaan", "iPollo", "Jasminer"]
 
@@ -62,7 +70,17 @@ def process_ip(ip, target_makes=None):
         return None
 
     # =========================================================
-    # 2. СТАНДАРТНЫЕ ASIC'И (Порт 4028)
+    # 🚀 2. ЭКСПРЕСС-ПРОВЕРКА JASMINER (Порт 80)
+    # =========================================================
+    # Бьем сразу в эндпоинт из Wireshark. Если это Antminer на 80 порту, 
+    # он просто отдаст 404 за доли секунды, вернет None и пойдет на проверку ниже.
+    if "Jasminer" in target_makes and check_port(ip, 80):
+        j_data = fetch_jasminer_web(ip)
+        if j_data:
+            return parse_jasminer(ip, j_data)
+
+    # =========================================================
+    # 3. СТАНДАРТНЫЕ ASIC'И (Порт 4028)
     # =========================================================
     needs_4028 = any(m in target_makes for m in ["Bitmain", "Canaan", "iPollo", "Jasminer"])
     if needs_4028 and check_port(ip, 4028):
@@ -97,13 +115,13 @@ def process_ip(ip, target_makes=None):
                 return parse_antminer_vnish(ip, resp)
 
             if "Bitmain" in target_makes:
-                # 🛡️ ПРАВИЛЬНАЯ ЗАЩИТА НА ПОРТУ 4028 (Добавили hammer и bluestar)
+                # 🛡️ ПРАВИЛЬНАЯ ЗАЩИТА НА ПОРТУ 4028
                 if not any(x in full_dump for x in ["canaan", "jasminer", "ipollo", "g-model", "hammer", "bluestar"]):
                     if "SUMMARY" in resp.get("summary", {}) or "STATS" in resp.get("stats", {}):
                         return parse_antminer_stock(ip, resp)
 
     # =========================================================
-    # 3. ФОЛЛБЭК ДЛЯ СПЯЩИХ И ЗАВИСШИХ (Порт 80)
+    # 4. ФОЛЛБЭК ДЛЯ СПЯЩИХ И ЗАВИСШИХ (Порт 80)
     # =========================================================
     needs_80 = any(m in target_makes for m in ["Bitmain", "Canaan", "Jasminer", "iPollo", "Elphapex"])
     if needs_80 and check_port(ip, 80):
@@ -112,12 +130,12 @@ def process_ip(ip, target_makes=None):
             res = scan_elphapex(ip, port_9588_open=False)
             if res: return res
 
-        if "Canaan" in target_makes or "Jasminer" in target_makes or "iPollo" in target_makes:
+        # Jasminer исключен отсюда, так как уже прошел экспресс-проверку в шаге 2
+        if "Canaan" in target_makes or "iPollo" in target_makes:
             cg_res = parse_cgminer_web(ip)
             if cg_res: return cg_res
 
         if "Bitmain" in target_makes:
-            # 🛡️ ПРАВИЛЬНЫЙ ВЫЗОВ ФОЛЛБЭКА АНТМАЙНЕРА!
             from .handlers.antminer_stock import parse_antminer_web_fallback
             ant_web_res = parse_antminer_web_fallback(ip)
             if ant_web_res: return ant_web_res
@@ -137,7 +155,6 @@ def scan_network_range(ip_range_str, target_makes=None):
                 if res:
                     results.append(res)
             except Exception as e:
-                # Подушка безопасности: если один IP сломался, остальные продолжают работу!
                 pass
                 
     return results

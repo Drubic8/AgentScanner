@@ -84,7 +84,7 @@ def parse_whatsminer_v3(ip, port=4433):
     
     # 1. ЗАПРОС ИНФО (Модель и Ошибки)
     resp_info = tcp.send_cmd("get.device.info")
-    working_status = "unknown" # <--- ДОБАВЛЯЕМ ПЕРЕМЕННУЮ СТАТУСА
+    working_status = "unknown" 
     
     if resp_info and resp_info.get('code') == 0:
         info = resp_info.get('msg', {})
@@ -107,17 +107,13 @@ def parse_whatsminer_v3(ip, port=4433):
             err_details = [] 
 
             def get_error_description(code_str, api_reason):
-                # 1. Сначала ищем в нашем словаре точное совпадение
                 if code_str in WHATSMINER_ERRORS:
                     return WHATSMINER_ERRORS[code_str]
                 
-                # 2. Расшифровываем динамические коды плат (54XBBB, 55XBBB, 56XBBB)
                 if len(code_str) == 6 and code_str.startswith("5") and code_str[1] in "456":
-                    err_type = code_str[:2] # 54, 55 или 56
-                    board = code_str[2]     # 0, 1 или 2
-                    chip = code_str[3:]     # 000 - 999
-                    
-                    # Если 999 - значит все чипы, иначе убираем лишние нули спереди (045 -> 45)
+                    err_type = code_str[:2]
+                    board = code_str[2]    
+                    chip = code_str[3:]    
                     chip_text = "всех чипов" if chip == "999" else f"чипа №{int(chip)}"
                     
                     if err_type == "54":
@@ -127,7 +123,6 @@ def parse_whatsminer_v3(ip, port=4433):
                     elif err_type == "56":
                         return f"Slot {board} chip error (Ошибка {chip_text} на плате {board})"
 
-                # 3. Если ничего не подошло, выводим оригинальный текст асика или "Неизвестная ошибка"
                 return api_reason if api_reason else "Неизвестная ошибка"
 
             if err:
@@ -190,7 +185,6 @@ def parse_whatsminer_v3(ip, port=4433):
     
     if resp_summary:
         msg = resp_summary.get('msg', {})
-        # ЗАЩИТА: Если процесс упал, msg будет строкой "btminer process is down err"
         if isinstance(msg, dict):
             if not msg and 'Msg' in resp_summary: msg = resp_summary['Msg']
             
@@ -220,7 +214,6 @@ def parse_whatsminer_v3(ip, port=4433):
 
     if resp_pools:
         msg = resp_pools.get('msg', {})
-        # ЗАЩИТА: Читаем пулы, только если ответ это словарь, а не текст ошибки
         if isinstance(msg, dict):
             pools_data = msg.get('pools') or resp_pools.get('POOLS')
             if pools_data and isinstance(pools_data, list):
@@ -228,7 +221,7 @@ def parse_whatsminer_v3(ip, port=4433):
                 pool = (active_pool.get('url') or active_pool.get('URL') or '').replace("stratum+tcp://", "").replace("Stratum+tcp://", "")
                 worker = active_pool.get('account') or active_pool.get('user') or active_pool.get('User') or ''
 
-    # Если температуры и кулеры не пришли в summary, берем из device.info (полезно для сломанных асиков)
+    # Если температуры и кулеры не пришли в summary, берем из device.info
     if resp_info and isinstance(resp_info.get('msg'), dict):
         pwr = resp_info.get('msg', {}).get('power', {})
         if not temps and pwr.get('temp0'): temps.append(int(safe_float(pwr['temp0'])))
@@ -238,24 +231,36 @@ def parse_whatsminer_v3(ip, port=4433):
     final_real, u_r = normalize_hashrate(raw_hash * 1e12, "T")
     final_avg, u_a = normalize_hashrate(avg_hash * 1e12, "T")
 
-    if avg_hash == 0: avg_hash = raw_hash
-    final_real, u_r = normalize_hashrate(raw_hash * 1e12, "T")
-    final_avg, u_a = normalize_hashrate(avg_hash * 1e12, "T")
-
     # === ОПРЕДЕЛЯЕМ ФИНАЛЬНЫЙ СТАТУС УСТРОЙСТВА ===
-    if working_status == "true":
-        final_status = "Running"
-    elif working_status == "false":
-        final_status = "WaitWork"
+    summary_msg_str = ""
+    if resp_summary:
+        msg_val = resp_summary.get('msg', '')
+        if isinstance(msg_val, str):
+            summary_msg_str = msg_val.lower()
+
+    if "down" in summary_msg_str or "stop" in summary_msg_str:
+        final_status = "Sleep"         # Старый API (процесс убит)
+    elif working_status == "true":
+        final_status = "Running"       # Майнит (Штатная работа)
+    elif error_code:
+        final_status = "Error"         # Не майнит, есть аппаратные ошибки
+    elif raw_hash == 0 and working_status == "false":
+        # Если хеша нет, ошибок нет, и он не "working"
+        # Обычно при старте асик быстро переходит в прогрев,
+        # если он просто висит с нулевым хешем - это принудительный Sleep.
+        if uptime > 60:
+            final_status = "Sleep"     # Спит больше минуты
+        else:
+            final_status = "WaitWork"  # Только-только запустился
     else:
-        final_status = "Unknown"
+        final_status = "WaitWork"
 
     return {
         "IP": ip, 
         "Make": "MicroBT", 
         "Model": model_full, 
         "Algo": algo,
-        "Status": final_status,  # <--- ДОБАВЛЕНО ПОЛЕ СТАТУСА
+        "Status": final_status,
         "Uptime": get_uptime_str(uptime),
         "Real": f"{final_real} {u_r}", 
         "Avg": f"{final_avg} {u_a}", 
