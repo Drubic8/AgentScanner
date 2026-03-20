@@ -1,0 +1,6 @@
+requests==2.31.0
+urllib3==2.1.0
+# Если для GUI (gemini_gui.py) ты используешь PyQt5 или PySide6, добавь их тоже:
+# PyQt5==5.15.10 
+# или
+# PySide6==6.6.1
