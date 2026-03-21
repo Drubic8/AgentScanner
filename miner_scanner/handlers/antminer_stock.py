@@ -123,14 +123,16 @@ def parse_antminer_stock(ip, resp):
         if not t: t = flat_data.get(f'temp_chip{i}')
         if not t: t = flat_data.get(f'temp{i}')
         
-        if t:
-            if isinstance(t, str) and '-' in t:
-                try:
+        # ДОБАВЛЯЕМ ПРОВЕРКУ: значение должно быть числом и больше 0
+        try:
+            if t is not None and float(str(t)) > 0:
+                if isinstance(t, str) and '-' in t:
                     t_vals = [int(x) for x in t.split('-') if x.isdigit()]
                     if t_vals: temps.append(str(max(t_vals)))
-                except: pass
-            else:
-                temps.append(str(t))
+                else:
+                    temps.append(str(int(float(t)))) # Округляем до целого для красоты
+        except:
+            pass
 
     # === 5. НОМЕРА СЛОМАННЫХ ПЛАТ ===
     has_hw_error = False

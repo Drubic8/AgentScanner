@@ -93,25 +93,22 @@ def _cmd_jasminer(ip, action):
         return False, f"Команда '{action}' пока не поддерживается для JasMiner"
 
 
-# =====================================================================
-# BITMAIN / ANTMINER / VNISH
-# =====================================================================
 def _cmd_antminer(ip, action):
     auth_fallback = HTTPDigestAuth("root", "root")
     
+    # =================================================================
     # 1. Автодетект: Проверяем, стоит ли VNish (по официальному API v1)
+    # =================================================================
     try:
-        # По документации базовый эндпоинт информации это /api/v1/info
         test_req = requests.get(f"http://{ip}/api/v1/info", timeout=1.5)
         is_vnish = (test_req.status_code == 200)
     except:
         is_vnish = False
 
     if is_vnish:
-        # === НОВАЯ ЛОГИКА VNISH ПО ДОКУМЕНТАЦИИ (JWT ТОКЕН) ===
+        # === ЛОГИКА VNISH (JWT ТОКЕН) ===
         token = None
         try:
-            # Пытаемся получить токен (пробуем дефолтный пароль root)
             token_req = requests.post(f"http://{ip}/api/v1/unlock", json={"pw": "root"}, timeout=3)
             if token_req.status_code == 200:
                 token = token_req.json().get("token")
@@ -122,7 +119,6 @@ def _cmd_antminer(ip, action):
         if token:
             headers['Authorization'] = f"Bearer {token}"
             
-        # Если токен не получен (старая версия VNish), используем фоллбэк авторизацию
         auth_method = None if token else auth_fallback
 
         try:
@@ -149,7 +145,7 @@ def _cmd_antminer(ip, action):
             if resp.status_code in [200, 204]:
                 return True, "Успешно (VNish)"
                 
-            # Костыль для очень старых версий VNish, где еще был /system/blink
+            # Костыль для очень старых версий VNish
             if resp.status_code == 404 and "led" in action:
                 old_url = f"http://{ip}/api/v1/system/blink"
                 old_payload = {"blink": (action == "led_on")}
@@ -162,23 +158,52 @@ def _cmd_antminer(ip, action):
             return False, f"Сбой VNish: {str(e)}"
             
     else:
-        # 2. Логика для заводской прошивки (Antminer Stock)
+        # =================================================================
+        # 2. Логика для заводской прошивки (Antminer Stock из Wireshark)
+        # =================================================================
         try:
-            if action == "led_on":
-                url = f"http://{ip}/cgi-bin/blink.cgi?action=startBlink"
-            elif action == "led_off":
-                url = f"http://{ip}/cgi-bin/blink.cgi?action=stopBlink"
-            elif action == "reboot":
+            if action == "reboot":
                 url = f"http://{ip}/cgi-bin/reboot.cgi"
-            else:
-                return False, f"Команда {action} недоступна для Stock Antminer"
+                resp = requests.get(url, auth=auth_fallback, timeout=10)
+                if resp.status_code == 200:
+                    return True, "Команда перезагрузки отправлена (Stock)"
+                return False, f"Ошибка сети: HTTP {resp.status_code}"
+
+            elif action in ["led_on", "led_off"]:
+                url = f"http://{ip}/cgi-bin/blink.cgi"
+                # Отправляем именно JSON, как требует свежая прошивка
+                payload = {"blink": True if action == "led_on" else False}
                 
-            resp = requests.post(url, auth=auth_fallback, timeout=3)
-            if resp.status_code == 200:
-                return True, "Успешно (Stock Antminer)"
-            return False, "Отклонено. Проверьте пароль."
+                resp = requests.post(url, auth=auth_fallback, json=payload, timeout=10)
+                
+                # Асик отвечает {"code":"B000"} при успехе
+                if resp.status_code == 200:
+                    return True, f"Подсветка {'включена' if action == 'led_on' else 'выключена'} (Stock)"
+                return False, f"Ошибка API: HTTP {resp.status_code}"
+
+            elif action in ["sleep", "normal"]:
+                # 1. Скачиваем текущий конфиг
+                get_url = f"http://{ip}/cgi-bin/get_miner_conf.cgi"
+                conf_resp = requests.get(get_url, auth=auth_fallback, timeout=10)
+                if conf_resp.status_code != 200:
+                    return False, "Не удалось получить текущий конфиг устройства"
+                
+                config = conf_resp.json()
+                
+                # 2. Меняем режим работы (1 - Sleep, 0 - Normal)
+                config["bitmain-work-mode"] = "1" if action == "sleep" else "0"
+                
+                # 3. Отправляем обновленный конфиг обратно
+                set_url = f"http://{ip}/cgi-bin/set_miner_conf.cgi"
+                resp = requests.post(set_url, auth=auth_fallback, json=config, timeout=15)
+                
+                if resp.status_code == 200:
+                    return True, f"Режим {'Сон' if action == 'sleep' else 'Работа'} успешно применен (Stock)"
+                return False, f"Ошибка сохранения конфига: {resp.status_code}"
+
+            return False, "Команда не поддерживается"
         except Exception as e:
-            return False, f"Сбой Stock: {str(e)}"
+            return False, f"Сбой Stock Antminer: {str(e)}"
 
 
 # =====================================================================
