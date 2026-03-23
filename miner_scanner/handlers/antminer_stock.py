@@ -59,11 +59,15 @@ def parse_antminer_stock(ip, resp):
     # === БЫСТРАЯ ПРОВЕРКА РЕЖИМА СНА ===
     is_sleeping = False
     
+    # Оставляем Mode == 1 только для старых прошивок (S19/T19)
     if flat_data.get('Mode') == 1:
         is_sleeping = True
-    elif r_val == 0.0 and (pools_disabled or flat_data.get('fan_num', 0) == 0):
-        if uptime_sec > 60 or pools_disabled:
-            is_sleeping = True
+    elif r_val == 0.0:
+        # Если кулеры 0 ИЛИ пулы отключены
+        if pools_disabled or flat_data.get('fan_num', 0) == 0:
+            # Обходим таймер защиты 60 сек, если вентиляторы И температуры реально на нуле
+            if uptime_sec > 60 or pools_disabled or (flat_data.get('fan_num', 0) == 0 and flat_data.get('temp_max', 0) == 0):
+                is_sleeping = True
 
     # === 1. ОПРЕДЕЛЯЕМ МОДЕЛЬ ===
     raw_type = flat_data.get('Type', summary_block.get('Type', ''))
