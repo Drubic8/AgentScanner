@@ -6,18 +6,24 @@ from ..utils import get_uptime_str, normalize_hashrate
 def fetch_jasminer_web(ip):
     """
     Молниеносный веб-запрос напрямую к API Jasminer.
-    Используем эндпоинт, найденный через Wireshark.
+    Используем сессию для пропуска двойного TCP-рукопожатия.
     """
-    # Мы используем minerStatus_all.cgi, так как он отдает полный JSON
-    url = f"http://{ip}/cgi-bin/minerStatus_all.cgi"
+    # Используем сессию для мгновенной Digest-авторизации
+    session = requests.Session()
+    session.auth = HTTPDigestAuth("root", "root")
+    
+    # Используем эндпоинт из Wireshark дампа и метод POST
+    url = f"http://{ip}/cgi-bin/minerStatus.cgi"
     try:
-        # Таймаут 1.5 сек достаточен для локальной сети. 
-        # DigestAuth позволяет пройти проверку пароля за один цикл общения.
-        resp = requests.get(url, auth=HTTPDigestAuth("root", "root"), timeout=1.5)
+        # Таймаут 2 сек. POST отрабатывает за доли секунды.
+        resp = session.post(url, timeout=2.0)
         if resp.status_code == 200:
             return resp.json()
     except:
         pass
+    finally:
+        session.close() # Обязательно закрываем сессию
+        
     return None
 
 def parse_jasminer(ip, resp):
