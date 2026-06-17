@@ -18,6 +18,7 @@ from .handlers.ipollo import parse_ipollo
 from .handlers.elphapex import scan_elphapex
 from .handlers.jasminer import parse_jasminer, fetch_jasminer_web  # ✅ ИМПОРТ ДОБАВЛЕН
 from .handlers.cgminer_web import parse_cgminer_web
+from .handlers.antminer_pitbit import parse_antminer_pitbit
 
 def send_avalon_cmd(ip, cmds):
     data = {}
@@ -113,6 +114,10 @@ def _process_ip_internal(ip, target_makes=None):
             
             if "Bitmain" in target_makes and "vnish" in full_dump:
                 return parse_antminer_vnish(ip, resp)
+            
+            if "Bitmain" in target_makes and ("incm" in full_dump or "pitbit" in full_dump):
+                from .handlers.antminer_pitbit import parse_antminer_pitbit
+                return parse_antminer_pitbit(ip, resp)
 
             if "Bitmain" in target_makes:
                 # 🛡️ ПРАВИЛЬНАЯ ЗАЩИТА НА ПОРТУ 4028

@@ -93,12 +93,14 @@ def _cmd_jasminer(ip, action):
         return False, f"Команда '{action}' пока не поддерживается для JasMiner"
 
 
+# =====================================================================
+# BITMAIN / VNISH / PITBIT (Универсальный роутер)
+# =====================================================================
 def _cmd_antminer(ip, action):
-    auth_fallback = HTTPDigestAuth("root", "root")
+    auth_digest = HTTPDigestAuth("root", "root")
+    auth_basic = ("root", "root")
     
-    # =================================================================
-    # 1. Автодетект: Проверяем, стоит ли VNish (по официальному API v1)
-    # =================================================================
+    # --- 1. Автодетект: Проверяем, стоит ли VNish ---
     try:
         test_req = requests.get(f"http://{ip}/api/v1/info", timeout=1.5)
         is_vnish = (test_req.status_code == 200)
@@ -106,7 +108,7 @@ def _cmd_antminer(ip, action):
         is_vnish = False
 
     if is_vnish:
-        # === ЛОГИКА VNISH (JWT ТОКЕН) ===
+        # === ЛОГИКА VNISH ===
         token = None
         try:
             token_req = requests.post(f"http://{ip}/api/v1/unlock", json={"pw": "root"}, timeout=3)
@@ -119,7 +121,7 @@ def _cmd_antminer(ip, action):
         if token:
             headers['Authorization'] = f"Bearer {token}"
             
-        auth_method = None if token else auth_fallback
+        auth_method = None if token else auth_digest
 
         try:
             if action == "led_on":
@@ -153,61 +155,89 @@ def _cmd_antminer(ip, action):
                 if fallback_resp.status_code in [200, 204]:
                     return True, "Успешно (Legacy VNish)"
                     
-            return False, f"Ошибка VNish: HTTP {resp.status_code} - {resp.text[:30]}"
+            return False, f"Ошибка VNish: HTTP {resp.status_code}"
         except Exception as e:
             return False, f"Сбой VNish: {str(e)}"
             
     else:
-        # =================================================================
-        # 2. Логика для заводской прошивки (Antminer Stock из Wireshark)
-        # =================================================================
+        # === ЛОГИКА PITBIT И СТОКОВЫХ ANTMINER (CGI-скрипты) ===
         try:
             if action == "reboot":
                 url = f"http://{ip}/cgi-bin/reboot.cgi"
-                resp = requests.get(url, auth=auth_fallback, timeout=10)
-                if resp.status_code == 200:
-                    return True, "Команда перезагрузки отправлена (Stock)"
-                return False, f"Ошибка сети: HTTP {resp.status_code}"
+                try:
+                    resp = requests.get(url, auth=auth_digest, timeout=4)
+                    if resp.status_code == 401:
+                        resp = requests.get(url, auth=auth_basic, timeout=4)
+                        
+                    if resp.status_code == 200:
+                        return True, "Команда перезагрузки отправлена"
+                    elif resp.status_code == 401:
+                        return False, "Ошибка 401: Неверный логин или пароль"
+                    return False, f"Ошибка API: HTTP {resp.status_code}"
+                except requests.exceptions.Timeout:
+                    # Асик мгновенно уходит в ребут и не успевает ответить - это успех!
+                    return True, "Отправлено (асик ушел в ребут)"
 
             elif action in ["led_on", "led_off"]:
                 url = f"http://{ip}/cgi-bin/blink.cgi"
-                # Отправляем именно JSON, как требует свежая прошивка
                 payload = {"blink": True if action == "led_on" else False}
                 
-                resp = requests.post(url, auth=auth_fallback, json=payload, timeout=10)
-                
-                # Асик отвечает {"code":"B000"} при успехе
-                if resp.status_code == 200:
-                    return True, f"Подсветка {'включена' if action == 'led_on' else 'выключена'} (Stock)"
-                return False, f"Ошибка API: HTTP {resp.status_code}"
+                try:
+                    resp = requests.post(url, auth=auth_digest, json=payload, timeout=5)
+                    if resp.status_code == 401:
+                        resp = requests.post(url, auth=auth_basic, json=payload, timeout=5)
+                        
+                    if resp.status_code == 200:
+                        return True, f"Подсветка {'включена' if action == 'led_on' else 'выключена'}"
+                except requests.exceptions.Timeout:
+                    pass
+                return False, "Не удалось переключить подсветку"
 
             elif action in ["sleep", "normal"]:
-                # 1. Скачиваем текущий конфиг
-                get_url = f"http://{ip}/cgi-bin/get_miner_conf.cgi"
-                conf_resp = requests.get(get_url, auth=auth_fallback, timeout=10)
-                if conf_resp.status_code != 200:
-                    return False, "Не удалось получить текущий конфиг устройства"
+                url = f"http://{ip}/cgi-bin/set_miner_conf.cgi"
+                mode = "1" if action == "sleep" else "0"
+                payload = {"bitmain-work-mode": mode}
                 
-                config = conf_resp.json()
-                
-                # 2. Меняем режим работы (1 - Sleep, 0 - Normal)
-                config["bitmain-work-mode"] = "1" if action == "sleep" else "0"
-                
-                # 3. Отправляем обновленный конфиг обратно
-                set_url = f"http://{ip}/cgi-bin/set_miner_conf.cgi"
-                resp = requests.post(set_url, auth=auth_fallback, json=config, timeout=15)
-                
-                if resp.status_code == 200:
-                    return True, f"Режим {'Сон' if action == 'sleep' else 'Работа'} успешно применен (Stock)"
-                return False, f"Ошибка сохранения конфига: {resp.status_code}"
+                # Попытка 1: Метод PitBit (прямой POST JSON, который мы видели в Wireshark)
+                try:
+                    resp = requests.post(url, auth=auth_digest, json=payload, timeout=5)
+                    if resp.status_code == 401:
+                        resp = requests.post(url, auth=auth_basic, json=payload, timeout=5)
+                        
+                    if resp.status_code == 200:
+                        return True, f"Режим '{'Сон' if action == 'sleep' else 'Работа'}' успешно применен"
+                except requests.exceptions.Timeout:
+                    pass
+                    
+                # Попытка 2: Метод старого Stock (Скачать конфиг -> Изменить -> Отправить обратно)
+                try:
+                    get_url = f"http://{ip}/cgi-bin/get_miner_conf.cgi"
+                    conf_resp = requests.get(get_url, auth=auth_digest, timeout=5)
+                    if conf_resp.status_code == 401:
+                        conf_resp = requests.get(get_url, auth=auth_basic, timeout=5)
+                        
+                    if conf_resp.status_code == 200:
+                        config = conf_resp.json()
+                        config["bitmain-work-mode"] = mode
+                        
+                        set_resp = requests.post(url, auth=auth_digest, json=config, timeout=10)
+                        if set_resp.status_code == 401:
+                            set_resp = requests.post(url, auth=auth_basic, json=config, timeout=10)
+                            
+                        if set_resp.status_code == 200:
+                            return True, f"Режим '{'Сон' if action == 'sleep' else 'Работа'}' успешно применен (Stock)"
+                except requests.exceptions.Timeout:
+                    pass
+
+                return False, "Не удалось изменить режим работы"
 
             return False, "Команда не поддерживается"
         except Exception as e:
-            return False, f"Сбой Stock Antminer: {str(e)}"
+            return False, f"Сбой управления CGI: {str(e)}"
 
 
 # =====================================================================
-# WHATSMINER (MicroBT) - ТВОЙ ОРИГИНАЛЬНЫЙ КОД
+# WHATSMINER (MicroBT)
 # =====================================================================
 DEFAULT_PORT = 4433
 PASS_LIST = ["admin", "super", "12345678", "123456"]
@@ -314,15 +344,9 @@ class WhatsminerManager:
         return self._auth_and_execute(led_logic)
         
     def set_mining_state(self, state):
-        """
-        Управление службой майнинга (Сон/Работа).
-        state: "stop" (Сон/Suspend) или "start" (Работа/Resume)
-        """
         def state_logic(api):
-            # Передаем строку напрямую в param, как описано в документации Whatsminer
             return api.set_request_cmds("set.miner.service", state)
         return self._auth_and_execute(state_logic)
-
 
 # =====================================================================
 # Маршрутизатор для Whatsminer
@@ -337,10 +361,8 @@ def _cmd_whatsminer(ip, action):
     elif action == "led_off":
         return wm.blink_led(False)
     elif action == "sleep":
-        # Останавливаем демона btminer (аналог Suspend)
         return wm.set_mining_state("stop")
     elif action == "normal":
-        # Запускаем демона btminer (аналог Resume)
         return wm.set_mining_state("start")
     else:
         return False, f"Команда {action} неизвестна"
