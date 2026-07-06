@@ -1,63 +1,51 @@
 # 🚀 AgentScanner: ASIC Miner Network Manager
 
-**AgentScanner** — это быстрый, многопоточный сканер локальной сети для обнаружения, мониторинга и управления майнинговым оборудованием. 
+**AgentScanner** is a fast, multi-threaded local network scanner designed for the discovery, monitoring, and management of ASIC mining equipment.
 
-Программа использует многоуровневый алгоритм опроса (Multi-layer Discovery), что позволяет находить даже зависшие устройства и асики, находящиеся в режиме глубокого сна (с отключенным портом 4028).
+It utilizes a Multi-layer Discovery algorithm to detect even hung devices or ASICs in deep sleep mode (where port 4028 is disabled).
 
-## ✨ Поддерживаемое оборудование
-Программа автоматически распознает архитектуру устройства:
-* **Bitmain Antminer** (Stock: S19, S21, T21, L7, L9, Z15 и др.)
-* **Elphapex** (DG-серия)
+## ✨ Supported Hardware
+The scanner automatically recognizes the device architecture and firmware:
+* **Bitmain Antminer** (Stock: S19, S21, T21, L7, L9, Z15, etc.)
+* **Elphapex** (DG-series)
 * **MicroBT Whatsminer** (M30S, M50, M60)
 * **Canaan AvalonMiner**
 * **iPollo** & **Jasminer**
-* **Кастомные прошивки:** Полная поддержка API **VNish**.
+* **Custom Firmwares:** Full support for the **VNish** API.
 
-## 🛠 Ключевые возможности
-* **Умный авто-поиск:** Опрос по порту 4028 (CGMiner API) с умным фоллбэком на порт 80 (Web API) для обнаружения спящих устройств.
-* **Глубокая диагностика:** Чтение аппаратных ошибок (HW ERR) и точное определение номеров сгоревших или отвалившихся хеш-плат.
-* **Полная телеметрия:** Отображение пулов, воркеров, температур (чипов и плат), скорости кулеров и точного времени работы.
-* **Умная нормализация:** Автоматический пересчет хешрейта для разных алгоритмов (Scrypt, SHA-256, Etchash).
+## 🛠 Key Features
+* **Smart Auto-Discovery:** Primary polling via port 4028 (CGMiner API) with a smart fallback to port 80 (Web API) to detect sleeping devices.
+* **Deep Diagnostics:** Extracts hardware errors (HW ERR) and accurately identifies dead or missing hashboards.
+* **Full Telemetry:** Real-time display of active pools, workers, temperatures (chip and board), fan speeds, and precise uptime.
+* **Hashrate Normalization:** Automatically recalculates and normalizes hashrates across different algorithms (Scrypt, SHA-256, Etchash).
+* **Status System:** Equipment is strictly classified into four categories: `🟢 Running`, `⚠️ Unstable/Error`, `🔴 Offline`, and `💤 Sleep`.
 
-## 🚀 Установка и запуск
+## 🎮 Remote Control (MDM)
+Mass management of ASIC miners is available directly from the GUI data table:
+* **LED Blink:** Trigger the LED to easily locate the ASIC on the rack.
+* **Sleep / Resume:** Put miners into low-power sleep mode (stop mining) and wake them up.
+* **Reboot:** Remotely restart devices.
+*(Supported for Whatsminer API v3, Antminer Stock/VNish, Elphapex, and Jasminer).*
 
-1. Склонируйте репозиторий:
-`git clone https://github.com/ВАШ_НИК/AgentScanner.git`
+## 🚀 Installation & Quick Start
 
-2. Перейдите в папку проекта:
-`cd AgentScanner`
+1. **Clone the repository:**
+   ```bash
+   git clone [https://github.com/Drubic8/AgentScanner.git](https://github.com/Drubic8/AgentScanner.git)
+   cd AgentScanner
+   ```
 
-3. Установите необходимые зависимости:
-`pip install -r requirements.txt`
+2. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-4. Запустите графический интерфейс:
-`python gemini_gui.py`
+3. **Launch the GUI:**
+   ```bash
+   python gemini_gui.py
+   ```
 
-## ⚙️ Как это работает (Архитектура)
-Проект решает главную проблему зоопарка прошивок. Он использует двухуровневый опрос:
-1. **Socket API (4028):** Мгновенное получение телеметрии без паролей.
-2. **HTTP Fallback (80):** Если процесс майнинга убит (например, устройство ушло в сон), сканер пробивает базовую авторизацию (`HTTPDigestAuth` / `HTTPBasicAuth`), скачивает `get_miner_conf.cgi` и `stats.cgi`, чтобы точно определить статус устройства.
-
-### Управление устройствами (Remote Control)
-Начиная с версии 1.5.0 доступно массовое управление ASIC-майнерами прямо из таблицы (с помощью чекбоксов):
-* **LED Blink (Поиск):** Включение мигания светодиодом для поиска асика на стеллаже.
-* **Sleep / Resume:** Перевод майнеров в режим пониженного энергопотребления (остановка майнинга) и обратный запуск.
-* **Reboot:** Дистанционная перезагрузка устройств.
-* *Поддерживаемые устройства для управления:* Whatsminer (API v3), Antminer (Stock / VNish), Elphapex, Jasminer.
-
-
-## 🛠 Ключевые возможности
-* **Умный авто-поиск:** Опрос по порту 4028 (CGMiner API) с умным фоллбэком на порт 80 (Web API) для обнаружения спящих устройств.
-* **Глубокая диагностика:** Агент автоматически извлекает аппаратные ошибки (HW ERR) и склеивает базовый код с подробной расшифровкой (например: `ERR [P:1] (Fan Lost)`).
-* **Умная нормализация:** Автоматический пересчет хешрейта для разных алгоритмов и определение актуальных пулов/воркеров.
-* **Оптимизация Google Sheets API:** Встроенная система кэширования таблиц. Агент делает запросы к Google API пакетно (раз в 10 циклов опроса), что полностью исключает блокировки `429 Too Many Requests` и экономит лимиты.
-* **Система статусов:** Оборудование строго классифицируется на 4 категории: `🟢 В работе (Running)`, `⚠️ С ошибкой (Unstable/Error)`, `🔴 Оффлайн (Offline)`, `💤 В сне (Sleep)`.
-
-### 📱 Telegram Bot & Управление (MDM)
-Платформа включает встроенного Telegram-бота, который работает не только как система уведомлений, но и как пульт управления:
-* **Умные алерты:** Буферизация изменений за 10 минут. Бот не спамит при каждом отвале сети, а присылает аккуратную сводку.
-* **Точечная диагностика:** Команда `/info_asic [IP]` выдает полную карточку устройства прямо в чат (температуры, кулеры, аптайм, текст ошибки).
-* **Удаленное управление:** Поддержка команд `/reboot [IP]`, `/sleep [IP]` и `/wake [IP]`. Бот ставит задачи в защищенную очередь (`commands_queue` в БД), а локальный Агент мгновенно забирает их и исполняет на оборудовании.
-
----
-*Проект находится в активной разработке. В будущих обновлениях планируется внедрение массового управления (Sleep/Reboot/Blink) и экспорта отчетов.*
+## ⚙️ Architecture (How it works)
+To solve the problem of fragmented API endpoints across different firmwares, AgentScanner uses two-layer polling:
+1. **Socket API (4028):** Instant telemetry retrieval without passwords.
+2. **HTTP Fallback (80):** If the mining process is killed (e.g., the device is asleep), the scanner bypasses basic authentication (`HTTPDigestAuth` / `HTTPBasicAuth`) to download `get_miner_conf.cgi` and `stats.cgi` to accurately determine the device's status.
