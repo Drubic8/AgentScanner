@@ -97,7 +97,8 @@ def _process_ip_internal(ip, target_makes=None):
             full_dump = json.dumps(resp).lower() 
 
         if resp:
-            if "Canaan" in target_makes and "canaan" in full_dump:
+            # 1. Ловим Avalon по реальным ключам из прошивки (avalon или ava100)
+            if "Canaan" in target_makes and ("avalon" in full_dump or "ava100" in full_dump):
                 return parse_avalon(ip, resp)
 
             if "iPollo" in target_makes:
@@ -120,8 +121,9 @@ def _process_ip_internal(ip, target_makes=None):
                 return parse_antminer_pitbit(ip, resp)
 
             if "Bitmain" in target_makes:
-                # 🛡️ ПРАВИЛЬНАЯ ЗАЩИТА НА ПОРТУ 4028
-                if not any(x in full_dump for x in ["canaan", "jasminer", "ipollo", "g-model", "hammer", "bluestar"]):
+                # 2. 🛡️ Обновляем защиту Antminer: меняем "canaan" на маркеры Avalon
+                exclusion_list = ["avalon", "ava100", "jasminer", "ipollo", "g-model", "hammer", "bluestar"]
+                if not any(x in full_dump for x in exclusion_list):
                     if "SUMMARY" in resp.get("summary", {}) or "STATS" in resp.get("stats", {}):
                         return parse_antminer_stock(ip, resp)
 

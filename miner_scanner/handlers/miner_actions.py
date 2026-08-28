@@ -31,6 +31,8 @@ def send_command(ip, make, action):
             return _cmd_whatsminer(ip, action)
         elif "bitmain" in make or "antminer" in make or "vnish" in make:
             return _cmd_antminer(ip, action)
+        elif "canaan" in make or "avalon" in make:
+            return _cmd_avalon(ip, action)
         else:
             return False, f"Управление для производителя '{make}' пока не поддерживается"
     except requests.exceptions.Timeout:
@@ -366,3 +368,35 @@ def _cmd_whatsminer(ip, action):
         return wm.set_mining_state("start")
     else:
         return False, f"Команда {action} неизвестна"
+
+# =====================================================================
+# CANAAN AVALON (Управление по сырому TCP порту 4028)
+# =====================================================================
+def _cmd_avalon(ip, action):
+    # Локальный импорт, чтобы избежать циклических зависимостей
+    from .avalon import avalon_reboot, avalon_led_toggle, avalon_set_sleep, avalon_set_normal
+    
+    try:
+        if action == "reboot":
+            success = avalon_reboot(ip)
+            return (True, "Перезагрузка успешно отправлена") if success else (False, "Ошибка отправки Reboot")
+            
+        elif action in ["led_on", "led_off"]:
+            # Команда LED у Avalon работает как переключатель (toggle)
+            success = avalon_led_toggle(ip)
+            return (True, "Команда LED (поиск) отправлена") if success else (False, "Ошибка отправки LED")
+            
+        elif action == "sleep":
+            success = avalon_set_sleep(ip)
+            return (True, "Переведен в спящий режим (softoff)") if success else (False, "Ошибка отправки Sleep")
+            
+        elif action == "normal":
+            # Вывод из сна осуществляется перезагрузкой
+            success = avalon_set_normal(ip)
+            return (True, "Отправлена команда на пробуждение") if success else (False, "Ошибка пробуждения")
+            
+        else:
+            return False, f"Команда {action} не поддерживается для Avalon"
+            
+    except Exception as e:
+        return False, f"Сбой управления Avalon: {str(e)}"
