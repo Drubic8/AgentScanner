@@ -4,3 +4,4 @@ urllib3==2.1.0
 # PyQt5==5.15.10 
 # или
 # PySide6==6.6.1
+openpyxl

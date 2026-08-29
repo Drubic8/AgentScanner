@@ -47,7 +47,7 @@ def is_system_dark_mode():
     return True # По умолчанию темная
 
 # Константы автообновления
-CURRENT_VERSION = "1.7.0"
+CURRENT_VERSION = "1.8.0"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
@@ -126,7 +126,11 @@ def load_app_settings():
         "copy_pdf": False,
         "pdf_sort": "IP",
         "ui_cols": all_cols.copy(),
-        "pdf_cols": all_cols.copy()
+        "pdf_cols": all_cols.copy(),
+        "export_csv_dir": "", # Пустая строка = папка по умолчанию
+        "copy_csv": False, # Новая настройка: копировать CSV/Excel в буфер обмена
+        "csv_sort": "IP",
+        "csv_cols": all_cols.copy()
     }
 
 def save_app_settings(settings):
@@ -428,6 +432,7 @@ class SettingsDialog(QDialog):
         
         layout = QVBoxLayout(self)
         tabs = QTabWidget()
+        self.all_cols = ["IP", "Model", "Algo", "Status", "Error", "Uptime", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker"]
         
         # --- ВКЛАДКА 1: СКАНЕР (ФИЛЬТРЫ) ---
         tab_scan = QWidget()
@@ -463,10 +468,10 @@ class SettingsDialog(QDialog):
         l_ui.addWidget(lbl_ui)
         
         all_cols = ["IP", "Model", "Algo", "Status", "Error", "Uptime", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker"]
-        ui_cols_checked = self.settings.get("ui_cols", all_cols)
+        ui_cols_checked = self.settings.get("ui_cols", self.all_cols)
         
         self.list_ui_cols = QListWidget()
-        for c in all_cols:
+        for c in self.all_cols:
             item = QListWidgetItem(c)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Checked if c in ui_cols_checked else Qt.CheckState.Unchecked)
@@ -507,9 +512,9 @@ class SettingsDialog(QDialog):
         lbl_pdf_cols.setStyleSheet("font-weight: bold; margin-top: 5px;")
         l_pdf.addWidget(lbl_pdf_cols)
         
-        pdf_cols_checked = self.settings.get("pdf_cols", all_cols)
+        pdf_cols_checked = self.settings.get("pdf_cols", self.all_cols)
         self.list_pdf_cols = QListWidget()
-        for c in all_cols:
+        for c in self.all_cols:
             item = QListWidgetItem(c)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Checked if c in pdf_cols_checked else Qt.CheckState.Unchecked)
@@ -517,6 +522,49 @@ class SettingsDialog(QDialog):
         l_pdf.addWidget(self.list_pdf_cols)
         
         tabs.addTab(tab_pdf, "📑 PDF Отчеты")
+        
+        # --- ВКЛАДКА 4: CSV/EXCEL ОТЧЕТЫ ---
+        tab_csv = QWidget()
+        l_csv = QVBoxLayout(tab_csv)
+        
+        box_dir_csv = QHBoxLayout()
+        box_dir_csv.addWidget(QLabel("Папка отчетов (CSV/Excel):"))
+        self.le_csv_dir = QLineEdit(self.settings.get("export_csv_dir", ""))
+        self.le_csv_dir.setPlaceholderText("По умолчанию (папка программы/export_csv)")
+        self.le_csv_dir.setReadOnly(True)
+        btn_browse_csv = QPushButton("Обзор...")
+        btn_browse_csv.clicked.connect(self.browse_csv_dir)
+        box_dir_csv.addWidget(self.le_csv_dir)
+        box_dir_csv.addWidget(btn_browse_csv)
+        l_csv.addLayout(box_dir_csv)
+        
+        self.cb_copy_csv = QCheckBox("Копировать файл CSV/Excel в буфер обмена")
+        self.cb_copy_csv.setChecked(self.settings.get("copy_csv", False))
+        l_csv.addWidget(self.cb_copy_csv)
+
+        box_sort_csv = QHBoxLayout()
+        box_sort_csv.addWidget(QLabel("Сортировать CSV/Excel по:"))
+        self.cmb_csv_sort = QComboBox()
+        self.cmb_csv_sort.addItems(["IP", "Model", "Uptime", "Real HR", "Temp", "Status"])
+        self.cmb_csv_sort.setCurrentText(self.settings.get("csv_sort", "IP"))
+        box_sort_csv.addWidget(self.cmb_csv_sort)
+        box_sort_csv.addStretch()
+        l_csv.addLayout(box_sort_csv)
+        
+        lbl_csv_cols = QLabel("Столбцы для экспорта в CSV/Excel:")
+        lbl_csv_cols.setStyleSheet("font-weight: bold; margin-top: 5px;")
+        l_csv.addWidget(lbl_csv_cols)
+        
+        csv_cols_checked = self.settings.get("csv_cols", self.all_cols)
+        self.list_csv_cols = QListWidget()
+        for c in self.all_cols:
+            item = QListWidgetItem(c)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked if c in csv_cols_checked else Qt.CheckState.Unchecked)
+            self.list_csv_cols.addItem(item)
+        l_csv.addWidget(self.list_csv_cols)
+        
+        tabs.addTab(tab_csv, "📊 CSV/Excel Отчеты")
         layout.addWidget(tabs)
         
         # Кнопки Сохранить / Отмена
@@ -538,6 +586,11 @@ class SettingsDialog(QDialog):
         if folder:
             self.le_dir.setText(folder)
         
+    def browse_csv_dir(self):
+        folder = QFileDialog.getExistingDirectory(self, "Выберите папку для сохранения CSV/Excel отчетов")
+        if folder:
+            self.le_csv_dir.setText(folder)
+        
     def save_and_close(self):
         self.settings["scan_bitmain"] = self.cb_bitmain.isChecked()
         self.settings["scan_whatsminer"] = self.cb_whatsminer.isChecked()
@@ -558,6 +611,16 @@ class SettingsDialog(QDialog):
             item = self.list_pdf_cols.item(i)
             if item.checkState() == Qt.CheckState.Checked: pdf_cols.append(item.text())
         self.settings["pdf_cols"] = pdf_cols
+
+        self.settings["export_csv_dir"] = self.le_csv_dir.text()
+        self.settings["copy_csv"] = self.cb_copy_csv.isChecked()
+        self.settings["csv_sort"] = self.cmb_csv_sort.currentText()
+
+        csv_cols = []
+        for i in range(self.list_csv_cols.count()):
+            item = self.list_csv_cols.item(i)
+            if item.checkState() == Qt.CheckState.Checked: csv_cols.append(item.text())
+        self.settings["csv_cols"] = csv_cols
         
         self.accept()
 # ==========================================
@@ -753,8 +816,13 @@ class GeminiApp(QMainWindow):
         ctrl_menu.addAction("▶️ Normal (Работа)", lambda: self.run_action("normal"))
         btn_remote.setMenu(ctrl_menu)
         
+        # === НОВЫЙ СЧЕТЧИК ВЫДЕЛЕННЫХ УСТРОЙСТВ ===
+        self.lbl_selected_count = QLabel("Выделено: 0")
+        self.lbl_selected_count.setStyleSheet("font-weight: bold; font-size: 14px; margin-left: 15px; color: gray;")
+        
         ctrl_layout.addWidget(self.btn_select_all)
         ctrl_layout.addWidget(btn_remote)
+        ctrl_layout.addWidget(self.lbl_selected_count) # <--- Добавлен счетчик
         ctrl_layout.addStretch()
         
         content_layout.addLayout(ctrl_layout)
@@ -774,6 +842,10 @@ class GeminiApp(QMainWindow):
         self.table.customContextMenuRequested.connect(self.show_context_menu)
 
         self.table.itemDoubleClicked.connect(self.open_web_interface)
+        
+        # === СИНХРОНИЗАЦИЯ ГАЛОЧЕК И ВЫДЕЛЕНИЯ ===
+        self.table.itemSelectionChanged.connect(self.sync_checkboxes_with_selection)
+        self.table.itemChanged.connect(self.on_item_changed)
         
         h = self.table.horizontalHeader()
         h.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
@@ -974,6 +1046,14 @@ del "%~f0"
         changelog_text = f"""
         <h3>ASIC_Monitor v{CURRENT_VERSION}</h3>
         
+        <b>Версия 1.8.0</b>
+        <ul>
+            <li><b>Интерфейс:</b> Добавлена двусторонняя синхронизация чекбоксов — при выделении строк мышью (в том числе через Shift/Ctrl) галочки проставляются автоматически.</li>
+            <li><b>Интерфейс:</b> В панель управления добавлен динамический счетчик выбранных устройств, меняющий цвет.</li>
+            <li><b>Экспорт:</b> Устранена системная ошибка (KeyError), препятствовавшая сохранению отчетов в форматах CSV и Excel.</li>
+        </ul>
+        <br>
+        
         <b>Версия 1.7.0</b>
         <ul>
             <li><b>Avalon:</b> Интегрировано полноценное управление асиками Canaan Avalon (Сон, Пробуждение, LED, Перезагрузка) через прямое TCP-подключение (порт 4028).</li>
@@ -1023,9 +1103,58 @@ del "%~f0"
         is_checked = self.btn_select_all.isChecked()
         state = Qt.CheckState.Checked if is_checked else Qt.CheckState.Unchecked
         self.btn_select_all.setText("☐ Снять выделение" if is_checked else "☑ Выделить всё")
+        
+        self.table.blockSignals(True) # Отключаем сигналы, чтобы не зациклить
+        if is_checked:
+            self.table.selectAll() # Выделяем все строки визуально
+        else:
+            self.table.clearSelection() # Снимаем визуальное выделение
+            
         for row in range(self.table.rowCount()):
             item = self.table.item(row, 0)
             if item: item.setCheckState(state)
+        self.table.blockSignals(False)
+        self.update_selected_count()
+
+    def sync_checkboxes_with_selection(self):
+        """Синхронизирует галочки с выделением строк мышкой/шифтом"""
+        self.table.blockSignals(True)
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            if item:
+                # Если ячейка выделена синим - ставим галочку, иначе снимаем
+                if item.isSelected():
+                    item.setCheckState(Qt.CheckState.Checked)
+                else:
+                    item.setCheckState(Qt.CheckState.Unchecked)
+        self.table.blockSignals(False)
+        self.update_selected_count()
+
+    def on_item_changed(self, item):
+        """Срабатывает при ручном клике по чекбоксу"""
+        if item.column() == 0:
+            self.table.blockSignals(True)
+            is_checked = (item.checkState() == Qt.CheckState.Checked)
+            # Выделяем или снимаем выделение со всей строки
+            for col in range(self.table.columnCount()):
+                cell = self.table.item(item.row(), col)
+                if cell:
+                    cell.setSelected(is_checked)
+            self.table.blockSignals(False)
+            self.update_selected_count()
+
+    def update_selected_count(self):
+        """Обновляет счетчик устройств и меняет его цвет"""
+        count = sum(1 for row in range(self.table.rowCount()) 
+                    if self.table.item(row, 0) and self.table.item(row, 0).checkState() == Qt.CheckState.Checked)
+        
+        self.lbl_selected_count.setText(f"Выделено: {count}")
+        
+        if count > 0:
+            color = "#00E676" if getattr(self, 'dark_mode', False) else "#0069D9"
+            self.lbl_selected_count.setStyleSheet(f"font-weight: bold; font-size: 14px; margin-left: 15px; color: {color};")
+        else:
+            self.lbl_selected_count.setStyleSheet("font-weight: bold; font-size: 14px; margin-left: 15px; color: gray;")
 
     def show_context_menu(self, pos):
         # Контекстное меню (ПКМ) в таблице
@@ -1382,9 +1511,10 @@ del "%~f0"
         # --- Группа 2: БРЕНДЫ ---
         models_data = {}
         if 'Model' in df.columns:
-            makers = df['Model'].apply(lambda x: str(x).split()[0] if ' ' in str(x) else str(x)).value_counts()
+            df["CleanedModel"] = df["Model"].replace("", pd.NA).dropna().apply(lambda x: re.sub(r"\(.*?\)", "", str(x)).strip())
+            makers = df["CleanedModel"].value_counts()
             for maker, count in makers.items():
-                if maker and str(maker) != 'nan':
+                if maker and str(maker) != "nan":
                     models_data[str(maker).upper()] = {"val": str(count), "color": None}
 
         # --- Группа 3: ХЕШРЕЙТ ---
@@ -1456,15 +1586,80 @@ del "%~f0"
         for title, data in hashrates.items(): add_row(self.layout_hashrate, title, data)
 
     def export_csv(self):
-        if not self.scan_data: return
-        p, _ = QFileDialog.getSaveFileName(self, "Save", "Report.xlsx", "Excel (*.xlsx);;CSV (*.csv)")
-        if p:
+        if not self.scan_data: 
+            QMessageBox.warning(self, "Empty", "No data to export.")
+            return
+
+        try:
+            # --- ПУТЬ СОХРАНЕНИЯ ИЗ НАСТРОЕК ---
+            export_csv_dir = self.app_settings.get("export_csv_dir", "")
+            if not export_csv_dir or not os.path.exists(export_csv_dir):
+                export_csv_dir = os.path.join(current_dir, "export_csv") # Using current_dir from global scope
+                if not os.path.exists(export_csv_dir):
+                    os.makedirs(export_csv_dir)
+
+            base_name = getattr(self, "last_scan_name", "Manual_Scan")
+            clean_name = re.sub(r"[\\/*?:\"<>|]", "", base_name)
+            if len(clean_name) > 50: clean_name = clean_name[:50]
+
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            
+            # Use QFileDialog for file type selection (CSV or XLSX)
+            file_filter = "Excel (*.xlsx);;CSV (*.csv)"
+            chosen_path, selected_filter = QFileDialog.getSaveFileName(self, "Сохранить отчет",
+                                                                       os.path.join(export_csv_dir, f"{clean_name}_{timestamp}.xlsx"), # Default to XLSX
+                                                                       file_filter)
+            
+            if not chosen_path: # User cancelled
+                return
+
+            full_path = chosen_path
+            
             df = pd.DataFrame(self.scan_data)
-            drops = ['SortIP', 'RawHash', 'Status'] 
-            df.drop(columns=[c for c in drops if c in df.columns], inplace=True, errors='ignore')
-            if p.endswith(".csv"): df.to_csv(p, index=False)
-            else: df.to_excel(p, index=False)
-            QMessageBox.information(self, "OK", "Exported.")
+            
+            # === ИСПРАВЛЕНИЕ: Переименовываем внутренние ключи в ключи UI ===
+            df.rename(columns={"Real": "Real HR", "Avg": "Avg HR"}, inplace=True)
+            
+            # --- ФИЛЬТРАЦИЯ СТОЛБЦОВ ИЗ НАСТРОЕК ---
+            available_cols = ["IP", "Model", "Algo", "Status", "Error", "Uptime", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker"]
+            csv_cols_setting = self.app_settings.get("csv_cols", available_cols)
+            selected_cols = [c for c in available_cols if c in csv_cols_setting]
+            
+            # Filter DataFrame to include only selected columns
+            df = df[selected_cols]
+
+            # --- СОРТИРОВКА ИЗ НАСТРОЕК ---
+            sort_key = self.app_settings.get("csv_sort", "IP")
+            sort_map = {"IP": "SortIP", "Model": "Model", "Uptime": "Uptime", "Real HR": "RawHash", "Temp": "Temp", "Status": "Status"}
+            actual_sort_key = sort_map.get(sort_key, "SortIP")
+            
+            if actual_sort_key in df.columns:
+                if actual_sort_key in ["SortIP", "RawHash"]:
+                    df[actual_sort_key] = df[actual_sort_key].fillna(0)
+                df = df.sort_values(by=actual_sort_key, ascending=True)
+
+            # Drop internal columns before saving (already handled by selected_cols but good to be explicit)
+            drops = ["SortIP", "RawHash", "CleanedModel", "Algo_Upper"]
+            df.drop(columns=[c for c in drops if c in df.columns], inplace=True, errors="ignore")
+
+            if full_path.lower().endswith(".csv"):
+                df.to_csv(full_path, index=False, encoding="utf-8-sig")
+            else: # .xlsx
+                df.to_excel(full_path, index=False, engine="openpyxl")
+
+            # --- ЛОГИКА БУФЕРА ОБМЕНА ---
+            if self.app_settings.get("copy_csv", False):
+                mime_data = QMimeData()
+                mime_data.setUrls([QUrl.fromLocalFile(full_path)])
+                QApplication.clipboard().setMimeData(mime_data)
+                QMessageBox.information(self, "Успех", f"Отчет сохранен и СКОПИРОВАН в буфер обмена!\n{os.path.basename(full_path)}")
+            else:
+                QMessageBox.information(self, "Успех", f"Отчет сохранен:\n{os.path.basename(full_path)}")
+
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            QMessageBox.critical(self, "CSV/Excel Error", f"{str(e)}\n\nDetails:\n{error_details}")
 
     def export_pdf_pro(self):
         if not FPDF_AVAIL:
@@ -1508,7 +1703,8 @@ del "%~f0"
 
             # --- РАСЧЕТ ИТОГОВОЙ СВОДКИ ДЛЯ ШАПКИ ---
             total_dev = len(df)
-            models_c = df['Model'].replace('', pd.NA).dropna().apply(lambda x: str(x).split()[0] if ' ' in str(x) else str(x)).value_counts()
+            df['CleanedModel'] = df['Model'].replace('', pd.NA).dropna().apply(lambda x: re.sub(r'\(.*?\)', '', str(x)).strip())
+            models_c = df['CleanedModel'].value_counts()
             models_str = " | ".join([f"{k}: {v}" for k, v in models_c.items()])
             
             algos_c = df['Algo'].replace('', pd.NA).dropna().value_counts()
@@ -1516,13 +1712,47 @@ del "%~f0"
             
             status_c = df['Status'].replace('', pd.NA).dropna().value_counts()
             status_str = " | ".join([f"{k}: {v}" for k, v in status_c.items()])
+
+            # НОВЫЙ КОД ДЛЯ ХЕШРЕЙТА ПО АЛГОРИТМАМ
+            hashrates_summary = {}
+            if 'Algo' in df.columns and 'Real' in df.columns:
+                df['Algo_Upper'] = df['Algo'].astype(str).str.upper()
+                algos = df['Algo_Upper'].dropna().unique()
+                
+                for algo in algos:
+                    if algo in ['NAN', 'UNKNOWN', ''] or not algo: continue
+                    sub = df[df['Algo_Upper'] == algo]
+                    total_hash = 0.0
+                    unit = ""
+                    
+                    for val in sub['Real']:
+                        try:
+                            parts = str(val).strip().split()
+                            if len(parts) >= 1: total_hash += float(parts[0].replace(',', '.'))
+                            if len(parts) >= 2 and not unit: unit = parts[1] 
+                        except: pass
+                    
+                    if not unit:
+                        if "SHA" in algo: unit = "TH/s"
+                        elif "SCRYPT" in algo: unit = "GH/s"
+                        elif "EQUIHASH" in algo: unit = "kSol/s"
+                        elif "X11" in algo: unit = "GH/s"
+                        elif "ETCHASH" in algo: unit = "MH/s"
+                    
+                    hashrates_summary[algo] = f"{total_hash:,.2f} {unit}".strip()
             
+            hashrates_summary_str = " | ".join([f"{k}: {v}" for k, v in hashrates_summary.items()])
+            if not hashrates_summary_str:
+                hashrates_summary_str = "N/A"
+
             summary_text = safe_text(
                 f"Total Devices: {total_dev}\n"
                 f"Models: {models_str}\n"
                 f"Algorithms: {algos_str}\n"
+                f"Total Hashrates: {hashrates_summary_str}\n" # ДОБАВЛЕНА НОВАЯ СТРОКА
                 f"Statuses: {status_str}"
             )
+
 
             # --- ФИЛЬТРАЦИЯ СТОЛБЦОВ И ШИРИНА ---
             all_cols = ["IP", "Model", "Algo", "Status", "Error", "Uptime", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker"]
@@ -1570,7 +1800,7 @@ del "%~f0"
                 QApplication.clipboard().setMimeData(mime_data)
                 QMessageBox.information(self, "Успех", f"Отчет сохранен и СКОПИРОВАН в буфер обмена!\n{filename}")
             else:
-                if os.name == 'nt': os.startfile(full_path)
+
                 QMessageBox.information(self, "Успех", f"Отчет сохранен:\n{filename}")
 
         except Exception as e:
