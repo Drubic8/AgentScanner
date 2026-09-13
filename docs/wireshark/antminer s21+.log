@@ -1,0 +1,79 @@
+GET / HTTP/1.1
+user-agent: Dart/3.10 (dart:io)
+accept-encoding: gzip
+host: 10.33.6.7
+
+
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: Digest realm="antMiner Configuration", nonce="94c359502c746e2694051b4200947255", qop="auth"
+Content-Type: text/html
+Content-Length: 351
+Date: Sat, 12 Sep 2026 11:50:45 GMT
+Server: lighttpd/1.4.32
+
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+         "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+ <head>
+  <title>401 - Unauthorized</title>
+ </head>
+ <body>
+  <h1>401 - Unauthorized</h1>
+ </body>
+</html>
+
+GET /cgi-bin/get_system_info.cgi HTTP/1.1
+user-agent: Dart/3.10 (dart:io)
+Accept: application/json
+accept-encoding: gzip
+host: 10.33.6.7
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="94c359502c746e2694051b4200947255", uri="/cgi-bin/get_system_info.cgi", cnonce="6aa53d0f", nc=00000001, qop="auth", algorithm="MD5", response="aa61f7296fc8552a8fc253290f46027a"
+Content-Type: application/json
+
+
+HTTP/1.1 200 OK
+Transfer-Encoding: chunked
+Date: Sat, 12 Sep 2026 11:50:45 GMT
+Server: lighttpd/1.4.32
+
+2
+
+
+
+1f
+{
+"minertype":"Antminer S21+",
+
+90
+"nettype":"DHCP",
+"netdevice":"eth0",
+"macaddr":"02:1D:23:93:E1:5B",
+"hostname":"Antminer",
+"ipaddress":"10.33.6.7",
+"netmask":"255.255.255.0",
+
+1f
+"gateway":"",
+"dnsservers":"",
+
+1b
+"system_mode":"GNU/Linux",
+
+55
+"system_kernel_version":"Linux 4.9.113 #1 SMP PREEMPT Wed Mar 12 15:03:54 CST 2025",
+
+3c
+"system_filesystem_version":"Wed Mar 12 14:34:31 CST 2025",
+
+1b
+"firmware_type":"Release",
+
+1e
+"serinum":"HQDZG4UBEJAJI04GK"
+
+2
+}
+
+0
+

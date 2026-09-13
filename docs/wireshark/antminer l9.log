@@ -1,0 +1,401 @@
+GET /cgi-bin/get_system_info.cgi HTTP/1.1
+Host: 10.33.222.8
+Connection: keep-alive
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="57faca69ede00bce2596d0b552f6a376", uri="/cgi-bin/get_system_info.cgi", response="32e89af8f1bf2cdfd618ad690ac006c9", qop=auth, nc=0000004a, cnonce="60b3991b9a85b8a4"
+X-Requested-With: XMLHttpRequest
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36
+Accept: application/json, text/javascript, */*; q=0.01
+DNT: 1
+Referer: http://10.33.222.8/
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6
+
+
+HTTP/1.1 200 OK
+Transfer-Encoding: chunked
+Date: Sun, 13 Sep 2026 06:34:56 GMT
+Server: lighttpd/1.4.32
+
+1
+
+
+1
+
+
+1cf
+{
+"minertype":"Antminer L9",
+"nettype":"DHCP",
+"netdevice":"eth0",
+"macaddr":"E2:56:F3:F2:36:74",
+"hostname":"Antminer",
+"ipaddress":"10.33.222.8",
+"netmask":"255.255.255.0",
+"gateway":"",
+"dnsservers":"",
+"system_mode":"GNU/Linux",
+"system_kernel_version":"Linux 4.9.38-tag- #1 SMP PREEMPT Mon Feb 10 10:26:56 CST 2025",
+"system_filesystem_version":"Mon Feb 10 10:01:06 CST 2025",
+"firmware_type":"Release",
+"Algorithm":"Scrypt",
+"serinum":"JYZZFFUBDAAJF01F4"
+}
+
+0
+
+
+POST /cgi-bin/set_miner_conf.cgi HTTP/1.1
+Host: 10.33.222.8
+Connection: keep-alive
+Content-Length: 319
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="57faca69ede00bce2596d0b552f6a376", uri="/cgi-bin/set_miner_conf.cgi", response="5a06ae07818437e57938743408d85a1e", qop=auth, nc=00000043, cnonce="0b91746ba35d974e"
+X-Requested-With: XMLHttpRequest
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36
+Accept: application/json, text/javascript, */*; q=0.01
+DNT: 1
+Content-Type: text/plain;charset=UTF-8
+Origin: http://10.33.222.8
+Referer: http://10.33.222.8/
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6
+
+{"bitmain-fan-ctrl":false,"bitmain-fan-pwm":"100","miner-mode":1,"freq-level":"100","pools":[{"url":"ltc.trustpool.cc:3333","user":"Potarchik133.worker17","pass":"123"},{"url":"ltc.trustpool.cc:443","user":"Potarchik133.worker17","pass":"123"},{"url":"ltc.trustpool.cc:25","user":"Potarchik133.worker17","pass":"123"}]}
+HTTP/1.1 200 OK
+Content-Length: 46
+Date: Sun, 13 Sep 2026 06:34:48 GMT
+Server: lighttpd/1.4.32
+
+{"stats":"success","code":"M000","msg":"OK!"}
+
+GET /i18n/strings.properties?_=1789281411525 HTTP/1.1
+Host: 10.33.222.8
+Connection: keep-alive
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="57faca69ede00bce2596d0b552f6a376", uri="/i18n/strings.properties?_=1789281411525", response="a342d854ff29de6dcb0f00fa9d12691d", qop=auth, nc=00000045, cnonce="5e829ca068be450e"
+X-Requested-With: XMLHttpRequest
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36
+Accept: text/plain, */*; q=0.01
+DNT: 1
+Content-Type: text/plain;charset=UTF-8
+Referer: http://10.33.222.8/
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6
+
+
+HTTP/1.1 200 OK
+Content-Type: application/octet-stream
+Accept-Ranges: bytes
+Content-Length: 0
+Date: Sun, 13 Sep 2026 06:34:48 GMT
+Server: lighttpd/1.4.32
+
+
+GET /i18n/strings_ru.properties?_=1789281411526 HTTP/1.1
+Host: 10.33.222.8
+Connection: keep-alive
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="57faca69ede00bce2596d0b552f6a376", uri="/i18n/strings_ru.properties?_=1789281411526", response="e4c148e4d72fa39a0f4e233c1a1ca5b9", qop=auth, nc=00000046, cnonce="00840bb4b5cd6bb2"
+X-Requested-With: XMLHttpRequest
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36
+Accept: text/plain, */*; q=0.01
+DNT: 1
+Content-Type: text/plain;charset=UTF-8
+Referer: http://10.33.222.8/
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6
+
+
+HTTP/1.1 404 Not Found
+Content-Type: text/html
+Content-Length: 345
+Date: Sun, 13 Sep 2026 06:34:48 GMT
+Server: lighttpd/1.4.32
+
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+         "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+ <head>
+  <title>404 - Not Found</title>
+ </head>
+ <body>
+  <h1>404 - Not Found</h1>
+ </body>
+</html>
+
+GET /cgi-bin/get_miner_conf.cgi HTTP/1.1
+Host: 10.33.222.8
+Connection: keep-alive
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="57faca69ede00bce2596d0b552f6a376", uri="/cgi-bin/get_miner_conf.cgi", response="b0306caad9aed63583094cb4e1122616", qop=auth, nc=00000047, cnonce="be63338d9fa363c9"
+X-Requested-With: XMLHttpRequest
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36
+Accept: application/json, text/javascript, */*; q=0.01
+DNT: 1
+Referer: http://10.33.222.8/
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6
+
+
+HTTP/1.1 200 OK
+Transfer-Encoding: chunked
+Date: Sun, 13 Sep 2026 06:34:48 GMT
+Server: lighttpd/1.4.32
+
+1
+
+
+1
+
+
+1ce
+{
+"pools" : [
+{
+"url" : "ltc.trustpool.cc:3333",
+"user" : "Potarchik133.worker17",
+"pass" : "123"
+},
+{
+"url" : "ltc.trustpool.cc:443",
+"user" : "Potarchik133.worker17",
+"pass" : "123"
+},
+{
+"url" : "ltc.trustpool.cc:25",
+"user" : "Potarchik133.worker17",
+"pass" : "123"
+}
+]
+,
+"algo" : "ltc_1491",
+"bitmain-fan-ctrl" : false,
+"bitmain-fan-pwm" : "100",
+"bitmain-freq" : "1225",
+"bitmain-voltage" : "1330",
+"bitmain-work-mode" : "1",
+"bitmain-freq-level" : "100"
+}
+
+0
+
+
+GET /cgi-bin/get_system_info.cgi HTTP/1.1
+Host: 10.33.222.8
+Connection: keep-alive
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="57faca69ede00bce2596d0b552f6a376", uri="/cgi-bin/get_system_info.cgi", response="4ab4e7c41d77cce2d761c141abb2c68d", qop=auth, nc=00000048, cnonce="2f643bb6f9d48e3d"
+X-Requested-With: XMLHttpRequest
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36
+Accept: application/json, text/javascript, */*; q=0.01
+DNT: 1
+Referer: http://10.33.222.8/
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6
+
+
+HTTP/1.1 200 OK
+Transfer-Encoding: chunked
+Date: Sun, 13 Sep 2026 06:34:48 GMT
+Server: lighttpd/1.4.32
+
+2
+
+
+
+1cf
+{
+"minertype":"Antminer L9",
+"nettype":"DHCP",
+"netdevice":"eth0",
+"macaddr":"E2:56:F3:F2:36:74",
+"hostname":"Antminer",
+"ipaddress":"10.33.222.8",
+"netmask":"255.255.255.0",
+"gateway":"",
+"dnsservers":"",
+"system_mode":"GNU/Linux",
+"system_kernel_version":"Linux 4.9.38-tag- #1 SMP PREEMPT Mon Feb 10 10:26:56 CST 2025",
+"system_filesystem_version":"Mon Feb 10 10:01:06 CST 2025",
+"firmware_type":"Release",
+"Algorithm":"Scrypt",
+"serinum":"JYZZFFUBDAAJF01F4"
+}
+
+0
+
+
+POST /cgi-bin/set_miner_conf.cgi HTTP/1.1
+Host: 10.33.222.8
+Connection: keep-alive
+Content-Length: 319
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="57faca69ede00bce2596d0b552f6a376", uri="/cgi-bin/set_miner_conf.cgi", response="816627762d203c414d95acae1bbc0285", qop=auth, nc=00000049, cnonce="b6ab3fed5e15257c"
+X-Requested-With: XMLHttpRequest
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36
+Accept: application/json, text/javascript, */*; q=0.01
+DNT: 1
+Content-Type: text/plain;charset=UTF-8
+Origin: http://10.33.222.8
+Referer: http://10.33.222.8/
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6
+
+{"bitmain-fan-ctrl":false,"bitmain-fan-pwm":"100","miner-mode":0,"freq-level":"100","pools":[{"url":"ltc.trustpool.cc:3333","user":"Potarchik133.worker17","pass":"123"},{"url":"ltc.trustpool.cc:443","user":"Potarchik133.worker17","pass":"123"},{"url":"ltc.trustpool.cc:25","user":"Potarchik133.worker17","pass":"123"}]}
+HTTP/1.1 200 OK
+Content-Length: 46
+Date: Sun, 13 Sep 2026 06:35:00 GMT
+Server: lighttpd/1.4.32
+
+{"stats":"success","code":"M000","msg":"OK!"}
+
+GET /i18n/strings.properties?_=1789281424345 HTTP/1.1
+Host: 10.33.222.8
+Connection: keep-alive
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="57faca69ede00bce2596d0b552f6a376", uri="/i18n/strings.properties?_=1789281424345", response="e8e395e296983a753d43d3c8f58c4020", qop=auth, nc=0000004b, cnonce="0978440d86fc8ede"
+X-Requested-With: XMLHttpRequest
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36
+Accept: text/plain, */*; q=0.01
+DNT: 1
+Content-Type: text/plain;charset=UTF-8
+Referer: http://10.33.222.8/
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6
+
+
+HTTP/1.1 200 OK
+Content-Type: application/octet-stream
+Accept-Ranges: bytes
+Content-Length: 0
+Date: Sun, 13 Sep 2026 06:35:00 GMT
+Server: lighttpd/1.4.32
+
+
+GET /i18n/strings_ru.properties?_=1789281424346 HTTP/1.1
+Host: 10.33.222.8
+Connection: keep-alive
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="57faca69ede00bce2596d0b552f6a376", uri="/i18n/strings_ru.properties?_=1789281424346", response="4e3235c6e711c6156dc8ce96289c254f", qop=auth, nc=0000004c, cnonce="06e43f527b5a5b62"
+X-Requested-With: XMLHttpRequest
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36
+Accept: text/plain, */*; q=0.01
+DNT: 1
+Content-Type: text/plain;charset=UTF-8
+Referer: http://10.33.222.8/
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6
+
+
+HTTP/1.1 404 Not Found
+Content-Type: text/html
+Content-Length: 345
+Date: Sun, 13 Sep 2026 06:35:00 GMT
+Server: lighttpd/1.4.32
+
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+         "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+ <head>
+  <title>404 - Not Found</title>
+ </head>
+ <body>
+  <h1>404 - Not Found</h1>
+ </body>
+</html>
+
+GET /cgi-bin/get_miner_conf.cgi HTTP/1.1
+Host: 10.33.222.8
+Connection: keep-alive
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="57faca69ede00bce2596d0b552f6a376", uri="/cgi-bin/get_miner_conf.cgi", response="626f66bcec3945fdffa6e9401166b2c0", qop=auth, nc=0000004d, cnonce="6751b21ad82b0bfb"
+X-Requested-With: XMLHttpRequest
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36
+Accept: application/json, text/javascript, */*; q=0.01
+DNT: 1
+Referer: http://10.33.222.8/
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6
+
+
+HTTP/1.1 200 OK
+Transfer-Encoding: chunked
+Date: Sun, 13 Sep 2026 06:35:00 GMT
+Server: lighttpd/1.4.32
+
+1
+
+
+1
+
+
+1ce
+{
+"pools" : [
+{
+"url" : "ltc.trustpool.cc:3333",
+"user" : "Potarchik133.worker17",
+"pass" : "123"
+},
+{
+"url" : "ltc.trustpool.cc:443",
+"user" : "Potarchik133.worker17",
+"pass" : "123"
+},
+{
+"url" : "ltc.trustpool.cc:25",
+"user" : "Potarchik133.worker17",
+"pass" : "123"
+}
+]
+,
+"algo" : "ltc_1491",
+"bitmain-fan-ctrl" : false,
+"bitmain-fan-pwm" : "100",
+"bitmain-freq" : "1225",
+"bitmain-voltage" : "1330",
+"bitmain-work-mode" : "0",
+"bitmain-freq-level" : "100"
+}
+
+0
+
+
+GET /cgi-bin/get_system_info.cgi HTTP/1.1
+Host: 10.33.222.8
+Connection: keep-alive
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="57faca69ede00bce2596d0b552f6a376", uri="/cgi-bin/get_system_info.cgi", response="638dfd5d332397023cc120a8a193c8c9", qop=auth, nc=0000004e, cnonce="a08e76f29f5c98f6"
+X-Requested-With: XMLHttpRequest
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36
+Accept: application/json, text/javascript, */*; q=0.01
+DNT: 1
+Referer: http://10.33.222.8/
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6
+
+
+HTTP/1.1 200 OK
+Transfer-Encoding: chunked
+Date: Sun, 13 Sep 2026 06:35:01 GMT
+Server: lighttpd/1.4.32
+
+1
+
+
+1
+
+
+1cf
+{
+"minertype":"Antminer L9",
+"nettype":"DHCP",
+"netdevice":"eth0",
+"macaddr":"E2:56:F3:F2:36:74",
+"hostname":"Antminer",
+"ipaddress":"10.33.222.8",
+"netmask":"255.255.255.0",
+"gateway":"",
+"dnsservers":"",
+"system_mode":"GNU/Linux",
+"system_kernel_version":"Linux 4.9.38-tag- #1 SMP PREEMPT Mon Feb 10 10:26:56 CST 2025",
+"system_filesystem_version":"Mon Feb 10 10:01:06 CST 2025",
+"firmware_type":"Release",
+"Algorithm":"Scrypt",
+"serinum":"JYZZFFUBDAAJF01F4"
+}
+
+0
+

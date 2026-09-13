@@ -5,6 +5,19 @@ import json
 import struct
 import time
 
+# --- ИМПОРТ НОВЫХ ПОМОЩНИКОВ ДЛЯ ANTMINER ---
+try:
+    from .antminer_profiles import detect_antminer_profile, normalize_mode_payload
+    from .command_verifier import verify_mode
+except ImportError:
+    try:
+        from miner_scanner.handlers.antminer_profiles import detect_antminer_profile, normalize_mode_payload
+        from miner_scanner.handlers.command_verifier import verify_mode
+    except ImportError:
+        detect_antminer_profile = None
+        normalize_mode_payload = None
+        verify_mode = None
+
 # --- ИМПОРТ ИНТЕРФЕЙСА ДЛЯ WHATSMINER ---
 try:
     from .whatsminer_interface import WhatsminerAPIv3
@@ -15,7 +28,7 @@ except ImportError:
         WhatsminerAPIv3 = None
 
 
-def send_command(ip, make, action):
+def send_command(ip, make, action, model=""):
     """
     Универсальный диспетчер команд для ASIC-майнеров.
     action: 'led_on', 'led_off', 'reboot', 'sleep', 'normal'
@@ -30,7 +43,7 @@ def send_command(ip, make, action):
         elif "whatsminer" in make or "microbt" in make:
             return _cmd_whatsminer(ip, action)
         elif "bitmain" in make or "antminer" in make or "vnish" in make:
-            return _cmd_antminer(ip, action)
+            return _cmd_antminer(ip, action, model)
         elif "canaan" in make or "avalon" in make:
             return _cmd_avalon(ip, action)
         else:
@@ -98,7 +111,7 @@ def _cmd_jasminer(ip, action):
 # =====================================================================
 # BITMAIN / VNISH / PITBIT (Универсальный роутер)
 # =====================================================================
-def _cmd_antminer(ip, action):
+def _cmd_antminer(ip, action, model=""):
     auth_digest = HTTPDigestAuth("root", "root")
     auth_basic = ("root", "root")
     
@@ -197,39 +210,44 @@ def _cmd_antminer(ip, action):
 
             elif action in ["sleep", "normal"]:
                 url = f"http://{ip}/cgi-bin/set_miner_conf.cgi"
-                mode = "1" if action == "sleep" else "0"
-                payload = {"bitmain-work-mode": mode}
-                
-                # Попытка 1: Метод PitBit (прямой POST JSON, который мы видели в Wireshark)
-                try:
-                    resp = requests.post(url, auth=auth_digest, json=payload, timeout=5)
-                    if resp.status_code == 401:
-                        resp = requests.post(url, auth=auth_basic, json=payload, timeout=5)
-                        
-                    if resp.status_code == 200:
-                        return True, f"Режим '{'Сон' if action == 'sleep' else 'Работа'}' успешно применен"
-                except requests.exceptions.Timeout:
-                    pass
-                    
-                # Попытка 2: Метод старого Stock (Скачать конфиг -> Изменить -> Отправить обратно)
+                mode_int = 1 if action == "sleep" else 0
+
                 try:
                     get_url = f"http://{ip}/cgi-bin/get_miner_conf.cgi"
                     conf_resp = requests.get(get_url, auth=auth_digest, timeout=5)
                     if conf_resp.status_code == 401:
                         conf_resp = requests.get(get_url, auth=auth_basic, timeout=5)
-                        
+
                     if conf_resp.status_code == 200:
                         config = conf_resp.json()
-                        config["bitmain-work-mode"] = mode
                         
-                        set_resp = requests.post(url, auth=auth_digest, json=config, timeout=10)
+                        if normalize_mode_payload:
+                            payload = normalize_mode_payload(config, mode_int, model)
+                        else:
+                            payload = config
+
+                        headers = {'Content-Type': 'text/plain;charset=UTF-8'}
+                        body = json.dumps(payload)
+
+                        set_resp = requests.post(url, auth=auth_digest, data=body, headers=headers, timeout=10)
                         if set_resp.status_code == 401:
-                            set_resp = requests.post(url, auth=auth_basic, json=config, timeout=10)
-                            
+                            set_resp = requests.post(url, auth=auth_basic, data=body, headers=headers, timeout=10)
+
                         if set_resp.status_code == 200:
-                            return True, f"Режим '{'Сон' if action == 'sleep' else 'Работа'}' успешно применен (Stock)"
+                            text = set_resp.text.lower()
+                            if "success" in text or "ok" in text:
+                                if verify_mode:
+                                    if verify_mode(ip, mode_int, auth_basic, auth_digest):
+                                        return True, f"Режим '{'Сон' if action == 'sleep' else 'Работа'}' успешно применен и проверен"
+                                    else:
+                                        return False, "Команда отправлена, но режим не обновился (ошибка верификации)"
+                                return True, f"Режим '{'Сон' if action == 'sleep' else 'Работа'}' успешно применен"
+
+                        return False, f"Не удалось изменить режим работы: HTTP {set_resp.status_code} :: {set_resp.text[:200]}"
                 except requests.exceptions.Timeout:
                     pass
+                except Exception as e:
+                    return False, f"Ошибка при смене режима: {str(e)}"
 
                 return False, "Не удалось изменить режим работы"
 

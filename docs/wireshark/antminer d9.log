@@ -1,0 +1,210 @@
+GET /static/ip-on.ef80642492a2863a1375e13ec40cd6b9.png HTTP/1.1
+Host: 10.33.6.13
+Connection: keep-alive
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="79513aab6c7559ff9a6819e07c01a700", uri="/static/ip-on.ef80642492a2863a1375e13ec40cd6b9.png", response="e48079196f4aed7f66f925112413343e", qop=auth, nc=00000028, cnonce="d48d2e91d0fa5e55"
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36
+DNT: 1
+Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8
+Referer: http://10.33.6.13/
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6
+
+
+HTTP/1.1 200 OK
+Content-Type: image/png
+Accept-Ranges: bytes
+ETag: "994757278"
+Last-Modified: Tue, 28 May 2024 01:28:02 GMT
+Content-Length: 505
+Date: Sat, 12 Sep 2026 11:54:10 GMT
+Server: lighttpd/1.4.32
+
+.PNG
+.
+...
+IHDR...0...,........U...ZPLTEGpLN..(..Q..<..2..G..;..=..=..+..K..Q..J..(.....Q.....K..4..E..?...'-3..*..*k.3}.5..,..>...).Z....tRNS.F..c...);u.qy...,...@IDATH....R.0.D=mR..H".n....7q.I......o...M^.~9..7$h...............c...	[..)...A7.n(......8.e................l...^.|+.RY.o
+...K.9...w..#..U.S|...7...)...=.rHJ	...e~......J...E...\....q9&......u...v.....b.....C.....3p.B....c!C.v.c.....J.F...R..<..*U`b..A..eP.d..<Y.5O..Z..;hy._I....%O.a	.T..
+Z`lC.y...c......].3$.r..7$......-...?.....IEND.B`.
+GET /static/miner-on.8b70acac4602802d32756e9fbf876277.png HTTP/1.1
+Host: 10.33.6.13
+Connection: keep-alive
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="79513aab6c7559ff9a6819e07c01a700", uri="/static/miner-on.8b70acac4602802d32756e9fbf876277.png", response="416b6ddd5b08cd56ae7fbdee49a8534d", qop=auth, nc=00000029, cnonce="2d82d42cd7e11bd7"
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36
+DNT: 1
+Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8
+Referer: http://10.33.6.13/
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6
+
+
+HTTP/1.1 200 OK
+Content-Type: image/png
+Accept-Ranges: bytes
+ETag: "2328611474"
+Last-Modified: Tue, 28 May 2024 01:28:02 GMT
+Content-Length: 362
+Date: Sat, 12 Sep 2026 11:54:10 GMT
+Server: lighttpd/1.4.32
+
+.PNG
+.
+...
+IHDR.......+......Z.....-PLTEGpL=..O..=..,..*..<..M..O..(..-..I..3..;..B....
+.....tRNS...J..o...D.....IDAT8...=
+.0......8tq/x.
+.D.Ct..........:.S!WH..\..3...(.
+V........ d..N..T.X
+.n.....I.K^.!.j<...:.../|.i..4.L...cRH}fl:.y.%{.........'.......'.a..%....C.!...@...[..!.$...."S'.`..[..'...8...sv..uQz....I.v...,F...I}4.*..a...........C2DJ.....IEND.B`.
+GET / HTTP/1.1
+Host: 10.33.6.13
+Connection: keep-alive
+Cache-Control: max-age=0
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="79513aab6c7559ff9a6819e07c01a700", uri="/", response="52c266301f0800faf776c6289dda53c3", qop=auth, nc=0000002a, cnonce="69ed2d7e3b3847df"
+DNT: 1
+Upgrade-Insecure-Requests: 1
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6
+If-None-Match: "3383372884"
+If-Modified-Since: Tue, 28 May 2024 01:28:02 GMT
+
+
+HTTP/1.1 304 Not Modified
+Content-Type: text/html
+Accept-Ranges: bytes
+ETag: "3383372884"
+Last-Modified: Tue, 28 May 2024 01:28:02 GMT
+Date: Sat, 12 Sep 2026 11:54:10 GMT
+Server: lighttpd/1.4.32
+
+
+GET /cgi-bin/get_blink_status.cgi HTTP/1.1
+Host: 10.33.6.13
+Connection: keep-alive
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="79513aab6c7559ff9a6819e07c01a700", uri="/cgi-bin/get_blink_status.cgi", response="b356b638b3172d9e788deef221e2d5df", qop=auth, nc=0000002b, cnonce="757d22eeba79f254"
+X-Requested-With: XMLHttpRequest
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36
+Accept: application/json, text/javascript, */*; q=0.01
+DNT: 1
+Referer: http://10.33.6.13/
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6
+
+
+HTTP/1.1 200 OK
+Transfer-Encoding: chunked
+Date: Sat, 12 Sep 2026 11:54:10 GMT
+Server: lighttpd/1.4.32
+
+1
+
+
+1
+
+
+10
+{"blink":false}
+
+0
+
+
+GET /i18n/strings.properties?_=1789214173223 HTTP/1.1
+Host: 10.33.6.13
+Connection: keep-alive
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="79513aab6c7559ff9a6819e07c01a700", uri="/i18n/strings.properties?_=1789214173223", response="e270b3bf5ee5ea064ad77d29f259ddd1", qop=auth, nc=0000002c, cnonce="745bca7c03715c61"
+X-Requested-With: XMLHttpRequest
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36
+Accept: text/plain, */*; q=0.01
+DNT: 1
+Content-Type: text/plain;charset=UTF-8
+Referer: http://10.33.6.13/
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6
+
+
+HTTP/1.1 200 OK
+Content-Type: application/octet-stream
+Accept-Ranges: bytes
+Content-Length: 0
+Date: Sat, 12 Sep 2026 11:54:10 GMT
+Server: lighttpd/1.4.32
+
+
+GET /i18n/strings_ru.properties?_=1789214173224 HTTP/1.1
+Host: 10.33.6.13
+Connection: keep-alive
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="79513aab6c7559ff9a6819e07c01a700", uri="/i18n/strings_ru.properties?_=1789214173224", response="d986c68019d57729c0513eee11228ba5", qop=auth, nc=0000002d, cnonce="02ae363bef768eb0"
+X-Requested-With: XMLHttpRequest
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36
+Accept: text/plain, */*; q=0.01
+DNT: 1
+Content-Type: text/plain;charset=UTF-8
+Referer: http://10.33.6.13/
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6
+
+
+HTTP/1.1 404 Not Found
+Content-Type: text/html
+Content-Length: 345
+Date: Sat, 12 Sep 2026 11:54:11 GMT
+Server: lighttpd/1.4.32
+
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+         "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+ <head>
+  <title>404 - Not Found</title>
+ </head>
+ <body>
+  <h1>404 - Not Found</h1>
+ </body>
+</html>
+
+GET /cgi-bin/get_system_info.cgi HTTP/1.1
+Host: 10.33.6.13
+Connection: keep-alive
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="79513aab6c7559ff9a6819e07c01a700", uri="/cgi-bin/get_system_info.cgi", response="89b1061cc24a95642dc8fdf9cc3a21e2", qop=auth, nc=0000002e, cnonce="400596780aae331d"
+X-Requested-With: XMLHttpRequest
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36
+Accept: application/json, text/javascript, */*; q=0.01
+DNT: 1
+Referer: http://10.33.6.13/
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6
+
+
+HTTP/1.1 200 OK
+Transfer-Encoding: chunked
+Date: Sat, 12 Sep 2026 11:54:11 GMT
+Server: lighttpd/1.4.32
+
+1
+
+
+1
+
+
+1d6
+{
+"minertype":"Antminer D9",
+"nettype":"DHCP",
+"netdevice":"eth0",
+"macaddr":"44:D6:A9:48:F8:41",
+"hostname":"Antminer",
+"ipaddress":"10.33.6.13",
+"netmask":"255.255.255.0",
+"gateway":"",
+"dnsservers":"",
+"system_mode":"GNU/Linux",
+"system_kernel_version":"Linux 4.6.0-xilinx-g03c746f7 #3 SMP PREEMPT Tue May 28 09:27:23 CST 2024",
+"system_filesystem_version":"Tue May 28 09:27:48 CST 2024",
+"firmware_type":"Release",
+"Algorithm":"X11",
+"serinum":"JYZZEKUBCJCBE001F"
+}
+
+0
+

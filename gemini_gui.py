@@ -356,10 +356,11 @@ class ScanWorker(QThread):
 class ActionWorker(QThread):
     log_signal = pyqtSignal(str)
     
-    def __init__(self, ip, make, action_type):
+    def __init__(self, ip, make, action_type, model=""):
         super().__init__()
         self.ip = ip
         self.make = make
+        self.model = model
         self.action = action_type 
 
     def run(self):
@@ -371,7 +372,7 @@ class ActionWorker(QThread):
             self.log_signal.emit(f"⏳ {self.ip}: Выполнение {self.action}...")
             
             # Универсальный диспетчер команд!
-            ok, msg = send_command(self.ip, self.make, self.action)
+            ok, msg = send_command(self.ip, self.make, self.action, self.model)
             
             icon = "✅" if ok else "❌"
             self.log_signal.emit(f"{icon} {self.ip}: {msg}")
@@ -790,7 +791,18 @@ class GeminiApp(QMainWindow):
         self.dash_layout.addWidget(self.box_models)
         self.dash_layout.addWidget(self.box_hashrate)
         
-        content_layout.addLayout(self.dash_layout)
+        # Обворачиваем dash_layout в виджет, а его в QScrollArea
+        self.dash_widget = QWidget()
+        self.dash_widget.setLayout(self.dash_layout)
+        
+        self.dash_scroll = QScrollArea()
+        self.dash_scroll.setWidgetResizable(True)
+        self.dash_scroll.setWidget(self.dash_widget)
+        self.dash_scroll.setMaximumHeight(180) # Жёстко фиксируем максимальную высоту шапки
+        self.dash_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.dash_scroll.setStyleSheet("QScrollArea { background-color: transparent; }")
+        
+        content_layout.addWidget(self.dash_scroll)
 
         # Инициализируем пустой дашборд
         self.refresh_dashboard({}, {}, {})
@@ -1194,9 +1206,20 @@ del "%~f0"
         
         for r in rows:
             ip = self.table.item(r, 0).text()
-            make = self.table.item(r, 1).text() # Берем модель, чтобы знать кому слать команду
+            model = self.table.item(r, 1).text() # Достаем модель из таблицы
+            make = "Antminer" if "Antminer" in model else self.table.item(r, 1).text() # Упрощенная логика Make
             
-            worker = ActionWorker(ip, make, action_type)
+            # Извлекаем более точный Make, если он был спрятан или не отображен
+            # Так как в таблице у нас есть столбец Model (например, "Antminer S21+")
+            # То make можно брать из него
+            if "whatsminer" in model.lower() or "microbt" in model.lower(): make = "Whatsminer"
+            elif "elphapex" in model.lower() or "dg" in model.lower(): make = "Elphapex"
+            elif "jasminer" in model.lower(): make = "Jasminer"
+            elif "avalon" in model.lower(): make = "Avalon"
+            elif "ipollo" in model.lower(): make = "iPollo"
+            else: make = "Bitmain"
+            
+            worker = ActionWorker(ip, make, action_type, model)
             worker.log_signal.connect(self.handle_worker_log) 
             worker.finished.connect(worker.deleteLater)
             worker.start()

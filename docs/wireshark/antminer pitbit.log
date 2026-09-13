@@ -1,0 +1,136 @@
+546	6.990426700	172.33.33.122	10.10.99.26	TCP	66	62976 → 80 [SYN] Seq=0 Win=64240 Len=0 MSS=1460 WS=256 SACK_PERM
+547	6.992318800	10.10.99.26	172.33.33.122	TCP	66	80 → 62976 [SYN, ACK] Seq=0 Ack=1 Win=29200 Len=0 MSS=1410 SACK_PERM WS=32
+548	6.992367700	172.33.33.122	10.10.99.26	TCP	54	62976 → 80 [ACK] Seq=1 Ack=1 Win=131072 Len=0
+550	7.001135300	172.33.33.122	10.10.99.26	HTTP/JSON	305	POST /cgi-bin/set_miner_conf.cgi HTTP/1.1 , JSON (application/json)
+551	7.002789200	10.10.99.26	172.33.33.122	TCP	60	80 → 62976 [ACK] Seq=1 Ack=252 Win=30272 Len=0
+552	7.006543700	10.10.99.26	172.33.33.122	HTTP	526	HTTP/1.1 401 Unauthorized  (text/html)
+553	7.006544800	10.10.99.26	172.33.33.122	TCP	60	80 → 62976 [FIN, ACK] Seq=473 Ack=252 Win=30272 Len=0
+554	7.006579900	172.33.33.122	10.10.99.26	TCP	54	62976 → 80 [ACK] Seq=252 Ack=474 Win=130560 Len=0
+555	7.011455600	172.33.33.122	10.10.99.26	TCP	54	62976 → 80 [FIN, ACK] Seq=252 Ack=474 Win=130560 Len=0
+557	7.012967600	172.33.33.122	10.10.99.26	TCP	66	62979 → 80 [SYN] Seq=0 Win=64240 Len=0 MSS=1460 WS=256 SACK_PERM
+558	7.013048200	10.10.99.26	172.33.33.122	TCP	60	80 → 62976 [ACK] Seq=474 Ack=253 Win=30272 Len=0
+560	7.014787500	10.10.99.26	172.33.33.122	TCP	66	80 → 62979 [SYN, ACK] Seq=0 Ack=1 Win=29200 Len=0 MSS=1410 SACK_PERM WS=32
+561	7.014817600	172.33.33.122	10.10.99.26	TCP	54	62979 → 80 [ACK] Seq=1 Ack=1 Win=131072 Len=0
+562	7.022600300	172.33.33.122	10.10.99.26	HTTP/JSON	588	POST /cgi-bin/set_miner_conf.cgi HTTP/1.1 , JSON (application/json)
+563	7.024600400	10.10.99.26	172.33.33.122	TCP	60	80 → 62979 [ACK] Seq=1 Ack=535 Win=30272 Len=0
+570	7.092464800	10.10.99.26	172.33.33.122	HTTP	201	HTTP/1.1 200 OK 
+571	7.139959500	172.33.33.122	10.10.99.26	TCP	54	62979 → 80 [ACK] Seq=535 Ack=148 Win=130816 Len=0
+611	8.902190100	172.33.33.122	10.10.99.26	TCP	54	62979 → 80 [FIN, ACK] Seq=535 Ack=148 Win=130816 Len=0
+612	8.905546000	10.10.99.26	172.33.33.122	TCP	60	80 → 62979 [FIN, ACK] Seq=148 Ack=536 Win=30272 Len=0
+613	8.905568600	172.33.33.122	10.10.99.26	TCP	54	62979 → 80 [ACK] Seq=536 Ack=149 Win=130816 Len=0
+1150	19.874805500	172.33.33.122	10.10.99.26	TCP	66	62982 → 80 [SYN] Seq=0 Win=64240 Len=0 MSS=1460 WS=256 SACK_PERM
+1151	19.876762500	10.10.99.26	172.33.33.122	TCP	66	80 → 62982 [SYN, ACK] Seq=0 Ack=1 Win=29200 Len=0 MSS=1410 SACK_PERM WS=32
+1152	19.876803000	172.33.33.122	10.10.99.26	TCP	54	62982 → 80 [ACK] Seq=1 Ack=1 Win=131072 Len=0
+1154	19.886361100	172.33.33.122	10.10.99.26	HTTP/JSON	305	POST /cgi-bin/set_miner_conf.cgi HTTP/1.1 , JSON (application/json)
+1155	19.888248900	10.10.99.26	172.33.33.122	TCP	60	80 → 62982 [ACK] Seq=1 Ack=252 Win=30272 Len=0
+1156	19.888795200	10.10.99.26	172.33.33.122	HTTP	526	HTTP/1.1 401 Unauthorized  (text/html)
+1157	19.888795800	10.10.99.26	172.33.33.122	TCP	60	80 → 62982 [FIN, ACK] Seq=473 Ack=252 Win=30272 Len=0
+1158	19.888814800	172.33.33.122	10.10.99.26	TCP	54	62982 → 80 [ACK] Seq=252 Ack=474 Win=130560 Len=0
+1159	19.893422600	172.33.33.122	10.10.99.26	TCP	54	62982 → 80 [FIN, ACK] Seq=252 Ack=474 Win=130560 Len=0
+1160	19.894742200	172.33.33.122	10.10.99.26	TCP	66	62985 → 80 [SYN] Seq=0 Win=64240 Len=0 MSS=1460 WS=256 SACK_PERM
+1161	19.895103000	10.10.99.26	172.33.33.122	TCP	60	80 → 62982 [ACK] Seq=474 Ack=253 Win=30272 Len=0
+1162	19.896597800	10.10.99.26	172.33.33.122	TCP	66	80 → 62985 [SYN, ACK] Seq=0 Ack=1 Win=29200 Len=0 MSS=1410 SACK_PERM WS=32
+1163	19.896681500	172.33.33.122	10.10.99.26	TCP	54	62985 → 80 [ACK] Seq=1 Ack=1 Win=131072 Len=0
+1164	19.903576300	172.33.33.122	10.10.99.26	HTTP/JSON	588	POST /cgi-bin/set_miner_conf.cgi HTTP/1.1 , JSON (application/json)
+1165	19.905626000	10.10.99.26	172.33.33.122	TCP	60	80 → 62985 [ACK] Seq=1 Ack=535 Win=30272 Len=0
+1167	19.977799200	10.10.99.26	172.33.33.122	HTTP	201	HTTP/1.1 200 OK 
+1178	20.023466000	172.33.33.122	10.10.99.26	TCP	54	62985 → 80 [ACK] Seq=535 Ack=148 Win=130816 Len=0
+1218	21.894071700	172.33.33.122	10.10.99.26	TCP	54	62985 → 80 [FIN, ACK] Seq=535 Ack=148 Win=130816 Len=0
+1219	21.895832700	10.10.99.26	172.33.33.122	TCP	60	80 → 62985 [FIN, ACK] Seq=148 Ack=536 Win=30272 Len=0
+1220	21.895861800	172.33.33.122	10.10.99.26	TCP	54	62985 → 80 [ACK] Seq=536 Ack=149 Win=130816 Len=0
+
+
+POST /cgi-bin/set_miner_conf.cgi HTTP/1.1
+Host: 10.10.99.26
+Content-Type: application/json
+Content-Length: 25
+Connection: Keep-Alive
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,en,*
+User-Agent: Mozilla/5.0
+
+{"bitmain-work-mode":"0"}
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: Digest realm="antMiner Configuration", charset="UTF-8", algorithm=MD5, nonce="6aa6455c:5e3c3c57d5e827627de540e360d72ff5", qop="auth"
+Content-Type: text/html
+Content-Length: 164
+Connection: close
+Date: Sun, 13 Sep 2026 06:40:28 GMT
+Server: lighttpd/1.4.74
+
+<!DOCTYPE html>
+<html lang="en">
+ <head>
+  <meta charset="UTF-8" />
+  <title>401 Unauthorized</title>
+ </head>
+ <body>
+  <h1>401 Unauthorized</h1>
+ </body>
+</html>
+
+
+POST /cgi-bin/set_miner_conf.cgi HTTP/1.1
+Host: 10.10.99.26
+Content-Type: application/json
+Content-Length: 25
+Connection: Keep-Alive
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,en,*
+User-Agent: Mozilla/5.0
+
+{"bitmain-work-mode":"1"}
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: Digest realm="antMiner Configuration", charset="UTF-8", algorithm=MD5, nonce="6aa6454f:179272e8c232284798c648a1caba0d6a", qop="auth"
+Content-Type: text/html
+Content-Length: 164
+Connection: close
+Date: Sun, 13 Sep 2026 06:40:15 GMT
+Server: lighttpd/1.4.74
+
+<!DOCTYPE html>
+<html lang="en">
+ <head>
+  <meta charset="UTF-8" />
+  <title>401 Unauthorized</title>
+ </head>
+ <body>
+  <h1>401 Unauthorized</h1>
+ </body>
+</html>
+
+POST /cgi-bin/set_miner_conf.cgi HTTP/1.1
+Host: 10.10.99.26
+Content-Type: application/json
+Content-Length: 25
+Connection: Keep-Alive
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,en,*
+User-Agent: Mozilla/5.0
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="6aa6454f:179272e8c232284798c648a1caba0d6a", uri="/cgi-bin/set_miner_conf.cgi", response="a4700dfbca9baba6743789b078d83736", algorithm=MD5, qop=auth, nc=00000001, cnonce="e4d0415b84dba693bfec144f227a0235"
+
+{"bitmain-work-mode":"1"}
+HTTP/1.1 200 OK
+Content-Length: 46
+Date: Sun, 13 Sep 2026 06:40:15 GMT
+Server: lighttpd/1.4.74
+
+{"stats":"success","code":"M000","msg":"OK!"}
+
+POST /cgi-bin/set_miner_conf.cgi HTTP/1.1
+Host: 10.10.99.26
+Content-Type: application/json
+Content-Length: 25
+Connection: Keep-Alive
+Accept-Encoding: gzip, deflate
+Accept-Language: ru-RU,en,*
+User-Agent: Mozilla/5.0
+Authorization: Digest username="root", realm="antMiner Configuration", nonce="6aa6455c:5e3c3c57d5e827627de540e360d72ff5", uri="/cgi-bin/set_miner_conf.cgi", response="13bef1a6e7489e4887c31b45c319ccde", algorithm=MD5, qop=auth, nc=00000001, cnonce="1a0f61c581d0719fb6fd18ce88d21b43"
+
+{"bitmain-work-mode":"0"}
+HTTP/1.1 200 OK
+Content-Length: 46
+Date: Sun, 13 Sep 2026 06:40:28 GMT
+Server: lighttpd/1.4.74
+
+{"stats":"success","code":"M000","msg":"OK!"}
