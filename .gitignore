@@ -60,3 +60,8 @@ dist/
 .venv-build/
 build-windows/
 artifacts/
+
+# Local references and diagnostic bundles must not be published.
+docs/pyasic_docs/
+diagnostics/
+outputs/

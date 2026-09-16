@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "asic-monitor-scanner"
-version = "2.0.0"
+version = "2.0.1"
 description = "Local ASIC discovery, profile-based telemetry and control"
 requires-python = ">=3.11"
 dependencies = ["requests>=2.31,<3", "urllib3>=2.2,<3"]

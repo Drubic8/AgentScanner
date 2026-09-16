@@ -72,6 +72,11 @@ def run_smoke(app, window_type, output):
         # Exercise actual GUI export handlers with modal dialogs intercepted.
         errors = []
         with patch.object(QMessageBox, "information"), patch.object(QMessageBox, "critical", side_effect=lambda *args: errors.append(str(args))):
+            window.take_screenshot()
+            screenshot = app.clipboard().pixmap()
+            assert not screenshot.isNull(), "Clipboard screenshot missing"
+            assert screenshot.deviceIndependentSize().toSize() == window.content_panel.size()
+            assert screenshot.save(str(output / "clipboard-dashboard.png"))
             for extension in ("csv", "xlsx"):
                 destination = output / f"smoke-report.{extension}"
                 with patch.object(QFileDialog, "getSaveFileName", return_value=(str(destination), extension)):
@@ -82,7 +87,7 @@ def run_smoke(app, window_type, output):
         assert not errors, errors
         assert list(output.glob("UI_smoke_*.pdf")), "PDF export missing"
         result = {"ok": True, "version": app.applicationVersion(), "synthetic_rows": len(rows),
-                  "profiles": len(registry.profiles), "exports": ["csv", "xlsx", "pdf"], "network_used": False}
+                  "profiles": len(registry.profiles), "exports": ["clipboard_png", "csv", "xlsx", "pdf"], "network_used": False}
         (output / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
         return 0
     except Exception:

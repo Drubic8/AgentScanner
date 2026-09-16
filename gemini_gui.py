@@ -37,7 +37,7 @@ def is_system_dark_mode():
     return True # По умолчанию темная
 
 # Константы автообновления
-CURRENT_VERSION = "2.0.0"
+CURRENT_VERSION = "2.0.1"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
@@ -364,7 +364,7 @@ class PDFReport(FPDF):
     def header(self):
         # Главный заголовок
         self.set_font(self.report_font, 'B', 14)
-        self.cell(0, 8, 'ASIC Monitor · 2.0.0', 0, 1, 'L')
+        self.cell(0, 8, f'ASIC Monitor · {CURRENT_VERSION}', 0, 1, 'L')
         self.line(10, 18, 287, 18)
         self.ln(3)
         
@@ -553,6 +553,7 @@ class GeminiApp(QMainWindow):
 
         # === CONTENT AREA ===
         content = QWidget()
+        self.content_panel = content
         content.setObjectName("ContentArea")
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(20, 20, 20, 20)
@@ -774,7 +775,7 @@ class GeminiApp(QMainWindow):
         settings_act.setShortcut("Ctrl+,")
         help_menu = menubar.addMenu("Справка")
         help_menu.addAction("Проверить обновления", lambda: self.check_for_updates(auto=False))
-        help_menu.addAction("Что нового в 2.0.0", self.show_changelog)
+        help_menu.addAction(f"Что нового в {CURRENT_VERSION}", self.show_changelog)
         search = QAction("Поиск устройств", self)
         search.setShortcut("Ctrl+F")
         search.triggered.connect(lambda: self.search_input.setFocus())
@@ -808,7 +809,7 @@ class GeminiApp(QMainWindow):
 
     def take_screenshot(self):
         """Делает снимок всей правой панели (Итоги + Таблица)"""
-        pixmap = self.table.parentWidget().grab() # <--- Фотаем РОДИТЕЛЬСКИЙ виджет
+        pixmap = self.content_panel.grab()
         
         QApplication.clipboard().setPixmap(pixmap)
         self.status_bar.setText("📸 Скриншот скопирован в буфер обмена!")
@@ -864,7 +865,7 @@ class GeminiApp(QMainWindow):
         message = QMessageBox(self)
         message.setWindowTitle(f"Что нового · {CURRENT_VERSION}")
         message.setTextFormat(Qt.TextFormat.PlainText)
-        message.setText(manifest.get("changelog", "ASIC Monitor 2.0.0"))
+        message.setText(manifest.get("changelog", f"ASIC Monitor {CURRENT_VERSION}"))
         message.exec()
 
     # --- MENU & ACTIONS LOGIC ---

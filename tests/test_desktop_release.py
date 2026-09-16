@@ -38,8 +38,8 @@ class PreferenceTests(unittest.TestCase):
 
     def test_release_versions_match(self):
         version, parts = release_version()
-        self.assertEqual(version, "2.0.0")
-        self.assertEqual(parts, (2, 0, 0))
+        self.assertEqual(version, "2.0.1")
+        self.assertEqual(parts, (2, 0, 1))
 
 
 @unittest.skipUnless(importlib.util.find_spec("PyQt6") and importlib.util.find_spec("pandas") and importlib.util.find_spec("fpdf"), "Desktop dependencies not installed")
