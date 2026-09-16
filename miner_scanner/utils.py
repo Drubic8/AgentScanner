@@ -5,27 +5,8 @@ import time
 from .config import SOCKET_PORT, TIMEOUT, PING_TIMEOUT, RETRY_COUNT, BUFFER_SIZE
 
 def parse_ip_range(range_str):
-    ips = []
-    try:
-        range_str = range_str.strip()
-        if '-' in range_str:
-            parts = range_str.split('-')
-            start_ip = ipaddress.IPv4Address(parts[0].strip())
-            end_part = parts[1].strip()
-            if '.' in end_part:
-                end_ip = ipaddress.IPv4Address(end_part)
-            else:
-                base = str(start_ip).rsplit('.', 1)[0]
-                end_ip = ipaddress.IPv4Address(f"{base}.{end_part}")
-            for ip_int in range(int(start_ip), int(end_ip) + 1):
-                ips.append(str(ipaddress.IPv4Address(ip_int)))
-        elif '/' in range_str:
-            for ip in ipaddress.ip_network(range_str, strict=False).hosts():
-                ips.append(str(ip))
-        else:
-            ips.append(range_str)
-    except: pass
-    return ips
+    from .ranges import parse_range
+    return parse_range(range_str)
 
 def get_uptime_str(seconds):
     try: 

@@ -1,51 +1,61 @@
-# 🚀 AgentScanner: ASIC Miner Network Manager
+# ASIC Monitor 2.0.0
 
-**AgentScanner** is a fast, multi-threaded local network scanner designed for the discovery, monitoring, and management of ASIC mining equipment.
+Локальная программа обнаружения, мониторинга и управления ASIC. Графический интерфейс — `gemini_gui.py`; ядро — пакет `miner_scanner`, работающий без Qt.
 
-It utilizes a Multi-layer Discovery algorithm to detect even hung devices or ASICs in deep sleep mode (where port 4028 is disabled).
+## Документация
 
-## ✨ Supported Hardware
-The scanner automatically recognizes the device architecture and firmware:
-* **Bitmain Antminer** (Stock: S19, S21, T21, L7, L9, Z15, etc.)
-* **Elphapex** (DG-series)
-* **MicroBT Whatsminer** (M30S, M50, M60)
-* **Canaan AvalonMiner**
-* **iPollo** & **Jasminer**
-* **Custom Firmwares:** Full support for the **VNish** API.
+- [Техническое задание](docs/technical_specification.md).
+- [Что изменено при рефакторинге, результаты проверок и ограничения](docs/architecture/scanner_refactoring.md).
+- [Как добавить устройство или прошивку](docs/development/adding_device.md).
+- [Windows: новый интерфейс, сборка EXE и публикация релиза](docs/development/windows_release.md).
+- [Изменения версии 2.0.0](docs/releases/2.0.0.md).
 
-## 🛠 Key Features
-* **Smart Auto-Discovery:** Primary polling via port 4028 (CGMiner API) with a smart fallback to port 80 (Web API) to detect sleeping devices.
-* **Deep Diagnostics:** Extracts hardware errors (HW ERR) and accurately identifies dead or missing hashboards.
-* **Full Telemetry:** Real-time display of active pools, workers, temperatures (chip and board), fan speeds, and precise uptime.
-* **Hashrate Normalization:** Automatically recalculates and normalizes hashrates across different algorithms (Scrypt, SHA-256, Etchash).
-* **Status System:** Equipment is strictly classified into four categories: `🟢 Running`, `⚠️ Unstable/Error`, `🔴 Offline`, and `💤 Sleep`.
+## Установка и запуск
 
-## 🎮 Remote Control (MDM)
-Mass management of ASIC miners is available directly from the GUI data table:
-* **LED Blink:** Trigger the LED to easily locate the ASIC on the rack.
-* **Sleep / Resume:** Put miners into low-power sleep mode (stop mining) and wake them up.
-* **Reboot:** Remotely restart devices.
-*(Supported for Whatsminer API v3, Antminer Stock/VNish, Elphapex, and Jasminer).*
+Требуется Python 3.11 или новее. Используйте исправное виртуальное окружение:
 
-## 🚀 Installation & Quick Start
+```powershell
+python -m venv .venv-new
+.venv-new\Scripts\python -m pip install -r requirements.txt
+.venv-new\Scripts\python gemini_gui.py
+```
 
-1. **Clone the repository:**
-   ```bash
-   git clone [https://github.com/Drubic8/AgentScanner.git](https://github.com/Drubic8/AgentScanner.git)
-   cd AgentScanner
-   ```
+Единый источник зависимостей — `pyproject.toml`; `requirements.txt` устанавливает проект с desktop-зависимостями. Для ядра достаточно `python -m pip install .`. Новый диспетчер Whatsminer не требует сторонних криптобиблиотек; необязательный старый API смены пароля использует extra `legacy-crypto`.
 
-2. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+Перечень профилей без обращения в сеть:
 
-3. **Launch the GUI:**
-   ```bash
-   python gemini_gui.py
-   ```
+```powershell
+python -m miner_scanner --profiles
+```
 
-## ⚙️ Architecture (How it works)
-To solve the problem of fragmented API endpoints across different firmwares, AgentScanner uses two-layer polling:
-1. **Socket API (4028):** Instant telemetry retrieval without passwords.
-2. **HTTP Fallback (80):** If the mining process is killed (e.g., the device is asleep), the scanner bypasses basic authentication (`HTTPDigestAuth` / `HTTPBasicAuth`) to download `get_miner_conf.cgi` and `stats.cgi` to accurately determine the device's status.
+Реальное сканирование выполняйте на компьютере с доступом к сети ASIC:
+
+```powershell
+python -m miner_scanner 192.168.1.0/24
+```
+
+## Возможности ядра
+
+- Проверка IPv4/CIDR/диапазонов, объединение пересечений и исключения.
+- Профили Bitmain Stock, VNish, PitBit, Whatsminer RPC, Avalon, Elphapex, iPollo, Jasminer и общий режим чтения CGMiner.
+- Отдельные обнаружение и повторный опрос; кэш метаданных, ограниченная очередь и отмена конкретной операции.
+- Паспорта и последние снимки в SQLite; структурированные результаты команд.
+- Телеметрия с явными единицами и неизвестными значениями вместо предположений.
+- Постепенная выдача результатов в существующую таблицу; сохранены сценарии отчётов CSV/XLSX/PDF.
+
+Профили чтения перенесены из исходного проекта; аппаратная совместимость конкретных версий ещё требует проверки. По умолчанию неподтверждённое управление выключено. Для стендового испытания перенесённых команд есть переключатель в диалоге доступа к выбранным устройствам. Low/HEM доступны только при наличии соответствующего правила профиля.
+
+Настройка пароля: **Файл → Доступ к ASIC (на текущий сеанс)**. Без выделения задаётся доступ для сканирования; с выделением — индивидуальный доступ. Секреты остаются в памяти текущего сеанса.
+
+## Проверки без оборудования
+
+```powershell
+python scripts/check_scanner.py
+python scripts/benchmark_scanner.py
+```
+
+Тесты используют искусственные ответы; сетевой тест ограничен локальным TCP-эмулятором `127.0.0.1`. Проверки GUI запускаются без видимого окна и пропускаются, если desktop-зависимости не установлены. Измерение скорости является синтетическим и не заменяет испытания на ASIC.
+
+Windows EXE собирается командой `python scripts/build_windows.py` в подготовленном окружении; инструкции и зафиксированные зависимости описаны в руководстве выше. Файл для GitHub Releases — `dist/ASIC_Monitor.exe`.
+
+Рефакторинг не завершает всё ТЗ: Android, аппаратная матрица совместимости и полноценная история относятся к следующим этапам.

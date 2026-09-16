@@ -1,0 +1,9 @@
+{
+  "_fixture": "Synthetic protocol example; not hardware certification",
+  "version": {"VERSION": [{"Type": "Antminer S21", "API": "3.1", "firmware_version": "test-1"}]},
+  "stats": {"STATS": [{"Type": "Antminer S21", "Elapsed": 600, "fan1": 5200, "temp2_1": 65, "GHS 5s": 200000}]},
+  "summary": {"SUMMARY": [{"GHS 5s": 200000, "GHS av": 195000, "Elapsed": 600}]},
+  "pools": {"POOLS": [{"URL": "stratum+tcp://example.invalid:3333", "User": "fixture.worker", "Status": "Alive"}]},
+  "system": {"minertype": "Antminer S21", "firmware_version": "test-1", "macaddr": "02:00:00:00:00:01"},
+  "config": {"bitmain-work-mode": 0, "bitmain-freq-level": 100, "pools": [{"url": "stratum+tcp://example.invalid:3333", "user": "fixture.worker", "pass": "x"}]}
+}

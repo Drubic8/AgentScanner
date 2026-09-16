@@ -1,0 +1,393 @@
+{
+  "schema_version": 1,
+  "profiles": [
+    {
+      "id": "bitmain.stock",
+      "version": 1,
+      "make": "Bitmain",
+      "firmware": "Stock",
+      "signature": "antminer",
+      "priority": 10,
+      "parser": "antminer",
+      "control": "antminer",
+      "queries": [
+        [
+          "version",
+          "cgminer",
+          "version",
+          true
+        ],
+        [
+          "stats",
+          "cgminer",
+          "stats",
+          false
+        ],
+        [
+          "summary",
+          "cgminer",
+          "summary",
+          false
+        ],
+        [
+          "pools",
+          "cgminer",
+          "pools",
+          true
+        ],
+        [
+          "system",
+          "http",
+          "/cgi-bin/get_system_info.cgi",
+          true
+        ],
+        [
+          "config",
+          "http",
+          "/cgi-bin/get_miner_conf.cgi",
+          false
+        ],
+        [
+          "warnings",
+          "text",
+          "/warning",
+          true,
+          {
+            "port": 6060
+          }
+        ]
+      ],
+      "verified_commands": []
+    },
+    {
+      "id": "bitmain.vnish",
+      "version": 1,
+      "make": "Bitmain",
+      "firmware": "VNish",
+      "signature": "vnish",
+      "priority": 30,
+      "parser": "vnish",
+      "control": "vnish",
+      "queries": [
+        [
+          "version",
+          "cgminer",
+          "version",
+          true
+        ],
+        [
+          "stats",
+          "cgminer",
+          "stats",
+          false
+        ],
+        [
+          "summary",
+          "cgminer",
+          "summary",
+          false
+        ],
+        [
+          "pools",
+          "cgminer",
+          "pools",
+          true
+        ],
+        [
+          "vnish_info",
+          "http",
+          "/api/v1/info",
+          true
+        ],
+        [
+          "vnish_summary",
+          "http",
+          "/api/v1/summary",
+          false
+        ]
+      ],
+      "verified_commands": []
+    },
+    {
+      "id": "bitmain.pitbit",
+      "version": 1,
+      "make": "Bitmain",
+      "firmware": "PitBit",
+      "signature": "pitbit",
+      "priority": 30,
+      "parser": "pitbit",
+      "control": "pitbit",
+      "queries": [
+        [
+          "version",
+          "cgminer",
+          "version",
+          true
+        ],
+        [
+          "stats",
+          "cgminer",
+          "stats",
+          false
+        ],
+        [
+          "summary",
+          "cgminer",
+          "summary",
+          false
+        ],
+        [
+          "pools",
+          "cgminer",
+          "pools",
+          true
+        ],
+        [
+          "system",
+          "http",
+          "/cgi-bin/get_system_info.cgi",
+          true
+        ],
+        [
+          "config",
+          "http",
+          "/cgi-bin/get_miner_conf.cgi",
+          false
+        ],
+        [
+          "warnings",
+          "text",
+          "/warning",
+          true,
+          {
+            "port": 6060
+          }
+        ]
+      ],
+      "verified_commands": []
+    },
+    {
+      "id": "microbt.rpc3",
+      "version": 1,
+      "make": "MicroBT",
+      "firmware": "Stock",
+      "signature": "whatsminer",
+      "priority": 20,
+      "parser": "whatsminer",
+      "control": "whatsminer",
+      "queries": [
+        [
+          "rpc_info",
+          "rpc",
+          "get.device.info",
+          false
+        ],
+        [
+          "rpc_summary",
+          "rpc",
+          "get.miner.status:summary",
+          false
+        ],
+        [
+          "rpc_pools",
+          "rpc",
+          "get.miner.status:pools",
+          true
+        ]
+      ],
+      "verified_commands": []
+    },
+    {
+      "id": "canaan.avalon",
+      "version": 1,
+      "make": "Canaan",
+      "firmware": "Stock",
+      "signature": "avalon",
+      "priority": 20,
+      "parser": "avalon",
+      "control": "avalon",
+      "queries": [
+        [
+          "version",
+          "cgminer",
+          "version",
+          true
+        ],
+        [
+          "stats",
+          "cgminer",
+          "stats",
+          false
+        ],
+        [
+          "summary",
+          "cgminer",
+          "summary",
+          false
+        ],
+        [
+          "pools",
+          "cgminer",
+          "pools",
+          true
+        ]
+      ],
+      "verified_commands": []
+    },
+    {
+      "id": "elphapex.luci",
+      "version": 1,
+      "make": "Elphapex",
+      "firmware": "Stock",
+      "signature": "elphapex",
+      "priority": 20,
+      "parser": "elphapex",
+      "control": "elphapex",
+      "queries": [
+        [
+          "elphapex_stats",
+          "http",
+          "/cgi-bin/luci/stats.cgi",
+          false
+        ],
+        [
+          "elphapex_config",
+          "http",
+          "/cgi-bin/luci/get_miner_conf.cgi",
+          false
+        ],
+        [
+          "elphapex_system",
+          "http",
+          "/cgi-bin/luci/get_system_info.cgi",
+          true
+        ]
+      ],
+      "verified_commands": []
+    },
+    {
+      "id": "ipollo.cgminer",
+      "version": 1,
+      "make": "iPollo",
+      "firmware": "Stock",
+      "signature": "ipollo",
+      "priority": 20,
+      "parser": "ipollo",
+      "control": null,
+      "queries": [
+        [
+          "version",
+          "cgminer",
+          "version",
+          true
+        ],
+        [
+          "stats",
+          "cgminer",
+          "stats",
+          false
+        ],
+        [
+          "summary",
+          "cgminer",
+          "summary",
+          false
+        ],
+        [
+          "pools",
+          "cgminer",
+          "pools",
+          true
+        ]
+      ],
+      "verified_commands": []
+    },
+    {
+      "id": "jasminer.web",
+      "version": 1,
+      "make": "Jasminer",
+      "firmware": "Stock",
+      "signature": "jasminer",
+      "priority": 20,
+      "parser": "jasminer",
+      "control": "jasminer",
+      "queries": [
+        [
+          "jasminer_status",
+          "http_post",
+          "/cgi-bin/minerStatus.cgi",
+          false
+        ]
+      ],
+      "verified_commands": []
+    },
+    {
+      "id": "generic.cgminer",
+      "version": 1,
+      "make": "Unknown",
+      "firmware": "Unknown",
+      "signature": "cgminer",
+      "priority": 0,
+      "parser": "generic",
+      "control": null,
+      "queries": [
+        [
+          "version",
+          "cgminer",
+          "version",
+          true
+        ],
+        [
+          "stats",
+          "cgminer",
+          "stats",
+          false
+        ],
+        [
+          "summary",
+          "cgminer",
+          "summary",
+          false
+        ],
+        [
+          "pools",
+          "cgminer",
+          "pools",
+          true
+        ]
+      ],
+      "verified_commands": []
+    },
+    {
+      "id": "generic.cgminer_web",
+      "version": 1,
+      "make": "Unknown",
+      "firmware": "Unknown",
+      "signature": "cgminer_web",
+      "priority": 0,
+      "parser": "cgminer_web",
+      "control": null,
+      "queries": [
+        [
+          "web_status",
+          "html",
+          "/cgi-bin/minerStatus.cgi",
+          false
+        ],
+        [
+          "system",
+          "http",
+          "/cgi-bin/get_system_info.cgi",
+          true
+        ],
+        [
+          "web_config",
+          "html",
+          "/cgi-bin/minerConfiguration.cgi",
+          true
+        ]
+      ],
+      "verified_commands": []
+    }
+  ]
+}

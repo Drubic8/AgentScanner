@@ -3,11 +3,17 @@ import re
 import os
 import json
 import time
-import subprocess
 import requests
 import webbrowser
 import pandas as pd
 from datetime import datetime
+from pathlib import Path
+from desktop_ui.preferences import COLUMNS, data_directory, normalize, load_json, write_json
+from desktop_ui.settings_dialog import SettingsDialog
+from desktop_ui.theme import apply_theme as apply_desktop_theme
+from desktop_ui.updates import UpdateCheckWorker, version_tuple
+from desktop_ui.reports import export_frame, sorted_frame
+from collections import Counter, defaultdict
 
 
 import socket
@@ -15,23 +21,7 @@ import platform
 
 os.environ["QT_LOGGING_RULES"] = "*.warning=false" # Отключаем спам-варнинги Qt
 
-# === ГЛОБАЛЬНЫЙ ПЕРЕХВАТ СОКЕТОВ ДЛЯ КНОПКИ STOP ===
-# Это позволяет моментально оборвать сканирование во всех 200 потоках
-_orig_connect = socket.socket.connect
-_orig_connect_ex = socket.socket.connect_ex
-
-def abortable_connect(self, address):
-    if getattr(socket, 'ABORT_SCAN', False):
-        raise InterruptedError("Scan aborted by user")
-    return _orig_connect(self, address)
-
-def abortable_connect_ex(self, address):
-    if getattr(socket, 'ABORT_SCAN', False):
-        return 10004  # Ошибка EINTR (вызов прерван)
-    return _orig_connect_ex(self, address)
-
-socket.socket.connect = abortable_connect
-socket.socket.connect_ex = abortable_connect_ex
+from threading import Event
 
 # === ФУНКЦИЯ ОПРЕДЕЛЕНИЯ ТЕМЫ WINDOWS ===
 def is_system_dark_mode():
@@ -47,7 +37,7 @@ def is_system_dark_mode():
     return True # По умолчанию темная
 
 # Константы автообновления
-CURRENT_VERSION = "1.8.0"
+CURRENT_VERSION = "2.0.0"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
@@ -68,9 +58,9 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QListWidget, QAbstractItemView, QInputDialog, QFrame,
                              QScrollArea, QSizePolicy, QMenu, QDialog, QRadioButton, 
                              QButtonGroup, QTextEdit, QTabWidget, QListWidgetItem,
-                             QComboBox) # <- ДОБАВИТЬ ЭТО
+                             QComboBox, QStackedWidget)
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QUrl, QMimeData # <- ДОБАВИТЬ QUrl, QMimeData
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QUrl, QMimeData, QTimer, QItemSelectionModel
 from PyQt6.QtGui import QFont, QColor, QIcon, QAction
 
 # --- FPDF & PANDAS (Вместо ReportLab) ---
@@ -83,6 +73,11 @@ except ImportError:
 # --- ИМПОРТ СКАНЕРА ---
 try:
     from miner_scanner.core import scan_network_range
+    from miner_scanner.runtime import ScanOptions
+    from miner_scanner.ranges import expand_ranges
+    from miner_scanner.service import default_service
+    from miner_scanner.commands import execute_command
+    from miner_scanner.models import Credentials
     SCANNER_AVAIL = True
 except ImportError:
     try:
@@ -103,41 +98,21 @@ except ImportError:
     except ImportError:
         ACTIONS_AVAIL = False
 
-CONFIG_FILE = "ip_ranges.json"
-SETTINGS_FILE = "app_settings.json" # <--- НОВЫЙ ФАЙЛ НАСТРОЕК
-APP_TITLE = "ASIC_Monitor"
+# Writable preferences are separate from PyInstaller's temporary resource directory.
+APP_DATA_DIR = data_directory()
+LEGACY_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(current_dir)
+CONFIG_FILE = APP_DATA_DIR / "ip_ranges.json"
+SETTINGS_FILE = APP_DATA_DIR / "app_settings.json"
+APP_TITLE = "ASIC Monitor"
+
 
 def load_app_settings():
-    if os.path.exists(SETTINGS_FILE):
-        try:
-            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except: pass
-    
-    # Настройки по умолчанию
-    all_cols = ["IP", "Model", "Algo", "Status", "Error", "Uptime", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker"]
-    return {
-        "scan_bitmain": True,
-        "scan_whatsminer": True,
-        "scan_elphapex": True,
-        "scan_other": True,
-        "timeout": 2,
-        "export_dir": "", # Пустая строка = папка по умолчанию
-        "copy_pdf": False,
-        "pdf_sort": "IP",
-        "ui_cols": all_cols.copy(),
-        "pdf_cols": all_cols.copy(),
-        "export_csv_dir": "", # Пустая строка = папка по умолчанию
-        "copy_csv": False, # Новая настройка: копировать CSV/Excel в буфер обмена
-        "csv_sort": "IP",
-        "csv_cols": all_cols.copy()
-    }
+    return normalize(load_json(SETTINGS_FILE, LEGACY_DIR / "app_settings.json", {}))
+
 
 def save_app_settings(settings):
-    try:
-        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump(settings, f, indent=4)
-    except: pass
+    write_json(SETTINGS_FILE, normalize(settings))
+
 
 VER = f"{CURRENT_VERSION}"  # Теперь версия в заголовке окна будет браться автоматически из CURRENT_VERSION
 
@@ -248,13 +223,14 @@ class CommandDialog(QDialog):
 class IPRangeDialog(QDialog):
     def __init__(self, name="", ranges=None, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("IP Range Editor")
-        self.setFixedSize(400, 350)
+        self.setWindowTitle("Диапазон сети")
+        self.resize(500, 410)
+        self.setMinimumSize(420, 360)
         
         layout = QVBoxLayout(self)
         
         # Название сети
-        lbl_name = QLabel("Название сети (Network Name):")
+        lbl_name = QLabel("Название сети")
         lbl_name.setStyleSheet("font-weight: bold;")
         layout.addWidget(lbl_name)
         
@@ -265,12 +241,12 @@ class IPRangeDialog(QDialog):
         layout.addSpacing(10)
         
         # Диапазоны (многострочное поле)
-        lbl_ranges = QLabel("IP Диапазоны (каждый с новой строки):")
+        lbl_ranges = QLabel("IP-адреса и диапазоны — каждый с новой строки")
         lbl_ranges.setStyleSheet("font-weight: bold;")
         layout.addWidget(lbl_ranges)
         
         self.te_ranges = QTextEdit()
-        self.te_ranges.setPlaceholderText("192.168.1.1-255\n10.10.33.2-255")
+        self.te_ranges.setPlaceholderText("192.168.1.1-254\n10.10.33.0/24\n192.168.2.10")
         
         if ranges:
             if isinstance(ranges, list):
@@ -289,13 +265,25 @@ class IPRangeDialog(QDialog):
         
         btn_save = QPushButton("Сохранить")
         btn_save.setStyleSheet("background-color: #0069D9; color: white; font-weight: bold;")
-        btn_save.clicked.connect(self.accept)
+        btn_save.clicked.connect(self.validate_and_accept)
         
         btn_layout.addStretch()
         btn_layout.addWidget(btn_cancel)
         btn_layout.addWidget(btn_save)
         layout.addLayout(btn_layout)
         
+    def validate_and_accept(self):
+        name, ranges = self.get_data()
+        if not name or not ranges:
+            QMessageBox.warning(self, "Диапазон сети", "Укажите название и хотя бы один диапазон.")
+            return
+        try:
+            expand_ranges(ranges)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Диапазон сети", str(exc))
+            return
+        self.accept()
+
     def get_data(self):
         name = self.le_name.text().strip()
         # Разбиваем текст на строки и удаляем пустые
@@ -309,108 +297,97 @@ class IPRangeDialog(QDialog):
 class ScanWorker(QThread):
     progress_signal = pyqtSignal(int, int)
     result_signal = pyqtSignal(list)
-    finished_signal = pyqtSignal()
     log_signal = pyqtSignal(str)
 
-    def __init__(self, ranges, filters): # <--- Добавили filters
+    def __init__(self, ranges, filters, timeout=2, workers=64):
         super().__init__()
         self.ranges = ranges
-        self.filters = filters           # <--- Сохранили
-        self.is_running = True
+        self.filters = filters
+        self.cancel = Event()
+        self.options = ScanOptions(read_timeout=float(timeout), workers=int(workers))
+        self.failure = None
 
     def run(self):
-        socket.ABORT_SCAN = False # Сбрасываем блокировку сокетов при старте
-        if not SCANNER_AVAIL:
-            self.log_signal.emit("Error: Scanner core not found!")
-            self.finished_signal.emit()
-            return
-
-        total = len(self.ranges)
-        for i, r_str in enumerate(self.ranges):
-            if not self.is_running: break
-            self.log_signal.emit(f"Scanning: {r_str}...")
-            try:
-                res = scan_network_range(r_str, target_makes=self.filters)
-                # Проверяем еще раз перед выдачей результатов, не нажал ли юзер STOP
-                if res and self.is_running: 
-                    cleaned_res = []
-                    for item in res:
-                        model = str(item.get('Model', ''))
-                        if "Antminer" in model and "Elphapex" in model:
-                            item['Model'] = model.replace("Elphapex ", "")
-                        cleaned_res.append(item)
-                    self.result_signal.emit(cleaned_res)
-            except Exception as e:
-                if not self.is_running: break # Игнорируем ошибки при обрыве
-                self.log_signal.emit(f"Error {r_str}: {e}")
-            self.progress_signal.emit(i + 1, total)
-        self.finished_signal.emit()
+        try:
+            scan_network_range(
+                self.ranges, target_makes=self.filters, cancel=self.cancel,
+                options=self.options,
+                on_result=lambda row: self.result_signal.emit([row]),
+                on_progress=self.progress_signal.emit,
+                on_error=lambda ip, code: self.log_signal.emit(f"{ip}: {code}"),
+            )
+        except Exception as exc:
+            self.failure = type(exc).__name__
+            self.log_signal.emit(f"Ошибка сканирования: {self.failure}")
 
     def stop(self):
-        self.is_running = False
-        socket.ABORT_SCAN = True # Моментально обрываем все текущие соединения в core.py!
+        self.cancel.set()
 
-# ==========================================
-# WORKER: ACTIONS
-# ==========================================
+
 class ActionWorker(QThread):
     log_signal = pyqtSignal(str)
-    
-    def __init__(self, ip, make, action_type, model=""):
+
+    def __init__(self, targets, action_type, experimental_ids=()):
         super().__init__()
-        self.ip = ip
-        self.make = make
-        self.model = model
-        self.action = action_type 
+        self.targets = targets
+        self.action = action_type
+        self.experimental_ids = frozenset(experimental_ids)
 
     def run(self):
-        if not ACTIONS_AVAIL:
-            self.log_signal.emit(f"❌ {self.ip}: Library miner_actions missing!")
-            return
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=8, thread_name_prefix="asic-control") as executor:
+            futures = {
+                executor.submit(execute_command, default_service(), row["IP"], self.action,
+                                device_id=row.get("DeviceId"), allow_unverified=row.get("DeviceId") in self.experimental_ids): row["IP"]
+                for row in self.targets
+            }
+            for future in as_completed(futures):
+                ip = futures[future]
+                try:
+                    result = future.result()
+                    self.log_signal.emit(f"{ip}: [{result.status}] {result.message}")
+                except Exception as exc:
+                    self.log_signal.emit(f"{ip}: ошибка управления ({type(exc).__name__})")
 
-        try:
-            self.log_signal.emit(f"⏳ {self.ip}: Выполнение {self.action}...")
-            
-            # Универсальный диспетчер команд!
-            ok, msg = send_command(self.ip, self.make, self.action, self.model)
-            
-            icon = "✅" if ok else "❌"
-            self.log_signal.emit(f"{icon} {self.ip}: {msg}")
-            
-        except Exception as e:
-            self.log_signal.emit(f"🔥 Critical Error {self.ip}: {str(e)}")
 
-# ==========================================
-# PDF REPORT CLASS (С умной шапкой и сводкой)
-# ==========================================
 class PDFReport(FPDF):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        fonts = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts"
+        self.report_font = "Helvetica"
+        if (fonts / "segoeui.ttf").exists():
+            self.add_font("Report", "", str(fonts / "segoeui.ttf"), uni=True)
+            self.add_font("Report", "B", str(fonts / "segoeuib.ttf"), uni=True)
+            self.add_font("Report", "I", str(fonts / "segoeuii.ttf"), uni=True)
+            self.report_font = "Report"
+
     def header(self):
         # Главный заголовок
-        self.set_font('Arial', 'B', 14)
-        self.cell(0, 8, 'MinerHotel Daily Report', 0, 1, 'L')
+        self.set_font(self.report_font, 'B', 14)
+        self.cell(0, 8, 'ASIC Monitor · 2.0.0', 0, 1, 'L')
         self.line(10, 18, 287, 18)
         self.ln(3)
         
         # Название скана
-        self.set_font("Arial", 'B', 12)
+        self.set_font(self.report_font, 'B', 12)
         if hasattr(self, 'report_title'):
             self.cell(0, 6, self.report_title, 0, 1, 'L')
         
         # СВОДКА (Рисуется ТОЛЬКО на первой странице)
         if self.page_no() == 1 and hasattr(self, 'summary_text'):
-            self.set_font("Arial", '', 9)
+            self.set_font(self.report_font, '', 9)
             self.multi_cell(0, 5, self.summary_text)
             self.ln(3)
         else:
             self.ln(3)
 
         # --- ШАПКА ТАБЛИЦЫ (На каждой странице) ---
-        self.set_font("Arial", 'B', 8)
+        self.set_font(self.report_font, 'B', 7)
         self.set_fill_color(0, 51, 153)
         self.set_text_color(255, 255, 255)
         if hasattr(self, 'table_cols') and hasattr(self, 'table_widths'):
             for i, c in enumerate(self.table_cols):
-                self.cell(self.table_widths[i], 8, c, 1, 0, 'C', fill=True)
+                self.cell(self.table_widths[i], 8, self.fit_text(COLUMNS[c], self.table_widths[i]), 1, 0, 'C', fill=True)
         self.ln()
         
         # Возврат цвета для обычных строк
@@ -418,229 +395,41 @@ class PDFReport(FPDF):
 
     def footer(self):
         self.set_y(-15)
-        self.set_font('Arial', 'I', 8)
+        self.set_font(self.report_font, 'I', 8)
         self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
+
+    def fit_text(self, text, width):
+        if self.report_font == "Helvetica":
+            text = text.encode("latin-1", "replace").decode("latin-1")
+        if self.get_string_width(text) <= width - 2:
+            return text
+        while text and self.get_string_width(text + "...") > width - 2:
+            text = text[:-1]
+        return text + "..."
 
 # ==========================================
 # ДИАЛОГ НАСТРОЕК ПРОГРАММЫ
 # ==========================================
-class SettingsDialog(QDialog):
-    def __init__(self, current_settings, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Настройки программы")
-        self.setFixedSize(550, 480)
-        self.settings = current_settings.copy()
-        
-        layout = QVBoxLayout(self)
-        tabs = QTabWidget()
-        self.all_cols = ["IP", "Model", "Algo", "Status", "Error", "Uptime", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker"]
-        
-        # --- ВКЛАДКА 1: СКАНЕР (ФИЛЬТРЫ) ---
-        tab_scan = QWidget()
-        l_scan = QVBoxLayout(tab_scan)
-        
-        lbl_info = QLabel("Ускорьте сканирование, отключив ненужное оборудование:")
-        lbl_info.setStyleSheet("font-weight: bold; margin-bottom: 10px;")
-        l_scan.addWidget(lbl_info)
-        
-        self.cb_bitmain = QCheckBox("Искать Antminer (Bitmain, VNish)")
-        self.cb_whatsminer = QCheckBox("Искать Whatsminer (MicroBT)")
-        self.cb_elphapex = QCheckBox("Искать Elphapex (DG-серия)")
-        self.cb_other = QCheckBox("Искать остальные (Avalon, iPollo, Jasminer, Hammer)")
-        
-        self.cb_bitmain.setChecked(self.settings.get("scan_bitmain", True))
-        self.cb_whatsminer.setChecked(self.settings.get("scan_whatsminer", True))
-        self.cb_elphapex.setChecked(self.settings.get("scan_elphapex", True))
-        self.cb_other.setChecked(self.settings.get("scan_other", True))
-        
-        l_scan.addWidget(self.cb_bitmain)
-        l_scan.addWidget(self.cb_whatsminer)
-        l_scan.addWidget(self.cb_elphapex)
-        l_scan.addWidget(self.cb_other)
-        l_scan.addStretch()
-        tabs.addTab(tab_scan, "🔍 Сканер")
-        
-        # --- ВКЛАДКА 2: ИНТЕРФЕЙС (ТАБЛИЦА) ---
-        tab_ui = QWidget()
-        l_ui = QVBoxLayout(tab_ui)
-        
-        lbl_ui = QLabel("Выберите столбцы для отображения в ГЛАВНОЙ ТАБЛИЦЕ:")
-        lbl_ui.setStyleSheet("font-weight: bold; margin-bottom: 5px;")
-        l_ui.addWidget(lbl_ui)
-        
-        all_cols = ["IP", "Model", "Algo", "Status", "Error", "Uptime", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker"]
-        ui_cols_checked = self.settings.get("ui_cols", self.all_cols)
-        
-        self.list_ui_cols = QListWidget()
-        for c in self.all_cols:
-            item = QListWidgetItem(c)
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Checked if c in ui_cols_checked else Qt.CheckState.Unchecked)
-            self.list_ui_cols.addItem(item)
-        l_ui.addWidget(self.list_ui_cols)
-        
-        tabs.addTab(tab_ui, "🖥 Интерфейс")
-        
-        # --- ВКЛАДКА 3: PDF ОТЧЕТЫ ---
-        tab_pdf = QWidget()
-        l_pdf = QVBoxLayout(tab_pdf)
-        
-        box_dir = QHBoxLayout()
-        box_dir.addWidget(QLabel("Папка отчетов:"))
-        self.le_dir = QLineEdit(self.settings.get("export_dir", ""))
-        self.le_dir.setPlaceholderText("По умолчанию (папка программы/export_pdf)")
-        self.le_dir.setReadOnly(True)
-        btn_browse = QPushButton("Обзор...")
-        btn_browse.clicked.connect(self.browse_dir)
-        box_dir.addWidget(self.le_dir)
-        box_dir.addWidget(btn_browse)
-        l_pdf.addLayout(box_dir)
-        
-        self.cb_copy_pdf = QCheckBox("Копировать файл PDF в буфер обмена")
-        self.cb_copy_pdf.setChecked(self.settings.get("copy_pdf", False))
-        l_pdf.addWidget(self.cb_copy_pdf)
-        
-        box_sort = QHBoxLayout()
-        box_sort.addWidget(QLabel("Сортировать PDF по:"))
-        self.cmb_pdf_sort = QComboBox()
-        self.cmb_pdf_sort.addItems(["IP", "Model", "Uptime", "Real HR", "Temp", "Status"])
-        self.cmb_pdf_sort.setCurrentText(self.settings.get("pdf_sort", "IP"))
-        box_sort.addWidget(self.cmb_pdf_sort)
-        box_sort.addStretch()
-        l_pdf.addLayout(box_sort)
-        
-        lbl_pdf_cols = QLabel("Столбцы для экспорта в PDF:")
-        lbl_pdf_cols.setStyleSheet("font-weight: bold; margin-top: 5px;")
-        l_pdf.addWidget(lbl_pdf_cols)
-        
-        pdf_cols_checked = self.settings.get("pdf_cols", self.all_cols)
-        self.list_pdf_cols = QListWidget()
-        for c in self.all_cols:
-            item = QListWidgetItem(c)
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Checked if c in pdf_cols_checked else Qt.CheckState.Unchecked)
-            self.list_pdf_cols.addItem(item)
-        l_pdf.addWidget(self.list_pdf_cols)
-        
-        tabs.addTab(tab_pdf, "📑 PDF Отчеты")
-        
-        # --- ВКЛАДКА 4: CSV/EXCEL ОТЧЕТЫ ---
-        tab_csv = QWidget()
-        l_csv = QVBoxLayout(tab_csv)
-        
-        box_dir_csv = QHBoxLayout()
-        box_dir_csv.addWidget(QLabel("Папка отчетов (CSV/Excel):"))
-        self.le_csv_dir = QLineEdit(self.settings.get("export_csv_dir", ""))
-        self.le_csv_dir.setPlaceholderText("По умолчанию (папка программы/export_csv)")
-        self.le_csv_dir.setReadOnly(True)
-        btn_browse_csv = QPushButton("Обзор...")
-        btn_browse_csv.clicked.connect(self.browse_csv_dir)
-        box_dir_csv.addWidget(self.le_csv_dir)
-        box_dir_csv.addWidget(btn_browse_csv)
-        l_csv.addLayout(box_dir_csv)
-        
-        self.cb_copy_csv = QCheckBox("Копировать файл CSV/Excel в буфер обмена")
-        self.cb_copy_csv.setChecked(self.settings.get("copy_csv", False))
-        l_csv.addWidget(self.cb_copy_csv)
-
-        box_sort_csv = QHBoxLayout()
-        box_sort_csv.addWidget(QLabel("Сортировать CSV/Excel по:"))
-        self.cmb_csv_sort = QComboBox()
-        self.cmb_csv_sort.addItems(["IP", "Model", "Uptime", "Real HR", "Temp", "Status"])
-        self.cmb_csv_sort.setCurrentText(self.settings.get("csv_sort", "IP"))
-        box_sort_csv.addWidget(self.cmb_csv_sort)
-        box_sort_csv.addStretch()
-        l_csv.addLayout(box_sort_csv)
-        
-        lbl_csv_cols = QLabel("Столбцы для экспорта в CSV/Excel:")
-        lbl_csv_cols.setStyleSheet("font-weight: bold; margin-top: 5px;")
-        l_csv.addWidget(lbl_csv_cols)
-        
-        csv_cols_checked = self.settings.get("csv_cols", self.all_cols)
-        self.list_csv_cols = QListWidget()
-        for c in self.all_cols:
-            item = QListWidgetItem(c)
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Checked if c in csv_cols_checked else Qt.CheckState.Unchecked)
-            self.list_csv_cols.addItem(item)
-        l_csv.addWidget(self.list_csv_cols)
-        
-        tabs.addTab(tab_csv, "📊 CSV/Excel Отчеты")
-        layout.addWidget(tabs)
-        
-        # Кнопки Сохранить / Отмена
-        btn_box = QHBoxLayout()
-        btn_save = QPushButton("Сохранить")
-        btn_save.setStyleSheet("background-color: #0069D9; color: white; font-weight: bold;")
-        btn_save.clicked.connect(self.save_and_close)
-        
-        btn_cancel = QPushButton("Отмена")
-        btn_cancel.clicked.connect(self.reject)
-        
-        btn_box.addStretch()
-        btn_box.addWidget(btn_cancel)
-        btn_box.addWidget(btn_save)
-        layout.addLayout(btn_box)
-        
-    def browse_dir(self):
-        folder = QFileDialog.getExistingDirectory(self, "Выберите папку для сохранения отчетов")
-        if folder:
-            self.le_dir.setText(folder)
-        
-    def browse_csv_dir(self):
-        folder = QFileDialog.getExistingDirectory(self, "Выберите папку для сохранения CSV/Excel отчетов")
-        if folder:
-            self.le_csv_dir.setText(folder)
-        
-    def save_and_close(self):
-        self.settings["scan_bitmain"] = self.cb_bitmain.isChecked()
-        self.settings["scan_whatsminer"] = self.cb_whatsminer.isChecked()
-        self.settings["scan_elphapex"] = self.cb_elphapex.isChecked()
-        self.settings["scan_other"] = self.cb_other.isChecked()
-        self.settings["export_dir"] = self.le_dir.text()
-        self.settings["copy_pdf"] = self.cb_copy_pdf.isChecked()
-        self.settings["pdf_sort"] = self.cmb_pdf_sort.currentText()
-        
-        ui_cols = []
-        for i in range(self.list_ui_cols.count()):
-            item = self.list_ui_cols.item(i)
-            if item.checkState() == Qt.CheckState.Checked: ui_cols.append(item.text())
-        self.settings["ui_cols"] = ui_cols
-        
-        pdf_cols = []
-        for i in range(self.list_pdf_cols.count()):
-            item = self.list_pdf_cols.item(i)
-            if item.checkState() == Qt.CheckState.Checked: pdf_cols.append(item.text())
-        self.settings["pdf_cols"] = pdf_cols
-
-        self.settings["export_csv_dir"] = self.le_csv_dir.text()
-        self.settings["copy_csv"] = self.cb_copy_csv.isChecked()
-        self.settings["csv_sort"] = self.cmb_csv_sort.currentText()
-
-        csv_cols = []
-        for i in range(self.list_csv_cols.count()):
-            item = self.list_csv_cols.item(i)
-            if item.checkState() == Qt.CheckState.Checked: csv_cols.append(item.text())
-        self.settings["csv_cols"] = csv_cols
-        
-        self.accept()
-# ==========================================
-# ГЛАВНОЕ ОКНО
-# ==========================================
 class GeminiApp(QMainWindow):
-    def __init__(self):
+    def __init__(self, *, settings=None, ranges=None):
         super().__init__()
         self.setWindowTitle(f"{APP_TITLE} v{VER}")
-        self.resize(1350, 850)
+        self.resize(1440, 900)
+        self.setMinimumSize(1060, 680)
+        self.setWindowIcon(QIcon(str(Path(current_dir) / "app.ico")))
         
         self.scan_data = [] 
-        self.ranges_config = self.load_config()
-        self.app_settings = load_app_settings()
-        self.dark_mode = is_system_dark_mode()  
+        self.ranges_config = self.load_config() if ranges is None else ranges
+        self.app_settings = load_app_settings() if settings is None else normalize(settings)
+        self.dark_mode = self.app_settings["theme"] == "dark" or (self.app_settings["theme"] == "system" and is_system_dark_mode())
         
         # --- ИНИЦИАЛИЗАЦИЯ ОКНА ЛОГОВ ---
         self.log_dialog = LogDialog(self) 
         
+        self.stats_timer = QTimer(self)
+        self.stats_timer.setSingleShot(True)
+        self.stats_timer.setInterval(150)
+        self.stats_timer.timeout.connect(self.update_stats)
         self.init_ui()
         self.apply_theme()
 
@@ -656,42 +445,39 @@ class GeminiApp(QMainWindow):
         # === SIDEBAR ===
         sidebar = QWidget()
         sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(300)
+        sidebar.setFixedWidth(260)
         side_layout = QVBoxLayout(sidebar)
         side_layout.setContentsMargins(15, 20, 15, 20)
         side_layout.setSpacing(10)
 
-        lbl_logo = QLabel("GEMINI TOOLS")
+        lbl_logo = QLabel("ASIC Monitor")
         lbl_logo.setObjectName("Logo")
-        lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_logo.setAlignment(Qt.AlignmentFlag.AlignLeft)
         side_layout.addWidget(lbl_logo)
+        subtitle = QLabel(f"Локальный мониторинг  /  {CURRENT_VERSION}")
+        subtitle.setObjectName("Muted")
+        side_layout.addWidget(subtitle)
 
-        self.btn_theme = QPushButton("☀ / ☾ Switch Theme")
+        self.btn_theme = QPushButton("Сменить тему")
         self.btn_theme.setObjectName("BtnTheme")
         self.btn_theme.clicked.connect(self.toggle_theme)
         side_layout.addWidget(self.btn_theme)
         
         side_layout.addSpacing(10)
 
-        # === КНОПКА ОБНОВЛЕНИЯ ===
-        self.btn_update = QPushButton("🔄 Проверить обновления")
-        self.btn_update.setObjectName("BtnUpdate")
-        self.btn_update.clicked.connect(lambda: self.check_for_updates(auto=False))
-        side_layout.addWidget(self.btn_update)
-        # ==========================
-
-        # === КНОПКА ИСТОРИИ ИЗМЕНЕНИЙ ===
-        self.btn_changelog = QPushButton("📜 История изменений")
-        self.btn_changelog.setObjectName("BtnChangelog")
-        self.btn_changelog.clicked.connect(self.show_changelog)
-        side_layout.addWidget(self.btn_changelog)
-        # ==========================
+        settings_button = QPushButton("Настройки программы")
+        settings_button.clicked.connect(self.open_settings_dialog)
+        side_layout.addWidget(settings_button)
+        access_button = QPushButton("Доступ к ASIC")
+        access_button.clicked.connect(self.configure_device_access)
+        side_layout.addWidget(access_button)
+        side_layout.addSpacing(12)
 
         header_layout = QHBoxLayout()
-        lbl_ranges = QLabel("IP RANGES")
+        lbl_ranges = QLabel("ДИАПАЗОНЫ СЕТИ")
         lbl_ranges.setObjectName("SectionHeader")
         
-        self.chk_all = QCheckBox("All")
+        self.chk_all = QCheckBox("Все")
         self.chk_all.setObjectName("ChkAll")
         self.chk_all.stateChanged.connect(self.toggle_all_ranges)
         
@@ -707,17 +493,24 @@ class GeminiApp(QMainWindow):
         # === ДВОЙНОЙ КЛИК ДЛЯ РЕДАКТИРОВАНИЯ ===
         self.list_ranges.itemDoubleClicked.connect(self.edit_subnet)
         
-        side_layout.addWidget(self.list_ranges)
+        side_layout.addWidget(self.list_ranges, 1)
+        range_hint = QLabel("Без выбора будут опрошены все диапазоны.")
+        range_hint.setObjectName("Muted")
+        range_hint.setWordWrap(True)
+        side_layout.addWidget(range_hint)
 
         btn_layout = QHBoxLayout()
-        btn_add = QPushButton("+ Add")
+        btn_add = QPushButton("Добавить")
+        btn_add.setObjectName("RangeAction")
         btn_add.clicked.connect(self.add_range_dialog)
         
         # === КНОПКА ИЗМЕНИТЬ ===
-        self.btn_edit_subnet = QPushButton("⚙️ Edit")
+        self.btn_edit_subnet = QPushButton("Изменить")
+        self.btn_edit_subnet.setObjectName("RangeAction")
         self.btn_edit_subnet.clicked.connect(lambda: self.edit_subnet())
         
-        btn_del = QPushButton("- Del")
+        btn_del = QPushButton("Удалить")
+        btn_del.setObjectName("RangeAction")
         btn_del.clicked.connect(self.delete_range)
         
         btn_layout.addWidget(btn_add)
@@ -727,20 +520,20 @@ class GeminiApp(QMainWindow):
 
         side_layout.addSpacing(15)
 
-        self.btn_scan = QPushButton("START SCAN")
+        self.btn_scan = QPushButton("Начать сканирование")
         self.btn_scan.setObjectName("BtnScan")
         self.btn_scan.clicked.connect(self.start_scan)
         side_layout.addWidget(self.btn_scan)
 
-        self.btn_stop = QPushButton("STOP")
+        self.btn_stop = QPushButton("Остановить")
         self.btn_stop.setObjectName("BtnStop")
         self.btn_stop.setEnabled(False)
         self.btn_stop.clicked.connect(self.stop_scan)
         side_layout.addWidget(self.btn_stop)
 
-        side_layout.addStretch()
+        side_layout.addSpacing(12)
 
-        lbl_exp = QLabel("EXPORT DATA")
+        lbl_exp = QLabel("ЭКСПОРТ РЕЗУЛЬТАТОВ")
         lbl_exp.setObjectName("SectionHeader")
         side_layout.addWidget(lbl_exp)
 
@@ -748,11 +541,11 @@ class GeminiApp(QMainWindow):
         btn_csv.clicked.connect(self.export_csv)
         side_layout.addWidget(btn_csv)
 
-        btn_pdf = QPushButton("PDF Report (Pro)")
+        btn_pdf = QPushButton("Отчёт PDF")
         btn_pdf.clicked.connect(self.export_pdf_pro)
         side_layout.addWidget(btn_pdf)
 
-        btn_screenshot = QPushButton("📸 Скриншот Таблицы")
+        btn_screenshot = QPushButton("Снимок таблицы")
         btn_screenshot.clicked.connect(self.take_screenshot)
         side_layout.addWidget(btn_screenshot)
 
@@ -765,7 +558,22 @@ class GeminiApp(QMainWindow):
         content_layout.setContentsMargins(20, 20, 20, 20)
         content_layout.setSpacing(15)
 
-        # 1. DASHBOARD (3 секции: Статусы, Производители, Хешрейт)
+        heading = QHBoxLayout()
+        title_box = QVBoxLayout()
+        title = QLabel("Обзор оборудования")
+        title.setObjectName("PageTitle")
+        caption = QLabel("Устройства, состояние и хешрейт вашей локальной сети")
+        caption.setObjectName("Muted")
+        title_box.addWidget(title)
+        title_box.addWidget(caption)
+        heading.addLayout(title_box)
+        heading.addStretch()
+        self.scan_state = QLabel("Готов к сканированию")
+        self.scan_state.setObjectName("Muted")
+        heading.addWidget(self.scan_state)
+        content_layout.addLayout(heading)
+
+        # Summary cards
         self.dash_layout = QHBoxLayout()
         self.dash_layout.setSpacing(15)
 
@@ -798,7 +606,7 @@ class GeminiApp(QMainWindow):
         self.dash_scroll = QScrollArea()
         self.dash_scroll.setWidgetResizable(True)
         self.dash_scroll.setWidget(self.dash_widget)
-        self.dash_scroll.setMaximumHeight(180) # Жёстко фиксируем максимальную высоту шапки
+        self.dash_scroll.setFixedHeight(156)
         self.dash_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.dash_scroll.setStyleSheet("QScrollArea { background-color: transparent; }")
         
@@ -815,22 +623,24 @@ class GeminiApp(QMainWindow):
         self.btn_select_all.setCheckable(True)
         self.btn_select_all.clicked.connect(self.toggle_select_all)
         
-        btn_remote = QPushButton("🛠 Управление (Ctrl)")
+        btn_remote = QPushButton("Управление")
+        self.btn_remote = btn_remote
+        btn_remote.setEnabled(False)
         btn_remote.setFixedWidth(160)
-        btn_remote.setStyleSheet("background-color: #555; color: white; font-weight: bold; border-radius: 4px; padding: 6px;")
+
         
         # Вместо открытия CommandDialog, вешаем сразу выпадающее меню!
         ctrl_menu = QMenu(self)
-        ctrl_menu.addAction("💡 LED On (Поиск)", lambda: self.run_action("led_on"))
-        ctrl_menu.addAction("🌑 LED Off (Авто)", lambda: self.run_action("led_off"))
-        ctrl_menu.addAction("🔄 Restart", lambda: self.run_action("reboot"))
-        ctrl_menu.addAction("💤 Sleep (Сон)", lambda: self.run_action("sleep"))
-        ctrl_menu.addAction("▶️ Normal (Работа)", lambda: self.run_action("normal"))
+        ctrl_menu.addAction("Включить подсветку", lambda: self.run_action("led_on"))
+        ctrl_menu.addAction("Выключить подсветку", lambda: self.run_action("led_off"))
+        ctrl_menu.addAction("Перезагрузить", lambda: self.run_action("reboot"))
+        ctrl_menu.addAction("Остановить майнинг", lambda: self.run_action("sleep"))
+        ctrl_menu.addAction("Возобновить майнинг", lambda: self.run_action("normal"))
         btn_remote.setMenu(ctrl_menu)
         
         # === НОВЫЙ СЧЕТЧИК ВЫДЕЛЕННЫХ УСТРОЙСТВ ===
         self.lbl_selected_count = QLabel("Выделено: 0")
-        self.lbl_selected_count.setStyleSheet("font-weight: bold; font-size: 14px; margin-left: 15px; color: gray;")
+        self.lbl_selected_count.setObjectName("SelectionCount")
         
         ctrl_layout.addWidget(self.btn_select_all)
         ctrl_layout.addWidget(btn_remote)
@@ -839,16 +649,33 @@ class GeminiApp(QMainWindow):
         
         content_layout.addLayout(ctrl_layout)
 
-        # 3. Table
+        filters = QHBoxLayout()
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Поиск по IP, модели, прошивке или воркеру…")
+        self.search_input.setClearButtonEnabled(True)
+        self.search_input.textChanged.connect(self.apply_table_filter)
+        self.status_filter = QComboBox()
+        for text, code in (("Все состояния", ""), ("Работает", "Running"), ("Сон", "Sleep"),
+                           ("Ожидание", "WaitWork"), ("Ошибка", "Error"), ("Неизвестно", "Unknown"),
+                           ("Устаревшие данные", "stale")):
+            self.status_filter.addItem(text, code)
+        self.status_filter.currentIndexChanged.connect(self.apply_table_filter)
+        filters.addWidget(self.search_input, 1)
+        filters.addWidget(self.status_filter)
+        content_layout.addLayout(filters)
+
+        # Device table
         cols = ["IP", "Model", "Algo", "Status", "Error", "Uptime", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker"]
         self.table = QTableWidget()
         self.table.setColumnCount(len(cols))
-        self.table.setHorizontalHeaderLabels(cols)
+        self.table.setHorizontalHeaderLabels([COLUMNS[c] for c in cols])
         self.table.setSortingEnabled(True)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)
         self.table.setAlternatingRowColors(True)
+        self.table.setWordWrap(False)
         
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_context_menu)
@@ -862,16 +689,32 @@ class GeminiApp(QMainWindow):
         h = self.table.horizontalHeader()
         h.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         h.setStretchLastSection(True)
-        self.table.setColumnWidth(0, 130)
-        self.table.setColumnWidth(1, 150)
-        self.table.setColumnWidth(3, 90)  # Status (Новая колонка)
-        self.table.setColumnWidth(4, 110) # Error (Сдвинулась)
-        
-        content_layout.addWidget(self.table)
+        for index, width in enumerate((145, 180, 110, 120, 145, 130, 135, 155, 130, 135, 240, 170)):
+            self.table.setColumnWidth(index, width)
+
+        self.table_stack = QStackedWidget()
+        self.table_stack.addWidget(self.table)
+        empty = QFrame()
+        empty.setObjectName("EmptyState")
+        empty_layout = QVBoxLayout(empty)
+        empty_layout.addStretch()
+        self.empty_title = QLabel("Добавьте диапазон сети")
+        self.empty_title.setObjectName("DialogTitle")
+        self.empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_description = QLabel("Укажите IP-адреса устройств и начните сканирование.\nРезультаты появятся здесь по мере обнаружения ASIC.")
+        self.empty_description.setObjectName("Muted")
+        self.empty_description.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_description.setWordWrap(True)
+        empty_layout.addWidget(self.empty_title)
+        empty_layout.addWidget(self.empty_description)
+        empty_layout.addStretch()
+        self.table_stack.addWidget(empty)
+        self.table_stack.setCurrentIndex(1)
+        content_layout.addWidget(self.table_stack, 1)
 
         # 4. Footer
         footer = QHBoxLayout()
-        self.status_bar = QLabel("Ready.")
+        self.status_bar = QLabel("Готов к работе")
         self.progress = QProgressBar()
         self.progress.setTextVisible(False)
         self.progress.setFixedHeight(8)
@@ -879,7 +722,7 @@ class GeminiApp(QMainWindow):
         self.progress.setValue(0)
         
         # Добавляем кнопку логов
-        self.btn_logs = QPushButton("📋 Логи")
+        self.btn_logs = QPushButton("Журнал")
         self.btn_logs.setFixedWidth(80)
         self.btn_logs.clicked.connect(self.log_dialog.show)
         
@@ -891,14 +734,22 @@ class GeminiApp(QMainWindow):
         main_layout.addWidget(content)
 
         # === ДОБАВЛЯЕМ АВТОЗАПУСК ПРОВЕРКИ ОБНОВЛЕНИЙ ===
-        self.check_for_updates(auto=True)
+        if self.app_settings.get("check_updates", False):
+            QTimer.singleShot(0, lambda: self.check_for_updates(auto=True))
         self.apply_ui_settings()
+        self.update_selected_count()
+        if self.ranges_config:
+            self.empty_title.setText("Всё готово к сканированию")
 
     def create_menu_bar(self):
         menubar = self.menuBar()
 
         # Меню Файл
         file_menu = menubar.addMenu("Файл")
+
+        access_act = QAction("🔑 Доступ к ASIC (на текущий сеанс)", self)
+        access_act.triggered.connect(self.configure_device_access)
+        file_menu.addAction(access_act)
 
         export_csv_act = QAction("📄 Экспорт в CSV/Excel", self)
         export_csv_act.triggered.connect(self.export_csv)
@@ -920,18 +771,34 @@ class GeminiApp(QMainWindow):
         settings_act = QAction("⚙️ Настройки программы...", self)
         settings_act.triggered.connect(self.open_settings_dialog)
         tools_menu.addAction(settings_act)
+        settings_act.setShortcut("Ctrl+,")
+        help_menu = menubar.addMenu("Справка")
+        help_menu.addAction("Проверить обновления", lambda: self.check_for_updates(auto=False))
+        help_menu.addAction("Что нового в 2.0.0", self.show_changelog)
+        search = QAction("Поиск устройств", self)
+        search.setShortcut("Ctrl+F")
+        search.triggered.connect(lambda: self.search_input.setFocus())
+        self.addAction(search)
 
     def open_settings_dialog(self):
         dlg = SettingsDialog(self.app_settings, self)
         if dlg.exec(): # Если нажали Сохранить
+            try:
+                save_app_settings(dlg.settings)
+            except OSError as exc:
+                QMessageBox.warning(self, "Настройки", f"Не удалось сохранить настройки:\n{exc}")
+                return
             self.app_settings = dlg.settings
-            save_app_settings(self.app_settings) 
+            self.dark_mode = self.app_settings["theme"] == "dark" or (self.app_settings["theme"] == "system" and is_system_dark_mode())
+            self.apply_theme()
+
             self.apply_ui_settings() # <--- ТЕПЕРЬ ОНО ПРИМЕНИТЬСЯ МГНОВЕННО
 
     def apply_ui_settings(self):
         """Жестко скрывает/показывает столбцы таблицы"""
         all_cols = ["IP", "Model", "Algo", "Status", "Error", "Uptime", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker"]
         ui_cols = self.app_settings.get("ui_cols", all_cols)
+        self.table.verticalHeader().setDefaultSectionSize(32 if self.app_settings.get("density") == "compact" else 42)
         
         for i, col in enumerate(all_cols):
             if col in ui_cols:
@@ -962,139 +829,44 @@ class GeminiApp(QMainWindow):
     # ЛОГИКА АВТООБНОВЛЕНИЯ
     # ==========================================
     def check_for_updates(self, auto=False):
-        """Проверяет наличие новой версии на GitHub"""
-        try:
-            response = requests.get(UPDATE_INFO_URL, timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                latest_version = data.get("version")
-                download_url = data.get("url")
-                changelog = data.get("changelog", "Обновление системы.")
-                
-                # Если версия в интернете больше нашей
-                if latest_version > CURRENT_VERSION:
-                    reply = QMessageBox.question(
-                        self, 
-                        'Доступно обновление!', 
-                        f'Найдена новая версия: {latest_version} (У вас {CURRENT_VERSION})\n\nЧто нового:\n{changelog}\n\nОбновить сейчас?',
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                    )
-                    if reply == QMessageBox.StandardButton.Yes:
-                        self.apply_update(download_url)
-                else:
-                    if not auto: # Если нажали кнопку вручную, скажем что всё ок
-                        QMessageBox.information(self, "Обновление", "У вас установлена самая актуальная версия!")
-        except Exception as e:
+        if getattr(self, "update_worker", None) and self.update_worker.isRunning():
+            return
+        self.status_bar.setText("Проверяем обновления…")
+        self.update_worker = UpdateCheckWorker(UPDATE_INFO_URL, self)
+        self.update_worker.result.connect(lambda data, error: self.on_update_checked(data, error, auto))
+        self.update_worker.start()
+
+    def on_update_checked(self, data, error, auto):
+        if error:
+            self.add_log("Не удалось проверить обновления: " + error)
+            self.status_bar.setText("Сервер обновлений недоступен")
             if not auto:
-                QMessageBox.warning(self, "Ошибка", f"Не удалось проверить обновления:\n{e}")
+                QMessageBox.warning(self, "Обновление", "Не удалось проверить обновления. Проверьте подключение к интернету.")
+            return
+        latest_version = data["version"]
+        if version_tuple(latest_version) > version_tuple(CURRENT_VERSION):
+            self.status_bar.setText(f"Доступна версия {latest_version}")
+            reply = QMessageBox.question(self, "Доступно обновление",
+                f"Новая версия: {latest_version}. Установлена: {CURRENT_VERSION}.\n\n{data.get('changelog', '')}\n\nОткрыть скачивание в браузере?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if reply == QMessageBox.StandardButton.Yes:
+                self.apply_update(data["url"])
+        else:
+            self.status_bar.setText(f"Установлена актуальная версия {CURRENT_VERSION}")
+            if not auto:
+                QMessageBox.information(self, "Обновление", f"Установлена актуальная версия {CURRENT_VERSION}.")
 
     def apply_update(self, download_url):
-        """Скачивает новый EXE и выполняет подмену через BAT"""
-        if not getattr(sys, 'frozen', False):
-            QMessageBox.warning(self, "Внимание", "Автообновление работает только в скомпилированном .exe файле!")
-            return
-            
-        current_exe = sys.executable
-        exe_dir = os.path.dirname(current_exe)
-        exe_name = os.path.basename(current_exe)
-        new_exe = current_exe + ".new"
-        
-        # Прячем батник в TEMP от OneDrive
-        temp_dir = os.environ.get("TEMP", exe_dir)
-        bat_file = os.path.join(temp_dir, f"updater_{int(time.time())}.bat")
-        
-        try:
-            msg = QMessageBox(self)
-            msg.setWindowTitle("Обновление")
-            msg.setText("Скачиваю обновление... Пожалуйста, подождите.")
-            msg.setStandardButtons(QMessageBox.StandardButton.NoButton)
-            msg.show()
-            QApplication.processEvents()
-            
-            with requests.get(download_url, stream=True) as r:
-                r.raise_for_status()
-                with open(new_exe, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=8192): 
-                        f.write(chunk)
-            msg.close()
-        except Exception as e:
-            msg.close()
-            QMessageBox.warning(self, "Ошибка скачивания", str(e))
-            return
-
-        # Простой батник без костылей очистки
-        bat_content = f"""@echo off
-chcp 65001 > NUL
-title Установка обновления...
-echo Пожалуйста, подождите пару секунд...
-echo Идет обновление программы {exe_name}
-cd /d "{exe_dir}"
-:loop
-timeout /t 1 /nobreak > NUL
-del "{exe_name}" > NUL 2>&1
-if exist "{exe_name}" goto loop
-ren "{exe_name}.new" "{exe_name}"
-start "" "{exe_name}"
-del "%~f0"
-"""
-        with open(bat_file, 'w', encoding='utf-8') as f:
-            f.write(bat_content)
-            
-        # === ТОТАЛЬНАЯ ЗАЧИСТКА В PYTHON ===
-        clean_env = os.environ.copy()
-        # Удаляем любые следы PyInstaller из памяти
-        keys_to_remove = [k for k in clean_env.keys() if 'MEI' in k.upper() or 'PYI' in k.upper()]
-        for k in keys_to_remove:
-            clean_env.pop(k, None)
-            
-        # Запускаем батник в НОВОМ видимом окне (0x00000010 = CREATE_NEW_CONSOLE)
-        subprocess.Popen(f'"{bat_file}"', shell=True, env=clean_env, creationflags=0x00000010)
-        
-        # Жесткое отключение программы, чтобы освободить файл .exe
-        os._exit(0)
+        webbrowser.open(download_url)
 
     def show_changelog(self):
-        """Отображает окно со списком изменений"""
-        changelog_text = f"""
-        <h3>ASIC_Monitor v{CURRENT_VERSION}</h3>
-        
-        <b>Версия 1.8.0</b>
-        <ul>
-            <li><b>Интерфейс:</b> Добавлена двусторонняя синхронизация чекбоксов — при выделении строк мышью (в том числе через Shift/Ctrl) галочки проставляются автоматически.</li>
-            <li><b>Интерфейс:</b> В панель управления добавлен динамический счетчик выбранных устройств, меняющий цвет.</li>
-            <li><b>Экспорт:</b> Устранена системная ошибка (KeyError), препятствовавшая сохранению отчетов в форматах CSV и Excel.</li>
-        </ul>
-        <br>
-        
-        <b>Версия 1.7.0</b>
-        <ul>
-            <li><b>Avalon:</b> Интегрировано полноценное управление асиками Canaan Avalon (Сон, Пробуждение, LED, Перезагрузка) через прямое TCP-подключение (порт 4028).</li>
-            <li><b>Сканер:</b> Улучшен парсинг моделей AvalonMiner — теперь точно отображается серия и модификация (например, 1346-110).</li>
-            <li><b>Маршрутизация:</b> Устранена ошибка, из-за которой устройства Avalon ошибочно обрабатывались парсером Antminer.</li>
-        </ul>
-        <br>
+        manifest = load_json(Path(current_dir) / "version.json", default={})
+        message = QMessageBox(self)
+        message.setWindowTitle(f"Что нового · {CURRENT_VERSION}")
+        message.setTextFormat(Qt.TextFormat.PlainText)
+        message.setText(manifest.get("changelog", "ASIC Monitor 2.0.0"))
+        message.exec()
 
-        <b>Версия 1.6.1</b>
-        <ul>
-            <li><b>PitBit:</b> Устранено ложное отображение статуса 'Error (NO HASH)' при ручном переводе майнера в спящий режим.</li>
-            <li><b>Сканер:</b> Внедрен 100% надежный опрос статуса сна через чтение системного веб-конфига устройств Bitmain.</li>
-        </ul>
-        <br>
-        
-        <b>Версия 1.5.0 (Major Update)</b>
-        <ul>
-            <li><b>Управление:</b> Добавлена панель массового управления асиками (LED Blink, Sleep, Wake, Reboot) через систему чекбоксов.</li>
-            <li><b>Оптимизация:</b> Колоссальное ускорение сканирования Jasminer (с 35 до 4 секунд).</li>
-            <li><b>Whatsminer:</b> Внедрено управление режимом сна (API v3) и точная детекция статуса 'Sleep'.</li>
-        </ul>
-        """
-        
-        msg = QMessageBox(self)
-        msg.setWindowTitle("История изменений")
-        msg.setTextFormat(Qt.TextFormat.RichText) 
-        msg.setText(changelog_text)
-        msg.exec()
-        
     # --- MENU & ACTIONS LOGIC ---
     def open_remote_panel(self):
         # Получаем выбранные строки
@@ -1108,23 +880,21 @@ del "%~f0"
         if dlg.exec(): # Если нажали EXECUTE
             action = dlg.selected_action
             if action:
-                self.run_action(action, rows, confirm_needed=True)
+                self.run_action(action, confirm_needed=True)
 
     def toggle_select_all(self):
         """Галочка Выделить все / Снять выделение"""
         is_checked = self.btn_select_all.isChecked()
-        state = Qt.CheckState.Checked if is_checked else Qt.CheckState.Unchecked
-        self.btn_select_all.setText("☐ Снять выделение" if is_checked else "☑ Выделить всё")
-        
-        self.table.blockSignals(True) # Отключаем сигналы, чтобы не зациклить
-        if is_checked:
-            self.table.selectAll() # Выделяем все строки визуально
-        else:
-            self.table.clearSelection() # Снимаем визуальное выделение
-            
+        self.table.blockSignals(True)
+        self.table.clearSelection()
         for row in range(self.table.rowCount()):
             item = self.table.item(row, 0)
-            if item: item.setCheckState(state)
+            selected = is_checked and not self.table.isRowHidden(row)
+            if item:
+                item.setCheckState(Qt.CheckState.Checked if selected else Qt.CheckState.Unchecked)
+            if selected:
+                self.table.selectionModel().select(self.table.model().index(row, 0),
+                    QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
         self.table.blockSignals(False)
         self.update_selected_count()
 
@@ -1135,7 +905,7 @@ del "%~f0"
             item = self.table.item(row, 0)
             if item:
                 # Если ячейка выделена синим - ставим галочку, иначе снимаем
-                if item.isSelected():
+                if item.isSelected() and not self.table.isRowHidden(row):
                     item.setCheckState(Qt.CheckState.Checked)
                 else:
                     item.setCheckState(Qt.CheckState.Unchecked)
@@ -1162,24 +932,30 @@ del "%~f0"
         
         self.lbl_selected_count.setText(f"Выделено: {count}")
         
-        if count > 0:
-            color = "#00E676" if getattr(self, 'dark_mode', False) else "#0069D9"
-            self.lbl_selected_count.setStyleSheet(f"font-weight: bold; font-size: 14px; margin-left: 15px; color: {color};")
-        else:
-            self.lbl_selected_count.setStyleSheet("font-weight: bold; font-size: 14px; margin-left: 15px; color: gray;")
+        visible = sum(not self.table.isRowHidden(row) for row in range(self.table.rowCount()))
+        self.btn_remote.setEnabled(count > 0)
+        self.btn_select_all.setEnabled(visible > 0)
+        all_selected = count > 0 and count == visible
+        self.btn_select_all.setChecked(all_selected)
+        self.btn_select_all.setText("Снять выделение" if all_selected else "Выделить всё")
 
     def show_context_menu(self, pos):
         # Контекстное меню (ПКМ) в таблице
         menu = QMenu()
-        menu.addAction("💡 LED: Blink", lambda: self.run_action("led_on"))
-        menu.addAction("🌑 LED: Auto", lambda: self.run_action("led_off"))
-        menu.addAction("🔄 Reboot Device", lambda: self.run_action("reboot"))
-        menu.addAction("💤 Sleep", lambda: self.run_action("sleep"))
-        menu.addAction("▶️ Normal", lambda: self.run_action("normal"))
+        menu.addAction("🔑 Настроить доступ к выбранным ASIC", self.configure_device_access)
+        menu.addAction("Включить подсветку", lambda: self.run_action("led_on"))
+        menu.addAction("Выключить подсветку", lambda: self.run_action("led_off"))
+        menu.addAction("💡 Переключить индикацию (Avalon)", lambda: self.run_action("identify_toggle"))
+        menu.addAction("Перезагрузить", lambda: self.run_action("reboot"))
+        menu.addAction("Остановить майнинг", lambda: self.run_action("sleep"))
+        menu.addAction("Возобновить майнинг", lambda: self.run_action("normal"))
+        for action, label in (("low", "Режим Low"), ("normal_power", "Обычный режим мощности"), ("hem", "Режим HEM")):
+            item = menu.addAction(label, lambda checked=False, action=action: self.run_action(action))
+            selected = [self.table.item(r, 0).data(Qt.ItemDataRole.UserRole + 1) for r in range(self.table.rowCount()) if self.table.item(r, 0).checkState() == Qt.CheckState.Checked]
+            item.setEnabled(any(row and row.get("Capabilities", {}).get(action) == "supported" for row in selected))
         menu.exec(self.table.viewport().mapToGlobal(pos))
 
     def run_action(self, action_type, confirm_needed=True):
-        socket.ABORT_SCAN = False 
         
         # Собираем отмеченные галочками строки!
         rows = []
@@ -1192,63 +968,102 @@ del "%~f0"
             QMessageBox.warning(self, "Внимание", "Сначала отметьте галочками устройства в таблице!")
             return
 
-        nice_names = {"reboot": "REBOOT", "led_on": "FLASH LED", "led_off": "NORMAL LED", "sleep": "SLEEP MODE", "normal": "NORMAL RUNNING"}
+        nice_names = {"reboot": "Перезагрузить", "led_on": "Подсветить", "led_off": "Отключить подсветку", "sleep": "Остановить майнинг", "normal": "Возобновить майнинг", "identify_toggle": "Переключить индикацию", "low": "Режим Low", "normal_power": "Обычный режим мощности", "hem": "Режим HEM"}
+
+        targets = [self.table.item(r, 0).data(Qt.ItemDataRole.UserRole + 1) for r in rows]
+        targets = [row for row in targets if row]
+        if not targets:
+            return
+
+        consequences = ""
+        if action_type == "normal" and any(row.get("ProfileId") == "canaan.avalon" for row in targets):
+            consequences = "\nДля Avalon возобновление выполняется через перезагрузку."
         
         if confirm_needed:
             confirm = QMessageBox.question(
                 self, "Подтверждение", 
-                f"Выполнить '{nice_names.get(action_type, action_type)}' для {len(rows)} устройств?", 
+                f"Выполнить '{nice_names.get(action_type, action_type)}' для {len(rows)} устройств?{consequences}",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
             if confirm != QMessageBox.StandardButton.Yes: return
 
         self.add_log(f"🛠 Отправка команды '{action_type}' на {len(rows)} устройств...") 
         
-        for r in rows:
-            ip = self.table.item(r, 0).text()
-            model = self.table.item(r, 1).text() # Достаем модель из таблицы
-            make = "Antminer" if "Antminer" in model else self.table.item(r, 1).text() # Упрощенная логика Make
-            
-            # Извлекаем более точный Make, если он был спрятан или не отображен
-            # Так как в таблице у нас есть столбец Model (например, "Antminer S21+")
-            # То make можно брать из него
-            if "whatsminer" in model.lower() or "microbt" in model.lower(): make = "Whatsminer"
-            elif "elphapex" in model.lower() or "dg" in model.lower(): make = "Elphapex"
-            elif "jasminer" in model.lower(): make = "Jasminer"
-            elif "avalon" in model.lower(): make = "Avalon"
-            elif "ipollo" in model.lower(): make = "iPollo"
-            else: make = "Bitmain"
-            
-            worker = ActionWorker(ip, make, action_type, model)
-            worker.log_signal.connect(self.handle_worker_log) 
-            worker.finished.connect(worker.deleteLater)
-            worker.start()
-            if not hasattr(self, 'workers'): self.workers = []
-            self.workers.append(worker)
+        worker = ActionWorker(targets, action_type, getattr(self, "experimental_device_ids", set()))
+        worker.log_signal.connect(self.handle_worker_log)
+        if not hasattr(self, 'workers'):
+            self.workers = []
+        self.workers.append(worker)
+        def release_worker():
+            if worker in self.workers:
+                self.workers.remove(worker)
+            worker.deleteLater()
+        worker.finished.connect(release_worker)
+        worker.start()
+
+    def configure_device_access(self):
+        targets = [self.table.item(r, 0).data(Qt.ItemDataRole.UserRole + 1)
+                   for r in range(self.table.rowCount())
+                   if self.table.item(r, 0).checkState() == Qt.CheckState.Checked]
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Доступ к выбранным ASIC — на текущий сеанс" if targets else "Доступ для сканирования — на текущий сеанс")
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Логин"))
+        username = QLineEdit()
+        layout.addWidget(username)
+        layout.addWidget(QLabel("Пароль (не сохраняется на диск)"))
+        password = QLineEdit()
+        password.setEchoMode(QLineEdit.EchoMode.Password)
+        layout.addWidget(password)
+        auth = QComboBox()
+        auth.addItems(["digest", "basic"])
+        layout.addWidget(QLabel("HTTP-авторизация (для RPC используется логин выше)"))
+        layout.addWidget(auth)
+        experimental = QCheckBox("Разрешить перенесённые команды без аппаратного подтверждения совместимости")
+        experimental.setEnabled(bool(targets))
+        experimental.setChecked(all(row and row.get("DeviceId") in getattr(self, "experimental_device_ids", set()) for row in targets))
+        layout.addWidget(experimental)
+        button = QPushButton("Применить к выбранным" if targets else "Использовать при сканировании")
+        button.clicked.connect(dialog.accept)
+        layout.addWidget(button)
+        if dialog.exec():
+            if not username.text().strip():
+                QMessageBox.warning(self, "Доступ", "Укажите логин")
+                return
+            credentials = Credentials(username.text().strip(), password.text(), auth.currentText())
+            if not targets:
+                default_service().set_default_credentials(credentials)
+            if not hasattr(self, "experimental_device_ids"):
+                self.experimental_device_ids = set()
+            for row in targets:
+                if row:
+                    default_service().set_credentials(row["IP"], credentials)
+                    if experimental.isChecked():
+                        self.experimental_device_ids.add(row.get("DeviceId"))
+                    else:
+                        self.experimental_device_ids.discard(row.get("DeviceId"))
+            self.add_log(f"Доступ настроен для {len(targets)} устройств на текущий сеанс" if targets else "Учётные данные для сканирования заданы на текущий сеанс")
 
     # --- ОСТАЛЬНЫЕ ФУНКЦИИ (Config, Scan, Export) ---
     def load_config(self):
-        if not os.path.exists(CONFIG_FILE): return []
-        try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                d = json.load(f)
-                res = []
-                if isinstance(d, list): 
-                    for item in d:
-                        # Автоматически обновляем старый формат на новый
-                        if "range" in item and "ranges" not in item:
-                            item["ranges"] = [item["range"]]
-                        res.append(item)
-                    return res
-                if isinstance(d, dict): 
-                    return [{"name": k, "ranges": [v]} for k,v in d.items()]
-        except: return []
-        return []
+        data = load_json(CONFIG_FILE, LEGACY_DIR / "ip_ranges.json", [])
+        if isinstance(data, dict):
+            data = [{"name": name, "ranges": ranges if isinstance(ranges, list) else [ranges]}
+                    for name, ranges in data.items()]
+        result = []
+        for item in data if isinstance(data, list) else []:
+            if not isinstance(item, dict):
+                continue
+            ranges = item.get("ranges", [item["range"]] if "range" in item else [])
+            if isinstance(ranges, str):
+                ranges = [ranges]
+            if isinstance(ranges, list) and all(isinstance(r, str) for r in ranges):
+                result.append({"name": str(item.get("name", "Сеть")), "ranges": ranges})
+        return result
 
     def save_config(self):
         try:
-            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump(self.ranges_config, f, ensure_ascii=False, indent=4)
+            write_json(CONFIG_FILE, self.ranges_config)
         except Exception as e: QMessageBox.critical(self, "Error", str(e))
 
     def refresh_ranges_list(self):
@@ -1316,6 +1131,8 @@ del "%~f0"
     # ======================================    
 
     def start_scan(self):
+        if getattr(self, "worker", None) and self.worker.isRunning():
+            return
         sel = self.list_ranges.selectedItems()
         to_scan = []
         scan_names = []
@@ -1335,7 +1152,7 @@ del "%~f0"
             self.last_scan_name = "_".join(scan_names)
 
         if not to_scan: 
-            QMessageBox.warning(self, "No Range", "Please select IP range.")
+            QMessageBox.warning(self, "Диапазоны", "Добавьте диапазон IP-адресов слева.")
             return
 
         # === СОБИРАЕМ ВЫБРАННОЕ ОБОРУДОВАНИЕ ИЗ НАСТРОЕК ===
@@ -1349,18 +1166,30 @@ del "%~f0"
             QMessageBox.warning(self, "Ошибка", "В настройках отключены все типы оборудования!")
             return
 
-        self.table.setRowCount(0)
+        try:
+            expand_ranges(to_scan)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Диапазоны", str(exc))
+            return
         self.table.setSortingEnabled(False)
+        self.table.setRowCount(0)
+        self.btn_select_all.setChecked(False)
+        self.btn_select_all.setText("Выделить всё")
+        self.update_selected_count()
+        self.table_stack.setCurrentIndex(1)
+        self.empty_title.setText("Идёт поиск устройств")
+        self.empty_description.setText("Результаты появятся по мере получения ответов. Сканирование можно остановить.")
+        self.scan_state.setText("Сканирование…")
         # ВАЖНО: Прячем столбцы СРАЗУ ПОСЛЕ очистки таблицы, чтобы они не появились снова!
         self.apply_ui_settings() 
         self.scan_data = []
         self.refresh_dashboard({}, {}, {})
         
-        self.worker = ScanWorker(to_scan, target_filters)
+        self.worker = ScanWorker(to_scan, target_filters, self.app_settings.get("timeout", 2), self.app_settings.get("workers", 64))
         self.worker.progress_signal.connect(self.on_progress)
         self.worker.result_signal.connect(self.on_result)
         self.worker.log_signal.connect(self.handle_worker_log)
-        self.worker.finished_signal.connect(self.on_finished)
+        self.worker.finished.connect(self.on_finished)
         
         self.btn_scan.setEnabled(False)
         self.btn_stop.setEnabled(True)
@@ -1372,17 +1201,25 @@ del "%~f0"
         self.worker.start()
 
     def stop_scan(self):
-        if hasattr(self, 'worker'): self.worker.stop()
+        if hasattr(self, 'worker') and self.worker.isRunning():
+            self.worker.stop()
+            self.btn_stop.setEnabled(False)
+            self.scan_state.setText("Остановка…")
+            self.status_bar.setText("Завершаем текущие запросы. Найденные устройства сохранятся.")
 
     def on_progress(self, curr, total):
-        self.progress.setValue(int((curr/total)*100))
+        self.progress.setValue(int((curr / total) * 100) if total else 0)
+        self.status_bar.setText(f"Проверено адресов: {curr} из {total} · Найдено: {len(self.scan_data)}")
 
     def on_result(self, res_list):
+        sorting = self.table.isSortingEnabled()
+        self.table.setSortingEnabled(False)
+        self.table.blockSignals(True)
         for row in res_list:
             # === ФИКС ДЛЯ JASMINER, IPOLLO И AVALON ===
             # Принудительно задаем статус в базу, если парсер его не вернул
             if 'Status' not in row:
-                row['Status'] = 'Running'
+                row['Status'] = 'Unknown'
             if 'Error' not in row:
                 row['Error'] = ''
             # =========================================
@@ -1410,6 +1247,8 @@ del "%~f0"
             ip_item.setFlags(ip_item.flags() | Qt.ItemFlag.ItemIsUserCheckable) # <--- ДОБАВИТЬ
             ip_item.setCheckState(Qt.CheckState.Unchecked)                      # <--- ДОБАВИТЬ
             ip_item.setData(Qt.ItemDataRole.UserRole, row.get('SortIP', 0))
+            ip_item.setData(Qt.ItemDataRole.UserRole + 1, row)
+            ip_item.setToolTip(f"Прошивка: {row.get('Firmware', 'Unknown')} {row.get('FirmwareVersion') or ''}\nПрофиль: {row.get('ProfileId', 'Unknown')}\nДанные: {'устарели' if row.get('Stale') else 'актуальны'}")
             self.table.setItem(r, 0, ip_item)
             
             # === 1, 2. Model, Algo ===
@@ -1418,7 +1257,7 @@ del "%~f0"
             
             # === 3. Status ===
             status_str = str(row.get('Status', 'Running'))
-            status_item = QTableWidgetItem(status_str)
+            status_item = QTableWidgetItem({"Running": "Работает", "Sleep": "Сон", "WaitWork": "Ожидание", "Error": "Ошибка", "Unknown": "Неизвестно"}.get(status_str, status_str))
             status_item.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
             if status_str == "Running":
                 status_item.setForeground(QColor("#00E676") if getattr(self, 'dark_mode', False) else QColor("#007e33"))
@@ -1472,8 +1311,11 @@ del "%~f0"
             self.table.setItem(r, 10, QTableWidgetItem(str(row.get('Pool'))))
             self.table.setItem(r, 11, QTableWidgetItem(str(row.get('Worker', '-'))))
 
-        if hasattr(self, 'update_stats'):
-            self.update_stats()
+        self.table.blockSignals(False)
+        self.table.setSortingEnabled(sorting)
+        self.apply_table_filter()
+        if not self.stats_timer.isActive():
+            self.stats_timer.start()
 
     def open_web_interface(self, item):
         """Открывает веб-интерфейс асика в браузере по двойному клику на IP"""
@@ -1484,7 +1326,7 @@ del "%~f0"
         header_item = table.horizontalHeaderItem(item.column())
         
         # Если кликнули именно по колонке "IP"
-        if header_item and header_item.text() == "IP":
+        if item.column() == 0:
             ip_address = item.text().strip()
             # Открываем дефолтный браузер
             webbrowser.open(f"http://{ip_address}")
@@ -1496,7 +1338,17 @@ del "%~f0"
         
         # --- ОСТАНОВКА ТАЙМЕРА ---
         elapsed = time.perf_counter() - getattr(self, 'scan_start_time', time.perf_counter())
-        msg = f"Done. Found {len(self.scan_data)} devices in {elapsed:.3f} seconds."
+        cancelled = getattr(getattr(self, "worker", None), "cancel", Event()).is_set()
+        failed = getattr(getattr(self, "worker", None), "failure", None)
+        state = "Ошибка сканирования" if failed else "Остановлено" if cancelled else "Сканирование завершено"
+        msg = f"{state} · Найдено: {len(self.scan_data)} · Время: {elapsed:.1f} с"
+        self.scan_state.setText(state)
+        if not self.scan_data:
+            self.empty_title.setText("Устройства не найдены" if not failed else "Не удалось завершить сканирование")
+            self.empty_description.setText("Проверьте диапазоны, подключение к локальной сети и доступ к ASIC. Подробности — в журнале.")
+        self.stats_timer.stop()
+        self.update_stats()
+        self.apply_table_filter()
         self.status_bar.setText(msg)
         self.add_log(f"⏱️ {msg}") 
         
@@ -1515,111 +1367,69 @@ del "%~f0"
         self.apply_ui_settings()
 
     def update_stats(self):
-        if not self.scan_data: return
-        df = pd.DataFrame(self.scan_data)
-        
-        # --- Группа 1: СТАТУСЫ ---
-        statuses_data = {"TOTAL DEVICES": {"val": str(len(df)), "color": None}}
-        if 'Status' in df.columns:
-            st = df['Status'].value_counts()
-            if st.get("Running", 0) > 0: 
-                statuses_data["✅ RUNNING"] = {"val": str(st["Running"]), "color": "#00E676" if getattr(self, 'dark_mode', False) else "#007e33"}
-            if st.get("Sleep", 0) > 0: 
-                statuses_data["💤 SLEEP"] = {"val": str(st["Sleep"]), "color": "#FFA000"}
-            if st.get("WaitWork", 0) > 0: 
-                statuses_data["⏳ WAIT WORK"] = {"val": str(st["WaitWork"]), "color": "#17A2B8"}
-            if st.get("Error", 0) > 0: 
-                statuses_data["❌ ERROR"] = {"val": str(st["Error"]), "color": "#FF4444"}
-
-        # --- Группа 2: БРЕНДЫ ---
-        models_data = {}
-        if 'Model' in df.columns:
-            df["CleanedModel"] = df["Model"].replace("", pd.NA).dropna().apply(lambda x: re.sub(r"\(.*?\)", "", str(x)).strip())
-            makers = df["CleanedModel"].value_counts()
-            for maker, count in makers.items():
-                if maker and str(maker) != "nan":
-                    models_data[str(maker).upper()] = {"val": str(count), "color": None}
-
-        # --- Группа 3: ХЕШРЕЙТ ---
-        hashrates_data = {}
-        if 'Algo' in df.columns and 'Real' in df.columns:
-            df['Algo_Upper'] = df['Algo'].astype(str).str.upper()
-            algos = df['Algo_Upper'].dropna().unique()
-            
-            for algo in algos:
-                if algo in ['NAN', 'UNKNOWN', ''] or not algo: continue
-                sub = df[df['Algo_Upper'] == algo]
-                total_hash = 0.0
-                unit = ""
-                
-                for val in sub['Real']:
-                    try:
-                        parts = str(val).strip().split()
-                        if len(parts) >= 1: total_hash += float(parts[0].replace(',', '.'))
-                        if len(parts) >= 2 and not unit: unit = parts[1] 
-                    except: pass
-                
-                if not unit:
-                    if "SHA" in algo: unit = "TH/s"
-                    elif "SCRYPT" in algo: unit = "GH/s"
-                    elif "EQUIHASH" in algo: unit = "kSol/s"
-                    elif "X11" in algo: unit = "GH/s"
-                    elif "ETCHASH" in algo: unit = "MH/s"
-                
-                hashrates_data[algo] = {"val": f"{total_hash:,.2f} {unit}".strip(), "color": "#00E676" if getattr(self, 'dark_mode', False) else "#007e33"}
-
-        self.refresh_dashboard(statuses_data, models_data, hashrates_data)
+        states = Counter(row.get("Status", "Unknown") for row in self.scan_data)
+        statuses = {"Всего устройств": {"val": str(len(self.scan_data)), "color": None}}
+        for code, label in (("Running", "Работает"), ("Sleep", "Сон"), ("WaitWork", "Ожидание"),
+                            ("Error", "Ошибка"), ("Unknown", "Неизвестно")):
+            if states[code]:
+                statuses[label] = {"val": str(states[code]), "color": None}
+        stale = sum(bool(row.get("Stale")) for row in self.scan_data)
+        if stale:
+            statuses["Устаревшие данные"] = {"val": str(stale), "color": None}
+        models = {name: {"val": str(count), "color": None} for name, count in
+                  Counter(str(row.get("Model") or "Неизвестная модель") for row in self.scan_data).most_common()}
+        totals = defaultdict(float)
+        for row in self.scan_data:
+            if row.get("Stale"):
+                continue
+            match = re.fullmatch(r"([\d.,]+)\s+(\S+)", str(row.get("Real", "")))
+            if match:
+                totals[(str(row.get("Algo") or "Неизвестно"), match[2])] += float(match[1].replace(",", "."))
+        # Do not add different units or turn unavailable measurements into a zero.
+        rates = {f"{algo} · {unit}": {"val": f"{value:,.2f}", "color": None}
+                 for (algo, unit), value in totals.items()}
+        self.refresh_dashboard(statuses, models, rates)
 
     def refresh_dashboard(self, statuses, models, hashrates):
-        # Очистка старых данных
-        for layout in [self.layout_status, self.layout_models, self.layout_hashrate]:
+        summaries = (
+            (self.layout_status, "Устройства", str(len(self.scan_data)),
+             " · ".join(f"{key}: {value['val']}" for key, value in statuses.items() if key != "Всего устройств") or "Ожидание результатов"),
+            (self.layout_models, "Модели", str(len(models)),
+             " · ".join(f"{key}: {value['val']}" for key, value in models.items()) or "Появятся после сканирования"),
+            (self.layout_hashrate, "Хешрейт", next(iter(hashrates.values()))["val"] if len(hashrates) == 1 else "—" if not hashrates else f"{len(hashrates)} групп",
+             " · ".join(f"{key}: {value['val']}" for key, value in hashrates.items()) or "Нет актуальных измерений"),
+        )
+        for layout, title, value, detail in summaries:
             while layout.count():
                 item = layout.takeAt(0)
-                if item.widget(): item.widget().deleteLater()
-                elif item.layout():
-                    while item.layout().count():
-                        subitem = item.layout().takeAt(0)
-                        if subitem.widget(): subitem.widget().deleteLater()
-
-        # Вспомогательная функция для добавления строчки "Ключ: Значение"
-        def add_row(layout, title, data):
-            row = QHBoxLayout()
-            lbl_t = QLabel(title)
-            lbl_t.setObjectName("DashTitle")
-            
-            lbl_v = QLabel(data["val"])
-            lbl_v.setObjectName("DashValue")
-            lbl_v.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            
-            if data["color"]:
-                lbl_v.setStyleSheet(f"color: {data['color']};")
-                
-            row.addWidget(lbl_t)
-            row.addWidget(lbl_v)
-            layout.addLayout(row)
-
-        # Заполнение блоков
-        if not statuses: statuses = {"TOTAL DEVICES": {"val": "0", "color": None}}
-        for title, data in statuses.items(): add_row(self.layout_status, title, data)
-        
-        if not models: models = {"NO DEVICES": {"val": "-", "color": None}}
-        for title, data in models.items(): add_row(self.layout_models, title, data)
-            
-        if not hashrates: hashrates = {"NO HASH": {"val": "0.00", "color": None}}
-        for title, data in hashrates.items(): add_row(self.layout_hashrate, title, data)
+                if item.widget():
+                    item.widget().hide()
+                    item.widget().deleteLater()
+            layout.setContentsMargins(16, 12, 16, 12)
+            layout.setSpacing(4)
+            heading = QLabel(title)
+            heading.setObjectName("DashTitle")
+            number = QLabel(value)
+            number.setObjectName("CardValue")
+            description = QLabel(detail)
+            description.setObjectName("Muted")
+            description.setWordWrap(True)
+            description.setFixedHeight(38)
+            description.setToolTip(detail)
+            layout.addWidget(heading)
+            layout.addWidget(number)
+            layout.addWidget(description)
 
     def export_csv(self):
         if not self.scan_data: 
-            QMessageBox.warning(self, "Empty", "No data to export.")
+            QMessageBox.warning(self, "Экспорт", "Сначала выполните сканирование.")
             return
 
         try:
             # --- ПУТЬ СОХРАНЕНИЯ ИЗ НАСТРОЕК ---
             export_csv_dir = self.app_settings.get("export_csv_dir", "")
-            if not export_csv_dir or not os.path.exists(export_csv_dir):
-                export_csv_dir = os.path.join(current_dir, "export_csv") # Using current_dir from global scope
-                if not os.path.exists(export_csv_dir):
-                    os.makedirs(export_csv_dir)
+            export_csv_dir = export_csv_dir or str(APP_DATA_DIR / "export_csv")
+            Path(export_csv_dir).mkdir(parents=True, exist_ok=True)
 
             base_name = getattr(self, "last_scan_name", "Manual_Scan")
             clean_name = re.sub(r"[\\/*?:\"<>|]", "", base_name)
@@ -1638,32 +1448,10 @@ del "%~f0"
 
             full_path = chosen_path
             
-            df = pd.DataFrame(self.scan_data)
-            
-            # === ИСПРАВЛЕНИЕ: Переименовываем внутренние ключи в ключи UI ===
-            df.rename(columns={"Real": "Real HR", "Avg": "Avg HR"}, inplace=True)
-            
-            # --- ФИЛЬТРАЦИЯ СТОЛБЦОВ ИЗ НАСТРОЕК ---
-            available_cols = ["IP", "Model", "Algo", "Status", "Error", "Uptime", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker"]
-            csv_cols_setting = self.app_settings.get("csv_cols", available_cols)
-            selected_cols = [c for c in available_cols if c in csv_cols_setting]
-            
-            # Filter DataFrame to include only selected columns
-            df = df[selected_cols]
-
-            # --- СОРТИРОВКА ИЗ НАСТРОЕК ---
-            sort_key = self.app_settings.get("csv_sort", "IP")
-            sort_map = {"IP": "SortIP", "Model": "Model", "Uptime": "Uptime", "Real HR": "RawHash", "Temp": "Temp", "Status": "Status"}
-            actual_sort_key = sort_map.get(sort_key, "SortIP")
-            
-            if actual_sort_key in df.columns:
-                if actual_sort_key in ["SortIP", "RawHash"]:
-                    df[actual_sort_key] = df[actual_sort_key].fillna(0)
-                df = df.sort_values(by=actual_sort_key, ascending=True)
-
-            # Drop internal columns before saving (already handled by selected_cols but good to be explicit)
-            drops = ["SortIP", "RawHash", "CleanedModel", "Algo_Upper"]
-            df.drop(columns=[c for c in drops if c in df.columns], inplace=True, errors="ignore")
+            columns = [column for column in COLUMNS if column in self.app_settings.get("csv_cols", COLUMNS)]
+            df = export_frame(self.scan_data, columns, self.app_settings.get("csv_sort", "IP"))
+            if not Path(full_path).suffix:
+                full_path += ".csv" if "*.csv" in selected_filter else ".xlsx"
 
             if full_path.lower().endswith(".csv"):
                 df.to_csv(full_path, index=False, encoding="utf-8-sig")
@@ -1690,16 +1478,14 @@ del "%~f0"
             return
             
         if not self.scan_data: 
-            QMessageBox.warning(self, "Empty", "No data to export.")
+            QMessageBox.warning(self, "Экспорт", "Сначала выполните сканирование.")
             return
 
         try:
             # --- ПУТЬ СОХРАНЕНИЯ ИЗ НАСТРОЕК ---
             export_dir = self.app_settings.get("export_dir", "")
-            if not export_dir or not os.path.exists(export_dir):
-                export_dir = os.path.join(current_dir, "export_pdf")
-                if not os.path.exists(export_dir):
-                    os.makedirs(export_dir)
+            export_dir = export_dir or str(APP_DATA_DIR / "export_pdf")
+            Path(export_dir).mkdir(parents=True, exist_ok=True)
 
             base_name = getattr(self, 'last_scan_name', 'Manual_Scan')
             clean_name = re.sub(r'[\\/*?:"<>|]', "", base_name)
@@ -1710,19 +1496,9 @@ del "%~f0"
             full_path = os.path.join(export_dir, filename)
 
             def safe_text(text):
-                return str(text).encode('latin-1', 'ignore').decode('latin-1')
+                return re.sub(r"[\x00-\x08\x0b-\x1f]", "", str(text))
 
-            df = pd.DataFrame(self.scan_data)
-            
-            # --- СОРТИРОВКА ИЗ НАСТРОЕК ---
-            sort_key = self.app_settings.get("pdf_sort", "IP")
-            sort_map = {"IP": "SortIP", "Model": "Model", "Uptime": "Uptime", "Real HR": "RawHash", "Temp": "Temp", "Status": "Status"}
-            actual_sort_key = sort_map.get(sort_key, "SortIP")
-            
-            if actual_sort_key in df.columns:
-                if actual_sort_key in ['SortIP', 'RawHash']:
-                    df[actual_sort_key] = df[actual_sort_key].fillna(0)
-                df = df.sort_values(by=actual_sort_key, ascending=True)
+            df = sorted_frame(self.scan_data, self.app_settings.get("pdf_sort", "IP"))
 
             # --- РАСЧЕТ ИТОГОВОЙ СВОДКИ ДЛЯ ШАПКИ ---
             total_dev = len(df)
@@ -1787,6 +1563,8 @@ del "%~f0"
 
             # === ГЕНЕРАЦИЯ PDF ===
             pdf = PDFReport(orientation='L', unit='mm', format='A4')
+            scale = (pdf.w - pdf.l_margin - pdf.r_margin) / sum(widths)
+            widths = [width * scale for width in widths]
             
             # Передаем настройки напрямую в объект (это спасает от ошибки fpdf)
             pdf.report_title = safe_text(f"REPORT: {clean_name}")
@@ -1795,7 +1573,7 @@ del "%~f0"
             pdf.table_widths = widths
             
             pdf.add_page() # Тут автоматически нарисуется шапка со сводкой
-            pdf.set_font("Arial", size=7)
+            pdf.set_font(pdf.report_font, size=7)
             
             data_keys = {"IP": "IP", "Model": "Model", "Algo": "Algo", "Status": "Status", "Error": "Error", "Uptime": "Uptime", "Real HR": "Real", "Avg HR": "Avg", "Temp": "Temp", "Fan": "Fan", "Pool": "Pool", "Worker": "Worker"}
             
@@ -1811,7 +1589,7 @@ del "%~f0"
                     else: 
                         clean_text = text[:38]
 
-                    pdf.cell(widths[i], 6, clean_text, 1, 0, 'C')
+                    pdf.cell(widths[i], 6, pdf.fit_text(clean_text, widths[i]), 1, 0, 'C')
                 pdf.ln()
             
             pdf.output(full_path)
@@ -1833,106 +1611,78 @@ del "%~f0"
 
     def toggle_theme(self):
         self.dark_mode = not self.dark_mode
+        self.app_settings["theme"] = "dark" if self.dark_mode else "light"
         self.apply_theme()
-        for row in range(self.table.rowCount()):
-            item = self.table.item(row, 3) 
-            if item:
-                if self.dark_mode: item.setForeground(QColor("#00E676"))
-                else: item.setForeground(QColor("#007e33"))
+        try:
+            save_app_settings(self.app_settings)
+        except OSError as exc:
+            QMessageBox.warning(self, "Настройки", f"Не удалось сохранить тему:\n{exc}")
 
     def apply_theme(self):
-        # Получаем глобальный инстанс всего приложения
-        app = QApplication.instance()
-        
-        if self.dark_mode:
-            app.setStyleSheet("""
-                QMainWindow { background-color: #121212; }
-                QWidget { font-family: 'Segoe UI', sans-serif; font-size: 13px; color: #E0E0E0; }
-                QDialog { background-color: #1E1E1E; color: #E0E0E0; }
-                
-                /* Стили для окон настроек */
-                QLineEdit, QTextEdit, QComboBox { background-color: #2D2D2D; border: 1px solid #444; color: #E0E0E0; padding: 4px; border-radius: 4px; }
-                QTabWidget::pane { border: 1px solid #444; background: #1E1E1E; }
-                QTabBar::tab { background: #2D2D2D; color: #AAA; padding: 8px 15px; border: 1px solid #444; border-bottom: none; border-top-left-radius: 4px; border-top-right-radius: 4px; }
-                QTabBar::tab:selected { background: #1E1E1E; color: #00E676; font-weight: bold; }
-                QCheckBox, QRadioButton { color: #E0E0E0; }
-                
-                #Sidebar { background-color: #1E1E1E; border-right: 1px solid #333; }
-                #ContentArea { background-color: #121212; }
-                
-                QScrollArea { background-color: transparent; border: none; }
-                #StatsWidget { background-color: transparent; }
-                
-                #Logo { font-size: 20px; font-weight: bold; color: #00E676; letter-spacing: 2px; }
-                #SectionHeader { color: #777; font-weight: bold; font-size: 11px; }
-                
-                QListWidget { background-color: #252525; border: none; border-radius: 6px; padding: 5px; color: #ccc; }
-                QListWidget::item:selected { background-color: #333; color: white; border-left: 3px solid #00E676; }
-                
-                QPushButton { background-color: #2D2D2D; border: none; border-radius: 6px; padding: 8px; color: #E0E0E0; }
-                QPushButton:hover { background-color: #3D3D3D; }
-                
-                #BtnScan { background-color: #00E676; color: #000; font-weight: bold; font-size: 14px; }
-                #BtnScan:hover { background-color: #00C853; }
-                
-                #DashBox { background-color: #1E1E1E; border-radius: 8px; border: 1px solid #333; padding: 5px; }
-                #DashTitle { color: #AAA; font-size: 13px; font-weight: bold; }
-                #DashValue { color: #FFF; font-size: 14px; font-weight: bold; }
-                
-                QTableWidget { background-color: #1E1E1E; border: 1px solid #333; gridline-color: #2D2D2D; alternate-background-color: #252525; }
-                QHeaderView::section { background-color: #2D2D2D; color: #BBB; border: none; padding: 6px; font-weight: bold; }
-                QTableWidget::item:selected { background-color: #004D40; color: white; }
-                
-                QMenu { background-color: #1E1E1E; border: 1px solid #333; color: #E0E0E0; }
-                QMenu::item { padding: 5px 20px; }
-                QMenu::item:selected { background-color: #00E676; color: black; }
-            """)
-        else:
-            app.setStyleSheet("""
-                QMainWindow { background-color: #F5F7FA; }
-                QWidget { font-family: 'Segoe UI', sans-serif; font-size: 13px; color: #333; }
-                QDialog { background-color: #FFF; color: #333; }
-                
-                /* Стили для окон настроек */
-                QLineEdit, QTextEdit, QComboBox { background-color: #FFF; border: 1px solid #CCC; color: #333; padding: 4px; border-radius: 4px; }
-                QTabWidget::pane { border: 1px solid #CCC; background: #FFF; }
-                QTabBar::tab { background: #F0F2F5; color: #555; padding: 8px 15px; border: 1px solid #CCC; border-bottom: none; border-top-left-radius: 4px; border-top-right-radius: 4px; }
-                QTabBar::tab:selected { background: #FFF; color: #0069D9; font-weight: bold; }
-                QCheckBox, QRadioButton { color: #333; }
-                
-                #Sidebar { background-color: #FFFFFF; border-right: 1px solid #E1E4E8; }
-                #ContentArea { background-color: #F5F7FA; }
-                
-                QScrollArea { background-color: transparent; border: none; }
-                #StatsWidget { background-color: transparent; }
-                
-                #Logo { font-size: 20px; font-weight: bold; color: #0069D9; letter-spacing: 2px; }
-                #SectionHeader { color: #888; font-weight: bold; font-size: 11px; }
-                
-                QListWidget { background-color: #F0F2F5; border: 1px solid #E1E4E8; border-radius: 6px; padding: 5px; color: #333; }
-                QListWidget::item:selected { background-color: #E6F7FF; color: #0069D9; border-left: 3px solid #0069D9; }
-                
-                QPushButton { background-color: #FFFFFF; border: 1px solid #D1D5DB; border-radius: 6px; padding: 8px; color: #333; }
-                QPushButton:hover { background-color: #F3F4F6; }
-                
-                #BtnScan { background-color: #0069D9; color: #FFF; font-weight: bold; font-size: 14px; border: none; }
-                #BtnScan:hover { background-color: #0056b3; }
-                
-                #DashBox { background-color: #FFFFFF; border-radius: 8px; border: 1px solid #E1E4E8; padding: 5px; }
-                #DashTitle { color: #6B7280; font-size: 13px; font-weight: bold; }
-                #DashValue { color: #333; font-size: 14px; font-weight: bold; }
-                
-                QTableWidget { background-color: #FFFFFF; border: 1px solid #E1E4E8; gridline-color: #F0F2F5; alternate-background-color: #F9FAFB; color: #333; }
-                QHeaderView::section { background-color: #F3F4F6; color: #4B5563; border: none; padding: 6px; font-weight: bold; }
-                QTableWidget::item:selected { background-color: #E6F7FF; color: #000; }
-                
-                QMenu { background-color: #FFFFFF; border: 1px solid #CCC; color: #333; }
-                QMenu::item { padding: 5px 20px; }
-                QMenu::item:selected { background-color: #0069D9; color: white; }
-            """)
+        apply_desktop_theme(QApplication.instance(), self.dark_mode)
+        self.btn_theme.setText("Светлая тема" if self.dark_mode else "Тёмная тема")
+        self.apply_ui_settings()
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 3)
+            if item:
+                colors = {"Running": "#69d7ad" if self.dark_mode else "#147652",
+                          "WaitWork": "#eebc65" if self.dark_mode else "#93600d",
+                          "Sleep": "#a4b3c6" if self.dark_mode else "#5e7088",
+                          "Error": "#ff919b" if self.dark_mode else "#b93649"}
+                record = self.table.item(row, 0).data(Qt.ItemDataRole.UserRole + 1) or {}
+                item.setForeground(QColor(colors.get(record.get("Status"), "#a4b3c6" if self.dark_mode else "#5e7088")))
+            rate_item = self.table.item(row, 6)
+            if rate_item:
+                rate_item.setForeground(QColor("#69d7ad" if self.dark_mode else "#147652"))
+        self.update_stats()
+
+    def apply_table_filter(self):
+        query = self.search_input.text().strip().casefold()
+        status = self.status_filter.currentData()
+        self.table.blockSignals(True)
+        visible = 0
+        for index in range(self.table.rowCount()):
+            item = self.table.item(index, 0)
+            record = item.data(Qt.ItemDataRole.UserRole + 1) or {}
+            haystack = " ".join(str(record.get(key, "")) for key in ("IP", "Model", "Firmware", "FirmwareVersion", "Worker", "Pool")).casefold()
+            matches = query in haystack and (not status or (bool(record.get("Stale")) if status == "stale" else record.get("Status") == status))
+            self.table.setRowHidden(index, not matches)
+            if not matches:
+                item.setCheckState(Qt.CheckState.Unchecked)
+                for col in range(self.table.columnCount()):
+                    cell = self.table.item(index, col)
+                    if cell:
+                        cell.setSelected(False)
+            visible += int(matches)
+        self.table.blockSignals(False)
+        self.update_selected_count()
+        if self.scan_data and not visible:
+            self.empty_title.setText("Нет совпадений")
+            self.empty_description.setText("Измените поисковый запрос или выберите другое состояние.")
+        self.table_stack.setCurrentIndex(0 if visible else 1)
+
+    def closeEvent(self, event):
+        workers = list(getattr(self, "workers", []))
+        workers += [getattr(self, "worker", None), getattr(self, "update_worker", None)]
+        if any(worker is not None and worker.isRunning() for worker in workers):
+            self.stop_scan()
+            self.status_bar.setText("Завершаем текущие операции перед закрытием…")
+            event.ignore()
+            QTimer.singleShot(250, self.close)
+            return
+        event.accept()
 
 if __name__ == "__main__":
+    if "--smoke-test" in sys.argv:
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
     app = QApplication(sys.argv)
+    app.setApplicationName("ASIC Monitor")
+    app.setApplicationVersion(CURRENT_VERSION)
+    app.setOrganizationName("ASICMonitor")
+    if "--smoke-test" in sys.argv:
+        from desktop_ui.smoke import run_smoke
+        output = Path(sys.argv[sys.argv.index("--smoke-test") + 1]).resolve()
+        sys.exit(run_smoke(app, GeminiApp, output))
     window = GeminiApp()
-    window.showMaximized() # <--- Вот здесь изменили команду
+    window.show()
     sys.exit(app.exec())

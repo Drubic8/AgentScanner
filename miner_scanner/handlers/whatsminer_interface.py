@@ -2,8 +2,6 @@ import hashlib
 import base64
 import json
 import time
-from Crypto.Cipher import AES
-from passlib.hash import md5_crypt
 
 class WhatsminerAPIv3:
     def __init__(self, account, password):
@@ -31,13 +29,15 @@ class WhatsminerAPIv3:
 
     def _encrypt_param(self, param,command,ts):
         """Encrypt the 'param' using AES-256 encryption"""
+        from Crypto.Cipher import AES  # Optional legacy password-change API only.
         param_str = json.dumps(param)
         src_buff = f"{command}{self.password}{self.salt}{ts}"
         aes_key = hashlib.sha256(src_buff.encode('utf-8')).digest()
-        pad_len = 16 - (len(param_str) % 16)
-        padded_param = param_str + (chr(pad_len) * pad_len)
+        encoded_param = param_str.encode('utf-8')
+        pad_len = 16 - (len(encoded_param) % 16)
+        padded_param = encoded_param + bytes([pad_len]) * pad_len
         cipher = AES.new(aes_key, AES.MODE_ECB)
-        encrypted_bytes = cipher.encrypt(padded_param.encode())
+        encrypted_bytes = cipher.encrypt(padded_param)
         encrypted_b64 = base64.b64encode(encrypted_bytes).decode()
         return encrypted_b64
 
@@ -47,7 +47,6 @@ class WhatsminerAPIv3:
             "param": param
         }
 
-        print(payload)
         message = json.dumps(payload)
         return message
 
@@ -61,7 +60,6 @@ class WhatsminerAPIv3:
         payload["ts"] = ts
         payload["token"] = token
         payload["account"] = self.account
-        print(payload)
         message = json.dumps(payload)
         return message
 
@@ -215,6 +213,5 @@ class WhatsminerAPIv3:
         encryptPara = self._encrypt_param(json.dumps(paramload),cmd,ts);
         payload["param"] = encryptPara
 
-        print(payload)
         message = json.dumps(payload)
-        return message                                                        
+        return message

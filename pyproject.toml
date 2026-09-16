@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asic-monitor-scanner"
+version = "2.0.0"
+description = "Local ASIC discovery, profile-based telemetry and control"
+requires-python = ">=3.11"
+dependencies = ["requests>=2.31,<3", "urllib3>=2.2,<3"]
+
+[project.optional-dependencies]
+desktop = ["PyQt6>=6.6,<7", "pandas>=2.2,<3", "openpyxl>=3.1,<4", "fpdf2>=2.8,<3"]
+legacy-crypto = ["pycryptodome>=3.20,<4"]
+
+[project.scripts]
+asic-scan = "miner_scanner.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["miner_scanner*"]
+
+[tool.setuptools.package-data]
+"miner_scanner.profiles" = ["*.json"]

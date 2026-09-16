@@ -15,6 +15,13 @@ export_pdf/
 Сборка/
 книга/
 cloud_platform/
+.venv/
+.vscode/
+fms_agent/
+plans/
+soft_other/
+MobileApp/
+docs/pyasic_docs/
 
 # 4. РАЗРЕШИТЬ конкретные файлы в корне проекта
 !gemini_gui.py
@@ -29,3 +36,27 @@ cloud_platform/
 
 # 6. РАЗРЕШИТЬ папку с документацией
 !docs/**
+
+# Scanner package metadata, profiles and reproducible checks
+!pyproject.toml
+!miner_scanner/profiles/*.json
+!tests/**/*.py
+!tests/fixtures/**/*.json
+!scripts/check_scanner.py
+!scripts/benchmark_scanner.py
+*.egg-info/
+build/
+build-clean/
+dist/
+.venv-new/
+
+# Windows desktop and release tooling
+!desktop_ui/**/*.py
+!app.ico
+!ASIC_Monitor.spec
+!scripts/build_windows.py
+!requirements-build.lock
+!.github/workflows/windows-build.yml
+.venv-build/
+build-windows/
+artifacts/

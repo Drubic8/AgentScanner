@@ -1,0 +1,39 @@
+name: Windows EXE
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: requirements-build.lock
+      - name: Install release dependencies
+        run: python -m pip install -r requirements-build.lock
+      - name: Validate tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $releaseVersion = (Get-Content version.json | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne "v$releaseVersion") { throw "Tag must match version.json" }
+      - name: Test, build and smoke-test EXE
+        run: python scripts/build_windows.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ASIC-Monitor-Windows
+          path: |
+            dist/ASIC_Monitor.exe
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Desktop-checks
+          path: artifacts/exe-smoke
