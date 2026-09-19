@@ -1,0 +1,31 @@
+name: Ошибка программы / Bug report
+description: Воспроизводимая проблема в интерфейсе, сканировании или отчётах
+title: "[Ошибка] "
+body:
+  - type: markdown
+    attributes:
+      value: "Не прикладывайте пароли, токены, адреса кошельков и необезличенные сетевые дампы. Уязвимости описывайте по SECURITY.md."
+  - type: input
+    id: version
+    attributes:
+      label: Версия программы и Windows
+      placeholder: ASIC Monitor 2.0.3, Windows 11 x64
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Как воспроизвести
+      description: Что сделали, что ожидали и что произошло?
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Модель и точная версия прошивки
+      description: Для ошибок работы с устройствами; не указывайте пароль или рабочий IP.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Обезличенный журнал или снимок
+      description: Проверьте вложения перед отправкой.

@@ -1,0 +1,28 @@
+name: Модель или прошивка / Device support
+description: Предложить поддержку устройства или уточнить совместимость
+title: "[Устройство] "
+body:
+  - type: input
+    id: model
+    attributes:
+      label: Модель и аппаратная ревизия
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Название и полная версия прошивки
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Что требуется
+      description: Чтение показателей или конкретная команда? Что уже работает в текущей версии?
+    validations:
+      required: true
+  - type: textarea
+    id: references
+    attributes:
+      label: Документация и обезличенные ответы API
+      description: Не прикладывайте секреты, рабочие IP и персональные данные. Укажите, есть ли тестовое устройство.

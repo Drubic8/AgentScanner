@@ -36,14 +36,21 @@ def apply_theme(app, dark=False):
         #DashValue { font-size: 18px; font-weight: 600; }
         #CardValue { font-size: 27px; font-weight: 600; }
         #SelectionCount { color: %(accent)s; font-weight: 600; }
-        QLineEdit, QTextEdit, QComboBox, QSpinBox { background: %(panel)s; border: 1px solid %(line)s;
+        QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox { background: %(panel)s; border: 1px solid %(line)s;
             border-radius: 6px; padding: 7px; selection-background-color: %(selected)s; }
-        QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QSpinBox:focus { border-color: %(accent)s; }
+        QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QSpinBox:focus { border-color: %(accent)s; }
         QPushButton { background: %(panel)s; border: 1px solid %(line)s; border-radius: 6px;
             padding: 8px 12px; min-height: 16px; }
         QPushButton:hover { background: %(hover)s; border-color: %(accent)s; }
         QPushButton:pressed, QPushButton:checked { background: %(selected)s; }
         QPushButton:focus { border-color: %(accent)s; }
+        #RangeSectionTitle { font-size: 14px; font-weight: 600; }
+        #RangePreview { background: %(panel)s; border: 1px solid %(line)s; border-radius: 8px; }
+        #RangeSummary { color: %(accent)s; font-size: 19px; font-weight: 600; }
+        #ValidationError { color: %(danger)s; }
+        #RangeEditor { font-family: 'Consolas'; font-size: 14px; }
+        #NetworkList::item { padding: 10px 7px; }
+        QPushButton[primary="true"]:disabled { background: %(field)s; color: %(muted)s; border-color: %(line)s; }
         #RangeAction { padding: 8px 4px; }
         QPushButton:disabled { color: %(muted)s; background: %(field)s; border-color: %(line)s; }
         #BtnScan, QPushButton[primary="true"] { background: #2864dc; color: white; border-color: #2864dc; font-weight: 600; }
@@ -61,6 +68,7 @@ def apply_theme(app, dark=False):
             border: none; border-bottom: 1px solid %(line)s; font-weight: 600; }
         QScrollArea, QStackedWidget { border: none; background: transparent; }
         QScrollArea > QWidget > QWidget { background: transparent; }
+        #SidebarScroll, #SidebarScroll > QWidget > QWidget { background: %(panel)s; }
         #SettingsNavigation { border: none; background: transparent; }
         #SettingsNavigation::item { padding: 12px 10px; }
         QGroupBox { background: %(panel)s; border: 1px solid %(line)s; border-radius: 8px; margin-top: 16px; padding: 14px; }

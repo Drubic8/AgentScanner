@@ -10,6 +10,10 @@ from datetime import datetime
 from pathlib import Path
 from desktop_ui.preferences import COLUMNS, data_directory, normalize, load_json, write_json
 from desktop_ui.settings_dialog import SettingsDialog
+from desktop_ui.range_dialog import IPRangeDialog
+from desktop_ui.ranges_panel import RangesPanel
+from desktop_ui.network_groups import normalize_groups, selected_ranges
+from copy import deepcopy
 from desktop_ui.theme import apply_theme as apply_desktop_theme
 from desktop_ui.updates import UpdateCheckWorker, version_tuple
 from desktop_ui.reports import export_frame, sorted_frame
@@ -37,7 +41,7 @@ def is_system_dark_mode():
     return True # По умолчанию темная
 
 # Константы автообновления
-CURRENT_VERSION = "2.0.1"
+CURRENT_VERSION = "2.0.3"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
@@ -218,80 +222,6 @@ class CommandDialog(QDialog):
         self.accept()
 
 # ==========================================
-# ДИАЛОГ РЕДАКТОРА ПОДСЕТЕЙ (IP RANGE EDITOR)
-# ==========================================
-class IPRangeDialog(QDialog):
-    def __init__(self, name="", ranges=None, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Диапазон сети")
-        self.resize(500, 410)
-        self.setMinimumSize(420, 360)
-        
-        layout = QVBoxLayout(self)
-        
-        # Название сети
-        lbl_name = QLabel("Название сети")
-        lbl_name.setStyleSheet("font-weight: bold;")
-        layout.addWidget(lbl_name)
-        
-        self.le_name = QLineEdit(name)
-        self.le_name.setPlaceholderText("Например: Клиент А")
-        layout.addWidget(self.le_name)
-        
-        layout.addSpacing(10)
-        
-        # Диапазоны (многострочное поле)
-        lbl_ranges = QLabel("IP-адреса и диапазоны — каждый с новой строки")
-        lbl_ranges.setStyleSheet("font-weight: bold;")
-        layout.addWidget(lbl_ranges)
-        
-        self.te_ranges = QTextEdit()
-        self.te_ranges.setPlaceholderText("192.168.1.1-254\n10.10.33.0/24\n192.168.2.10")
-        
-        if ranges:
-            if isinstance(ranges, list):
-                self.te_ranges.setPlainText("\n".join(ranges))
-            else:
-                self.te_ranges.setPlainText(ranges.replace(",", "\n"))
-                
-        layout.addWidget(self.te_ranges)
-        
-        layout.addSpacing(10)
-        
-        # Кнопки
-        btn_layout = QHBoxLayout()
-        btn_cancel = QPushButton("Отмена")
-        btn_cancel.clicked.connect(self.reject)
-        
-        btn_save = QPushButton("Сохранить")
-        btn_save.setStyleSheet("background-color: #0069D9; color: white; font-weight: bold;")
-        btn_save.clicked.connect(self.validate_and_accept)
-        
-        btn_layout.addStretch()
-        btn_layout.addWidget(btn_cancel)
-        btn_layout.addWidget(btn_save)
-        layout.addLayout(btn_layout)
-        
-    def validate_and_accept(self):
-        name, ranges = self.get_data()
-        if not name or not ranges:
-            QMessageBox.warning(self, "Диапазон сети", "Укажите название и хотя бы один диапазон.")
-            return
-        try:
-            expand_ranges(ranges)
-        except ValueError as exc:
-            QMessageBox.warning(self, "Диапазон сети", str(exc))
-            return
-        self.accept()
-
-    def get_data(self):
-        name = self.le_name.text().strip()
-        # Разбиваем текст на строки и удаляем пустые
-        raw_ranges = self.te_ranges.toPlainText().split('\n')
-        ranges = [r.strip() for r in raw_ranges if r.strip()]
-        return name, ranges
-
-# ==========================================
 # WORKER: СКАНЕР
 # ==========================================
 class ScanWorker(QThread):
@@ -419,7 +349,7 @@ class GeminiApp(QMainWindow):
         self.setWindowIcon(QIcon(str(Path(current_dir) / "app.ico")))
         
         self.scan_data = [] 
-        self.ranges_config = self.load_config() if ranges is None else ranges
+        self.ranges_config = self.load_config() if ranges is None else normalize_groups(ranges)
         self.app_settings = load_app_settings() if settings is None else normalize(settings)
         self.dark_mode = self.app_settings["theme"] == "dark" or (self.app_settings["theme"] == "system" and is_system_dark_mode())
         
@@ -445,7 +375,6 @@ class GeminiApp(QMainWindow):
         # === SIDEBAR ===
         sidebar = QWidget()
         sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(260)
         side_layout = QVBoxLayout(sidebar)
         side_layout.setContentsMargins(15, 20, 15, 20)
         side_layout.setSpacing(10)
@@ -473,50 +402,16 @@ class GeminiApp(QMainWindow):
         side_layout.addWidget(access_button)
         side_layout.addSpacing(12)
 
-        header_layout = QHBoxLayout()
-        lbl_ranges = QLabel("ДИАПАЗОНЫ СЕТИ")
-        lbl_ranges.setObjectName("SectionHeader")
-        
-        self.chk_all = QCheckBox("Все")
-        self.chk_all.setObjectName("ChkAll")
-        self.chk_all.stateChanged.connect(self.toggle_all_ranges)
-        
-        header_layout.addWidget(lbl_ranges)
-        header_layout.addStretch()
-        header_layout.addWidget(self.chk_all)
-        side_layout.addLayout(header_layout)
-
-        self.list_ranges = QListWidget()
-        self.list_ranges.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+        self.ranges_panel = RangesPanel()
+        self.list_ranges = self.ranges_panel.list_ranges
+        self.chk_all = self.ranges_panel.select_all
+        self.btn_edit_subnet = self.ranges_panel.edit_button
+        self.ranges_panel.changed.connect(self.commit_ranges)
+        self.ranges_panel.add_requested.connect(self.add_range_dialog)
+        self.ranges_panel.edit_requested.connect(self.edit_subnet)
+        self.ranges_panel.delete_requested.connect(self.delete_range)
         self.refresh_ranges_list()
-        
-        # === ДВОЙНОЙ КЛИК ДЛЯ РЕДАКТИРОВАНИЯ ===
-        self.list_ranges.itemDoubleClicked.connect(self.edit_subnet)
-        
-        side_layout.addWidget(self.list_ranges, 1)
-        range_hint = QLabel("Без выбора будут опрошены все диапазоны.")
-        range_hint.setObjectName("Muted")
-        range_hint.setWordWrap(True)
-        side_layout.addWidget(range_hint)
-
-        btn_layout = QHBoxLayout()
-        btn_add = QPushButton("Добавить")
-        btn_add.setObjectName("RangeAction")
-        btn_add.clicked.connect(self.add_range_dialog)
-        
-        # === КНОПКА ИЗМЕНИТЬ ===
-        self.btn_edit_subnet = QPushButton("Изменить")
-        self.btn_edit_subnet.setObjectName("RangeAction")
-        self.btn_edit_subnet.clicked.connect(lambda: self.edit_subnet())
-        
-        btn_del = QPushButton("Удалить")
-        btn_del.setObjectName("RangeAction")
-        btn_del.clicked.connect(self.delete_range)
-        
-        btn_layout.addWidget(btn_add)
-        btn_layout.addWidget(self.btn_edit_subnet) # Кнопка посередине
-        btn_layout.addWidget(btn_del)
-        side_layout.addLayout(btn_layout)
+        side_layout.addWidget(self.ranges_panel, 1)
 
         side_layout.addSpacing(15)
 
@@ -549,7 +444,13 @@ class GeminiApp(QMainWindow):
         btn_screenshot.clicked.connect(self.take_screenshot)
         side_layout.addWidget(btn_screenshot)
 
-        main_layout.addWidget(sidebar)
+        self.sidebar_scroll = QScrollArea()
+        self.sidebar_scroll.setObjectName("SidebarScroll")
+        self.sidebar_scroll.setWidgetResizable(True)
+        self.sidebar_scroll.setFixedWidth(290)
+        self.sidebar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.sidebar_scroll.setWidget(sidebar)
+        main_layout.addWidget(self.sidebar_scroll)
 
         # === CONTENT AREA ===
         content = QWidget()
@@ -1047,113 +948,74 @@ class GeminiApp(QMainWindow):
 
     # --- ОСТАЛЬНЫЕ ФУНКЦИИ (Config, Scan, Export) ---
     def load_config(self):
-        data = load_json(CONFIG_FILE, LEGACY_DIR / "ip_ranges.json", [])
-        if isinstance(data, dict):
-            data = [{"name": name, "ranges": ranges if isinstance(ranges, list) else [ranges]}
-                    for name, ranges in data.items()]
-        result = []
-        for item in data if isinstance(data, list) else []:
-            if not isinstance(item, dict):
-                continue
-            ranges = item.get("ranges", [item["range"]] if "range" in item else [])
-            if isinstance(ranges, str):
-                ranges = [ranges]
-            if isinstance(ranges, list) and all(isinstance(r, str) for r in ranges):
-                result.append({"name": str(item.get("name", "Сеть")), "ranges": ranges})
-        return result
+        return normalize_groups(load_json(CONFIG_FILE, LEGACY_DIR / "ip_ranges.json", []))
 
-    def save_config(self):
+    def save_config(self, candidate=None):
         try:
-            write_json(CONFIG_FILE, self.ranges_config)
-        except Exception as e: QMessageBox.critical(self, "Error", str(e))
+            write_json(CONFIG_FILE, self.ranges_config if candidate is None else candidate)
+            return True
+        except OSError as exc:
+            QMessageBox.critical(self, "Сохранение сетей", f"Не удалось сохранить сети. Прежние настройки сохранены.\n{exc}")
+            return False
 
-    def refresh_ranges_list(self):
-        self.list_ranges.clear()
-        for idx, r in enumerate(self.ranges_config):
-            name = r.get('name', '?')
-            ranges = r.get('ranges', [])
-            
-            # Красивое отображение в списке
-            if len(ranges) > 1:
-                display_text = f"{name} ({len(ranges)} диапазонов)"
-            else:
-                display_text = f"{name} ({ranges[0] if ranges else 'Пусто'})"
-                
-            item = QListWidgetItem(display_text)
-            item.setData(Qt.ItemDataRole.UserRole, idx) # Надежно прячем индекс внутри элемента
-            self.list_ranges.addItem(item)
+    def commit_ranges(self, candidate, current=None):
+        if not self.save_config(candidate):
+            self.refresh_ranges_list()
+            return False
+        self.ranges_config = deepcopy(candidate)
+        self.refresh_ranges_list(current)
+        return True
+
+    def refresh_ranges_list(self, current=None):
+        self.ranges_panel.set_groups(self.ranges_config, current)
+
     def toggle_all_ranges(self, state):
-        if state == 2: self.list_ranges.selectAll()
-        else: self.list_ranges.clearSelection()
+        self.ranges_panel.toggle_all(state == Qt.CheckState.Checked.value)
 
     def add_range_dialog(self):
-        dlg = IPRangeDialog(parent=self)
-        if dlg.exec():
-            name, ranges = dlg.get_data()
-            if name and ranges:
-                self.ranges_config.append({"name": name, "ranges": ranges})
-                self.save_config()
-                self.refresh_ranges_list()
+        dialog = IPRangeDialog(parent=self, existing_names=[group["name"] for group in self.ranges_config])
+        if dialog.exec():
+            name, ranges = dialog.get_data()
+            candidate = deepcopy(self.ranges_config)
+            candidate.append({"name": name, "ranges": ranges, "enabled": True})
+            if self.commit_ranges(candidate, len(candidate) - 1):
+                self.ranges_panel.search.clear()
 
-    def delete_range(self):
-        rows = self.list_ranges.selectedIndexes()
-        for r in sorted(rows, reverse=True): del self.ranges_config[r.row()]
-        self.save_config()
-        self.refresh_ranges_list()
+    def delete_range(self, index=None):
+        if index is None:
+            index = self.ranges_panel.current_index()
+        if not 0 <= index < len(self.ranges_config):
+            return
+        name = self.ranges_config[index]["name"]
+        answer = QMessageBox.question(self, "Удалить сохранённую сеть", f"Удалить «{name}» из списка сетей?\nОборудование и результаты сканирования останутся без изменений.", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        candidate = deepcopy(self.ranges_config)
+        del candidate[index]
+        self.commit_ranges(candidate, min(index, len(candidate) - 1))
 
-    
-    # === ФУНКЦИЯ РЕДАКТИРОВАНИЯ ПОДСЕТИ ===
-    def edit_subnet(self, item=None):
-        """Открывает окно IPRangeDialog для редактирования"""
-        if item is None:
-            selected = self.list_ranges.selectedItems()
-            if not selected:
-                QMessageBox.warning(self, "Внимание", "Сначала выберите подсеть для редактирования!")
-                return
-            item = selected[0]
-            
-        # Достаем индекс из элемента
-        idx = item.data(Qt.ItemDataRole.UserRole)
-        if idx is None or idx >= len(self.ranges_config): return
-        
-        r_data = self.ranges_config[idx]
-        old_name = r_data.get("name", "")
-        old_ranges = r_data.get("ranges", [])
-        
-        # Открываем редактор с предзаполненными данными
-        dlg = IPRangeDialog(name=old_name, ranges=old_ranges, parent=self)
-        if dlg.exec():
-            new_name, new_ranges = dlg.get_data()
-            if new_name and new_ranges:
-                self.ranges_config[idx]["name"] = new_name
-                self.ranges_config[idx]["ranges"] = new_ranges
-                self.save_config()
-                self.refresh_ranges_list()
-    # ======================================    
+    def edit_subnet(self, index=None):
+        if index is None:
+            index = self.ranges_panel.current_index()
+        if not 0 <= index < len(self.ranges_config):
+            return
+        group = self.ranges_config[index]
+        dialog = IPRangeDialog(name=group["name"], ranges=group["ranges"], parent=self,
+                               existing_names=[item["name"] for i, item in enumerate(self.ranges_config) if i != index])
+        if dialog.exec():
+            name, ranges = dialog.get_data()
+            candidate = deepcopy(self.ranges_config)
+            candidate[index].update(name=name, ranges=ranges)
+            self.commit_ranges(candidate, index)
 
     def start_scan(self):
         if getattr(self, "worker", None) and self.worker.isRunning():
             return
-        sel = self.list_ranges.selectedItems()
-        to_scan = []
-        scan_names = []
-
-        # Теперь мы читаем данные напрямую из конфига, а не из текста кнопки!
-        if not sel: 
-            for r in self.ranges_config:
-                to_scan.extend(r.get('ranges', []))
-            self.last_scan_name = "All_Ranges"
-        else:
-            for item in sel:
-                idx = item.data(Qt.ItemDataRole.UserRole)
-                if idx is not None and idx < len(self.ranges_config):
-                    r_data = self.ranges_config[idx]
-                    to_scan.extend(r_data.get('ranges', []))
-                    scan_names.append(r_data.get('name', 'Net'))
-            self.last_scan_name = "_".join(scan_names)
-
-        if not to_scan: 
-            QMessageBox.warning(self, "Диапазоны", "Добавьте диапазон IP-адресов слева.")
+        to_scan = selected_ranges(self.ranges_config)
+        scan_names = [group.get("name", "Сеть") for group in self.ranges_config if group.get("enabled", True)]
+        self.last_scan_name = "_".join(scan_names) or "Scan"
+        if not to_scan:
+            QMessageBox.warning(self, "Сети для сканирования", "Добавьте сеть и отметьте галочками сети, которые нужно опросить.")
             return
 
         # === СОБИРАЕМ ВЫБРАННОЕ ОБОРУДОВАНИЕ ИЗ НАСТРОЕК ===

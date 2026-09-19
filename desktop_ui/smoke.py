@@ -9,6 +9,7 @@ from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
 from .preferences import defaults
 from .settings_dialog import SettingsDialog
+from .range_dialog import IPRangeDialog
 from miner_scanner.profiles import ProfileRegistry
 
 
@@ -30,6 +31,13 @@ def run_smoke(app, window_type, output):
         window.show()
         app.processEvents()
         window.grab().save(str(output / "empty-light.png"))
+        # Synthetic editor screenshots exercise validation without saving local settings.
+        ranges_dialog = IPRangeDialog("Контейнер А", ["192.0.2.1-24", "192.0.2.10", "198.51.100.0/30"], window)
+        ranges_dialog.show()
+        app.processEvents()
+        assert ranges_dialog.update_preview()
+        ranges_dialog.grab().save(str(output / "networks-editor-light.png"))
+        ranges_dialog.close()
         rows = []
         for i, (model, status, rate, firmware) in enumerate([
             ("Antminer S21", "Running", "200.00 TH/s", "Stock"),
@@ -56,6 +64,14 @@ def run_smoke(app, window_type, output):
         window.apply_theme()
         app.processEvents()
         window.grab().save(str(output / "dashboard-dark.png"))
+        ranges_dialog.show()
+        app.processEvents()
+        ranges_dialog.grab().save(str(output / "networks-editor-dark.png"))
+        ranges_dialog.te_ranges.setPlainText("192.0.2.1\n192.0.2.8-2")
+        assert not ranges_dialog.update_preview()
+        app.processEvents()
+        ranges_dialog.grab().save(str(output / "networks-editor-error.png"))
+        ranges_dialog.close()
         dialog = SettingsDialog(settings, window)
         dialog.show()
         for index, name in enumerate(("general", "scanner", "columns", "pdf", "excel")):

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Руководство пользователя
+    url: https://github.com/Drubic8/AgentScanner/blob/main/docs/user_guide.md
+    about: Установка, сети, доступ к ASIC и экспорт отчётов
+  - name: Сообщения об уязвимостях
+    url: https://github.com/Drubic8/AgentScanner/blob/main/SECURITY.md
+    about: Не публикуйте детали уязвимостей и секреты в открытом Issue

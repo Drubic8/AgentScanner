@@ -65,3 +65,12 @@ artifacts/
 docs/pyasic_docs/
 diagnostics/
 outputs/
+
+# Public contributor guides and repository automation (explicit allowlist).
+!/CONTRIBUTING.md
+!/SECURITY.md
+!/CHANGELOG.md
+!/ROADMAP.md
+!.github/PULL_REQUEST_TEMPLATE.md
+!.github/ISSUE_TEMPLATE/*.yml
+!.github/workflows/tests.yml
