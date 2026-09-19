@@ -59,7 +59,8 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         try {
-            connectivity.registerNetworkCallback(NetworkRequest.Builder().clearCapabilities().build(), networkCallback)
+            connectivity.registerNetworkCallback(NetworkRequest.Builder()
+                .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(), networkCallback)
             callbackRegistered = true
         } catch (_: RuntimeException) { notice("Не удалось подключить наблюдение за сетью.") }
         viewModelScope.launch {
