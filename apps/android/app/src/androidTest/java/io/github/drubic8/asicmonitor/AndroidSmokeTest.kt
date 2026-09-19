@@ -58,7 +58,10 @@ class AndroidSmokeTest {
     private fun screenshot(name: String) {
         compose.waitForIdle()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val folder = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
+        // AGP collects this directory before uninstalling the test application.
+        val output = InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
+            ?: instrumentation.targetContext.getExternalFilesDir(null)!!.absolutePath
+        val folder = File(output, "screenshots").apply { mkdirs() }
         val bitmap = instrumentation.uiAutomation.takeScreenshot()
         File(folder, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
