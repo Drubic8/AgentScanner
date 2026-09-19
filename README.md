@@ -8,10 +8,18 @@
 
 **[Скачать для Windows](https://github.com/Drubic8/AgentScanner/releases/latest)** · **[Руководство пользователя](docs/user_guide.md)** · **[Сообщить об ошибке](https://github.com/Drubic8/AgentScanner/issues/new/choose)** · **[Участие в разработке](CONTRIBUTING.md)**
 
-**Android:** [исходники, установка и сборка APK](apps/android/README.md) — первая тестовая версия
-`0.1.0-alpha.1` с нативным интерфейсом и общим ядром сканера. APK собирается в
+**Android:** [скачать APK 0.1.0-alpha.1](https://github.com/Drubic8/AgentScanner/releases/tag/android-v0.1.0-alpha.1)
+· [установка и сборка](apps/android/README.md). Первая тестовая версия с нативным интерфейсом
+и общим ядром сканера. APK собирается в
 [GitHub Actions](https://github.com/Drubic8/AgentScanner/actions/workflows/android.yml).
 Проверка на реальном оборудовании ещё требуется; возможности Android описаны отдельно от Windows.
+
+<details>
+<summary>Интерфейс Android на эмуляторе</summary>
+
+<img src="docs/images/android-overview.png" alt="ASIC Monitor Android: выбор сети и запуск сканирования" width="320">
+
+</details>
 
 ![ASIC Monitor: таблица устройств, показатели и выбор сетей](docs/images/overview.png)
 
