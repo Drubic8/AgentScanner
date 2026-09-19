@@ -27,6 +27,9 @@ jobs:
         with:
           python-version: '3.13'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v4
       - name: Offline scanner contracts
         run: |
