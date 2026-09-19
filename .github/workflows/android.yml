@@ -51,7 +51,9 @@ jobs:
           target: google_apis
           disable-animations: true
           working-directory: apps/android
-          script: ./gradlew --no-daemon :app:connectedDebugAndroidTest
+          script: |
+            ./gradlew --no-daemon :app:connectedDebugAndroidTest
+            adb pull /sdcard/Android/data/io.github.drubic8.asicmonitor/files/screenshots app/build/reports/screenshots
       - name: Prepare test distribution
         run: |
           mkdir -p android-dist

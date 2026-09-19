@@ -4,12 +4,14 @@ import android.app.Application
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -53,19 +55,11 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }
-        override fun onAvailable(network: Network) {
-            viewModelScope.launch {
-                if (state.value.busy && operationNetwork != null && operationNetwork != network) {
-                    cancel()
-                    notice("Сеть переключилась. Операция остановлена.")
-                }
-            }
-        }
     }
 
     init {
         try {
-            connectivity.registerDefaultNetworkCallback(networkCallback)
+            connectivity.registerNetworkCallback(NetworkRequest.Builder().clearCapabilities().build(), networkCallback)
             callbackRegistered = true
         } catch (_: RuntimeException) { notice("Не удалось подключить наблюдение за сетью.") }
         viewModelScope.launch {
@@ -117,28 +111,47 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
         mutable.update { it.copy(workers = workers, auth = auth) }
     }
     private fun networkReady(): Boolean {
-        val network = connectivity.activeNetwork
-        val capabilities = connectivity.getNetworkCapabilities(network)
-        val valid = capabilities != null && (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) || capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN))
-        if (!valid) notice("Подключитесь к Wi-Fi ASIC, Ethernet или VPN. Доступ к интернету не обязателен.")
-        operationNetwork = if (valid) network else null
-        return valid
+        fun suitable(network: Network?): Boolean {
+            val capabilities = connectivity.getNetworkCapabilities(network) ?: return false
+            return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) || capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+        }
+        // A Wi-Fi LAN without Internet may not be the default network when cellular is enabled.
+        // Preserve the active VPN where present; otherwise use an available LAN explicitly.
+        val network = connectivity.activeNetwork?.takeIf { suitable(it) }
+            ?: connectivity.allNetworks.firstOrNull { suitable(it) }
+        if (network == null || !connectivity.bindProcessToNetwork(network)) {
+            notice("Подключитесь к Wi-Fi ASIC, Ethernet или VPN. Доступ к интернету не обязателен.")
+            return false
+        }
+        operationNetwork = network
+        return true
+    }
+    private fun releaseNetwork() {
+        connectivity.bindProcessToNetwork(null)
+        operationNetwork = null
     }
     fun scan(username: String, password: String) {
         val current = state.value
-        if (!current.ready || current.busy || !foreground || !networkReady()) return
+        if (!current.ready || current.busy || !foreground) return
         val ranges = current.groups.filter { it.selected }.joinToString("\n") { it.ranges }
         if (ranges.isBlank()) { notice("Добавьте и выберите сеть во вкладке «Сети»."); return }
+        if (!networkReady()) return
         mutable.update { it.copy(busy = true, stopping = false, notice = "", status = "Сканирование…") }
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { bridge.callAttr("start", ranges, username, password, current.auth, current.workers) }
                 if (!foreground || state.value.stopping) withContext(Dispatchers.IO) { bridge.callAttr("cancel") }
                 observe()
+            } catch (cancelled: CancellationException) {
+                bridge.callAttr("cancel")
+                throw cancelled
             } catch (_: Exception) {
+                bridge.callAttr("cancel")
                 mutable.update { it.copy(busy = false, status = "Не удалось начать сканирование",
                     notice = "Проверьте адреса и общий лимит: 4096 IP.") }
+            } finally {
+                releaseNetwork()
             }
         }
     }
@@ -150,9 +163,15 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
                 withContext(Dispatchers.IO) { bridge.callAttr("command", device.ip, device.id, action) }
                 if (!foreground || state.value.stopping) withContext(Dispatchers.IO) { bridge.callAttr("cancel") }
                 observe()
+            } catch (cancelled: CancellationException) {
+                bridge.callAttr("cancel")
+                throw cancelled
             } catch (_: Exception) {
+                bridge.callAttr("cancel")
                 mutable.update { it.copy(busy = false, status = "Команда не выполнена",
                     notice = "Для этого устройства нет подтверждённой команды. Обновите сканирование.") }
+            } finally {
+                releaseNetwork()
             }
         }
     }
@@ -160,8 +179,10 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
         do {
             val snapshot = withContext(Dispatchers.IO) { JSONObject(bridge.callAttr("snapshot").toString()) }
             val rows = snapshot.getJSONArray("rows")
-            val devices = List(rows.length()) { parseDevice(rows.getJSONObject(it)) }
-                .sortedWith(compareBy { device -> device.ip.split('.').fold(0L) { value, part -> value * 256 + part.toLong() } })
+            val devices = withContext(Dispatchers.Default) {
+                List(rows.length()) { parseDevice(rows.getJSONObject(it)) }
+                    .sortedWith(compareBy { device -> device.ip.split('.').fold(0L) { value, part -> value * 256 + part.toLong() } })
+            }
             val running = snapshot.getBoolean("running")
             mutable.update { it.copy(busy = running, devices = devices, processed = snapshot.getInt("processed"),
                 total = snapshot.getInt("total"), errors = snapshot.getInt("errors"),
@@ -170,7 +191,6 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
                     ?: snapshot.getString("error").ifBlank { it.notice }) }
             if (running) delay(500)
         } while (running)
-        operationNetwork = null
     }
     fun cancel() {
         if (!state.value.ready || !state.value.busy) return

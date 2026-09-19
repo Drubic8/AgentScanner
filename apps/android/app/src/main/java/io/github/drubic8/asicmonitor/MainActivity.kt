@@ -80,7 +80,8 @@ private fun MonitorApp(model: MonitorViewModel) {
                 }
         }
     }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
+        Column(Modifier.widthIn(max = 840.dp).fillMaxSize()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Memory, null, tint = Blue, modifier = Modifier.size(30.dp))
                 Spacer(Modifier.width(10.dp))
@@ -96,6 +97,7 @@ private fun MonitorApp(model: MonitorViewModel) {
                 1 -> NetworksScreen(model, state)
                 2 -> SettingsScreen(state, username, password, { username = it }, { password = it }, model::settings)
             }
+        }
         }
     }
     detail?.let { device ->
@@ -183,7 +185,7 @@ private fun DevicesScreen(state: MonitorState, onScan: () -> Unit, onCancel: () 
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(device.ip, color = Blue, fontWeight = FontWeight.Medium)
                         Text(if (device.stale) "Устарело" else when (device.state) {
-                            "mining" -> "Майнинг"; "stopped", "sleep", "paused" -> "Остановлен"; else -> "Обнаружен"
+                            "running", "mining" -> "Майнинг"; "stopped", "sleep", "paused" -> "Остановлен"; else -> "Обнаружен"
                         }, color = if (device.stale) Amber else Positive, style = MaterialTheme.typography.labelMedium)
                     }
                     Text(device.model, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)

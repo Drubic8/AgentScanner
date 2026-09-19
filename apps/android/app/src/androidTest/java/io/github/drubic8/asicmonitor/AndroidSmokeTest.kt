@@ -11,6 +11,8 @@ import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
+import android.graphics.Bitmap
+import java.io.File
 
 class AndroidSmokeTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
@@ -28,29 +30,10 @@ class AndroidSmokeTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val scanner = module.callAttr("MobileScanner", context.cacheDir.absolutePath)
         assertTrue(scanner.callAttr("export_csv").toString().startsWith("\uFEFFIP;"))
-        // Direct Python TCP round-trip against loopback; no access to any ASIC or LAN.
-        val result = python.getModule("builtins").callAttr("exec", """
-import socket, threading
-from miner_scanner.transports import Transport
-from miner_scanner.runtime import Operation, ScanOptions
-server = socket.socket()
-server.bind(('127.0.0.1', 0))
-server.listen(1)
-def reply():
-    connection, _ = server.accept()
-    with connection:
-        connection.recv(4096)
-        connection.sendall(b'{"STATUS":[{"STATUS":"S"}]}\x00')
-    server.close()
-thread = threading.Thread(target=reply, daemon=True)
-thread.start()
-with Transport('127.0.0.1', Operation(ScanOptions())) as transport:
-    response = transport.cgminer('version', port=server.getsockname()[1])
-    assert response['STATUS'][0]['STATUS'] == 'S'
-thread.join(3)
-assert not thread.is_alive()
-        """.trimIndent())
-        assertNull(result)
+        val script = InstrumentationRegistry.getInstrumentation().context.assets
+            .open("protocol_smoke.py").bufferedReader().use { it.readText() }
+        val builtins = python.getModule("builtins")
+        builtins.callAttr("exec", script, builtins.callAttr("dict"))
     }
 
     @Test fun networkEditorValidatesAndPersistsWithoutScanning() {
@@ -62,9 +45,22 @@ assert not thread.is_alive()
         compose.onNodeWithText("Сохранить").performClick()
         compose.waitUntil(5000) { compose.onAllNodes(androidx.compose.ui.test.hasText("Тестовая сеть")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Тестовая сеть").assertIsDisplayed()
+        screenshot("networks")
         compose.activityRule.scenario.recreate()
         compose.onNodeWithText("Тестовая сеть").assertIsDisplayed()
         compose.onNodeWithText("Настройки", useUnmergedTree = true).performClick()
         compose.onNodeWithText("Доступ к ASIC").assertIsDisplayed()
+        screenshot("settings")
+        compose.onNodeWithText("Устройства", useUnmergedTree = true).performClick()
+        screenshot("devices")
+    }
+
+    private fun screenshot(name: String) {
+        compose.waitForIdle()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val folder = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
+        val bitmap = instrumentation.uiAutomation.takeScreenshot()
+        File(folder, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
     }
 }

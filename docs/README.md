@@ -3,9 +3,11 @@
 ## Пользователям
 
 - [Установка, сети, доступ к ASIC, отчёты и устранение проблем](user_guide.md)
+- [Android: установка APK, возможности и локальная сборка](../apps/android/README.md)
 - [Что нового](../CHANGELOG.md)
 - [Диагностика и аппаратные испытания](testing/README.md)
 - [Матрица проверки моделей и прошивок — Excel](testing/asic_acceptance.xlsx)
+- [Приёмка Android на телефоне и оборудовании](testing/android_acceptance.md)
 
 ## Разработчикам
 
