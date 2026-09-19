@@ -74,3 +74,23 @@ outputs/
 !.github/PULL_REQUEST_TEMPLATE.md
 !.github/ISSUE_TEMPLATE/*.yml
 !.github/workflows/tests.yml
+
+# Android source and reproducible build inputs only.
+!apps/android/**/*.kts
+!apps/android/**/*.kt
+!apps/android/**/*.py
+!apps/android/**/*.xml
+!apps/android/**/*.properties
+!apps/android/**/*.txt
+!apps/android/**/*.md
+!apps/android/gradlew
+!apps/android/gradlew.bat
+!apps/android/gradle/wrapper/gradle-wrapper.jar
+!.github/workflows/android.yml
+apps/android/**/build/
+apps/android/.gradle/
+apps/android/.kotlin/
+apps/android/**/local.properties
+apps/android/**/*.jks
+apps/android/**/*.keystore
+apps/android/**/__pycache__/

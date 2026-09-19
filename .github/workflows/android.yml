@@ -1,0 +1,69 @@
+name: Android APK
+on:
+  push:
+    branches: [main]
+    paths: ['apps/android/**', 'miner_scanner/**', 'tests/test_android_bridge.py', '.github/workflows/android.yml']
+  pull_request:
+    paths: ['apps/android/**', 'miner_scanner/**', 'tests/test_android_bridge.py', '.github/workflows/android.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Offline scanner contracts
+        run: |
+          python -m pip install .
+          python scripts/check_scanner.py
+      - name: Build APK and instrumentation tests
+        working-directory: apps/android
+        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
+      - name: Enable emulator KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Android runtime and screen tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          working-directory: apps/android
+          script: ./gradlew --no-daemon :app:connectedDebugAndroidTest
+      - name: Prepare test distribution
+        run: |
+          mkdir -p android-dist
+          cp apps/android/app/build/outputs/apk/debug/app-debug.apk android-dist/ASIC_Monitor-android-alpha.apk
+          cd android-dist
+          sha256sum ASIC_Monitor-android-alpha.apk > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ASIC-Monitor-Android-alpha
+          path: android-dist/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Android-test-reports
+          path: |
+            apps/android/app/build/reports/
+            apps/android/app/build/outputs/androidTest-results/
