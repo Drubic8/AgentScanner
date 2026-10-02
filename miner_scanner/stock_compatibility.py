@@ -17,7 +17,6 @@ from .runtime import AuthenticationError, DeadlineExceeded, ProtocolError
 
 MODE_ACTIONS = {'mining_stop', 'mining_start', 'normal_power', 'low', 'hem'}
 HEAD_ACTIONS = {'identify_on', 'identify_off', 'reboot'}
-TARGET_MODELS = {'L9', 'T21', 'S21', 'S21+', 'S21 Pro', 'S21 XP', 'Z11', 'Z15', 'Z15 Pro', 'D9'}
 ASSET_PATH = re.compile(r'/js/(?:miner|index)\.[a-zA-Z0-9_-]{1,64}\.js')
 
 
@@ -27,8 +26,9 @@ def interfaces():
 
 
 def eligible(record):
-    return (record.identity.make == 'Bitmain' and record.identity.firmware == 'Stock'
-            and model_name(record.identity.model) in TARGET_MODELS)
+    # The reviewed header API is shared by stock models, including KS5.
+    # Power modes still require an explicit model entry in the miner contract.
+    return record.identity.make == 'Bitmain' and record.identity.firmware == 'Stock'
 
 
 def model_name(value):

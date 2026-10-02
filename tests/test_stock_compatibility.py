@@ -168,6 +168,29 @@ class StockCompatibilityTests(unittest.TestCase):
                 self.assertEqual(execute_command(service, '192.0.2.1', 'led_on').status, 'unsupported')
                 self.assertEqual(len(factory.writes), 2)
 
+    def test_ks5_shared_header_does_not_require_model_in_power_contract(self):
+        service, factory, record = self.service('Antminer KS5')
+        factory.web['/index.html'] = b'<script src="/js/index.084178.js"></script>'
+        factory.web['/js/index.084178.js'] = self.bodies['index.084178.js']
+        record = service.poll('192.0.2.1', force_identify=True)
+        self.assertEqual(record.identity.make, 'Bitmain')
+        self.assertEqual(record.capabilities['identify_on'], 'supported')
+        for action in ('led_on', 'led_off'):
+            self.assertEqual(execute_command(service, '192.0.2.1', action).status, 'succeeded')
+        self.assertEqual(factory.writes, [('/cgi-bin/blink.cgi', 'POST', {'blink': True}),
+                                         ('/cgi-bin/blink.cgi', 'POST', {'blink': False})])
+        for action in ('sleep', 'normal', 'low', 'hem'):
+            self.assertEqual(execute_command(service, '192.0.2.1', action).status, 'unsupported')
+        self.assertEqual(len(factory.writes), 2)
+
+    def test_shared_header_remains_scoped_to_bitmain_stock(self):
+        _, _, record = self.service('Antminer KS5')
+        for make, firmware in (('Elphapex', 'Stock'), ('Bitmain', 'VNish'), ('Unknown', 'Stock')):
+            record.identity.make, record.identity.firmware = make, firmware
+            self.assertFalse(compat.eligible(record))
+            self.assertFalse(compat.resolve(record, {}, {'index': next(iter(compat.interfaces()['index'])),
+                                                       'blink_boolean': True})['rules'])
+
     def test_z_series_modern_reboot_is_not_tied_to_build_date(self):
         service, factory, _ = self.service('Antminer Z15 Pro')
         factory.web['/index.html'] = b'<script src="/js/index.16ab47.js"></script>'

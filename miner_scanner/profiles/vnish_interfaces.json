@@ -4,6 +4,10 @@
     "3e9a7fd2863b9ae31a24291dae514e78b9a7cc23dd3b14703010eec606a1c92c": {
       "source_asset": "index-CdF1v03q.js",
       "led_api": "locate-miner"
+    },
+    "7a200766aa853e98f337b63488c92da5b94ea152c6b4718845d0cab3f336b677": {
+      "source_asset": "index-IOfCXv6T.js",
+      "led_api": "find-miner"
     }
   }
 }

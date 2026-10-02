@@ -22,6 +22,9 @@ class VnishTransport(FakeTransport):
         if path == '/api/v1/locate-miner' and headers == {'Authorization': 'Bearer fixture-token'}:
             self.factory.data['/api/v1/status']['find_miner'] = payload['is_enabled']
             return 200, b'{}'
+        if path == '/api/v1/find-miner' and headers == {'Authorization': 'Bearer fixture-token'}:
+            self.factory.data['/api/v1/status']['find_miner'] = payload['on']
+            return 200, b'{}'
         raise AssertionError('Unexpected control write')
 
     def http_json(self, path, method='GET', **kwargs):
@@ -35,7 +38,11 @@ class VnishCompatibilityTests(unittest.TestCase):
     def setUp(self):
         self.body = b'/* synthetic reviewed locate-miner interface */'
         catalog = deepcopy(compat.interfaces())
-        catalog['index'] = {hashlib.sha256(self.body).hexdigest(): next(iter(catalog['index'].values()))}
+        self.legacy_body = b'/* synthetic reviewed find-miner interface */'
+        self.legacy_body += b' ' * (1_420_958 - len(self.legacy_body))
+        definitions = {definition['led_api']: definition for definition in catalog['index'].values()}
+        catalog['index'] = {hashlib.sha256(self.body).hexdigest(): definitions['locate-miner'],
+                           hashlib.sha256(self.legacy_body).hexdigest(): definitions['find-miner']}
         self.addCleanup(patch.stopall)
         patch.object(compat, 'interfaces', return_value=catalog).start()
         patch.object(Operation, 'pause', lambda *_: None).start()
@@ -73,6 +80,28 @@ class VnishCompatibilityTests(unittest.TestCase):
         self.assertEqual(execute_command(self.service, '192.0.2.1', 'led_on', allow_unverified=True).status, 'unsupported')
         self.assertFalse(self.factory.writes)
         self.assertNotIn(('192.0.2.1', '/api/v1/unlock'), self.factory.calls)
+
+    def test_legacy_find_miner_sets_boolean_and_does_not_toggle(self):
+        self.factory.data['vnish_info'].update(miner='Antminer L9', fw_version='1.2.6')
+        self.factory.web['/assets/index-audit.js'] = self.legacy_body
+        record = self.service.poll('192.0.2.1', force_identify=True)
+        self.assertEqual(record.capabilities['identify_on'], 'supported')
+        for action, enabled in [('led_on', True), ('led_on', True), ('led_off', False), ('led_off', False)]:
+            self.assertEqual(execute_command(self.service, '192.0.2.1', action).status, 'succeeded')
+            self.assertEqual(self.factory.writes[-1], ('/api/v1/find-miner', 'POST',
+                             {'on': enabled}, {'Authorization': 'Bearer fixture-token'}))
+            self.assertIs(self.factory.data['/api/v1/status']['find_miner'], enabled)
+        self.assertEqual(len(self.factory.writes), 4)
+        self.assertEqual(self.factory.data['vnish_summary']['miner']['miner_status']['miner_state'], 'mining')
+
+    def test_probe_requests_asset_budget_without_changing_json_budget(self):
+        transport = VnishTransport(self.factory, '192.0.2.1', Operation())
+        original = transport.http
+        with patch.object(transport, 'http', wraps=original) as request:
+            compat.probe(transport)
+        self.assertEqual(request.call_args_list[1].kwargs,
+                         {'response_limit': transport.operation.options.max_asset_bytes})
+        self.assertEqual(transport.operation.options.max_response_bytes, 1_048_576)
 
     def test_boolean_status_is_required(self):
         for value in ('false', 0, None):

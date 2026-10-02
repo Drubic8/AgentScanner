@@ -1,4 +1,4 @@
-"""Read-only recognition of reviewed VNish locate-miner UI/API contracts."""
+"""Read-only recognition of reviewed VNish find/locate-miner contracts."""
 from functools import lru_cache
 import hashlib
 from html.parser import HTMLParser
@@ -42,7 +42,7 @@ def probe(transport):
         parser.feed(body.decode('utf-8'))
         if len(parser.paths) != 1:
             return evidence
-        status, body = transport.http(parser.paths[0])
+        status, body = transport.http(parser.paths[0], response_limit=transport.operation.options.max_asset_bytes)
         if status != 200:
             return evidence
         evidence['index'] = hashlib.sha256(body).hexdigest()
@@ -63,7 +63,8 @@ def resolve(info, evidence):
     definition = interfaces()['index'].get(evidence.get('index'))
     if 'index' in evidence:
         result['blocked'].update(LED_ACTIONS)
-    if definition and definition['led_api'] == 'locate-miner' and evidence.get('find_boolean') is True:
-        result['rules'] = {action: {'_vnish_interface': 'locate-miner'} for action in LED_ACTIONS}
+    if (definition and definition['led_api'] in {'find-miner', 'locate-miner'}
+            and evidence.get('find_boolean') is True):
+        result['rules'] = {action: {'_vnish_interface': definition['led_api']} for action in LED_ACTIONS}
         result['blocked'].difference_update(LED_ACTIONS)
     return result

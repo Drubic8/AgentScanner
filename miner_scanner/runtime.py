@@ -34,6 +34,7 @@ class ScanOptions:
     metadata_ttl: float = 300.0
     max_addresses: int = 4096
     max_response_bytes: int = 1_048_576
+    max_asset_bytes: int = 2_097_152
 
     def __post_init__(self):
         if not 1 <= self.workers <= 256:
@@ -43,6 +44,8 @@ class ScanOptions:
                 raise ValueError(f"{key} must be positive")
         if self.max_addresses < 1 or self.max_response_bytes < 1:
             raise ValueError("Scan limits must be positive")
+        if type(self.max_asset_bytes) is not int or self.max_asset_bytes < 1:
+            raise ValueError("max_asset_bytes must be a positive integer")
 
 
 @dataclass

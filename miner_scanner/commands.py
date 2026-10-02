@@ -125,9 +125,11 @@ def vnish(transport, record, action, credentials, *, credential_candidates=None,
         "mining_start": ("/api/v1/mining/start", None),
     }
     if control_rule is not None:
-        if action not in ('identify_on', 'identify_off') or control_rule != {'_vnish_interface': 'locate-miner'}:
+        if (action not in ('identify_on', 'identify_off')
+                or control_rule not in ({'_vnish_interface': 'locate-miner'}, {'_vnish_interface': 'find-miner'})):
             raise ProtocolError('Unknown VNish command contract')
-        definitions[action] = ('/api/v1/locate-miner', {'is_enabled': action == 'identify_on'})
+        if control_rule['_vnish_interface'] == 'locate-miner':
+            definitions[action] = ('/api/v1/locate-miner', {'is_enabled': action == 'identify_on'})
     path, payload = definitions[action]
     accepted = _http_accept(transport, path, payload=payload, headers=headers)
     def verify():

@@ -18,6 +18,7 @@ from . import stock_compatibility
 from . import whatsminer_compatibility
 from . import vnish_compatibility
 from . import avalon_compatibility
+from . import elphapex_compatibility
 
 logger = logging.getLogger(__name__)
 
@@ -249,6 +250,17 @@ class ScannerService:
                         evidence = vnish_compatibility.probe(transport)
                         self._interface_cache[ip] = (record.identity.fingerprint, time.monotonic(), evidence)
                     compatibility = vnish_compatibility.resolve(data.get('vnish_info'), evidence)
+                    self._control_contracts[ip] = compatibility
+                    stock_compatibility.apply_capabilities(record, profile, compatibility)
+                elif profile.control == 'elphapex':
+                    cached = self._interface_cache.get(ip)
+                    if (not force_identify and cached and cached[0] == record.identity.fingerprint
+                            and time.monotonic() - cached[1] < options.metadata_ttl):
+                        evidence = cached[2]
+                    else:
+                        evidence = elphapex_compatibility.probe(transport)
+                        self._interface_cache[ip] = (record.identity.fingerprint, time.monotonic(), evidence)
+                    compatibility = elphapex_compatibility.resolve(record, evidence)
                     self._control_contracts[ip] = compatibility
                     stock_compatibility.apply_capabilities(record, profile, compatibility)
                 elif profile.control == 'avalon':
