@@ -14,6 +14,8 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import android.graphics.Bitmap
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import java.io.File
 import org.junit.Assert.*
 import org.junit.Rule
@@ -106,16 +108,21 @@ class DeviceControlsTest {
 
     @Test fun compactControlsRemainReachableOnSmallAndWideLayoutsWithLargeText() {
         val devices = listOf(device("192.0.2.1", "Antminer S21+ с длинным названием прошивки", "bitmain.stock", setOf("mining_start")))
+        try {
         for ((width, height, scale) in listOf(Triple(375, 520, 1f), Triple(375, 520, 2f), Triple(740, 320, 1f))) {
+            if (width > 375) {
+                compose.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                compose.waitUntil(10000) { compose.activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE }
+            }
             compose.activity.runOnUiThread {
                 compose.activity.setContent { MaterialTheme(colorScheme = Palette) {
                     val density = LocalDensity.current.density
                     CompositionLocalProvider(LocalDensity provides Density(density, scale)) {
-                        Box(Modifier.width(width.dp).height(height.dp)) {
+                        key(width, height, scale) { Box(Modifier.width(width.dp).height(height.dp)) {
                             DevicesScreen(MonitorState(ready = true, status = "Тест", devices = devices),
                                 onScan = {}, onCancel = {}, onNetworks = {}, onExport = {}, onDevice = {},
                                 onCompact = {}, onCommand = {}, onJournal = {})
-                        }
+                        } }
                     }
                 } }
             }
@@ -124,6 +131,7 @@ class DeviceControlsTest {
             compose.onNodeWithText("Команды · 1").assertIsDisplayed().assertIsEnabled()
             screenshot("compact-${width}-${scale}")
         }
+        } finally { compose.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
     }
 
     private fun screenshot(name: String) {
