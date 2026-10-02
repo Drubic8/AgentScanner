@@ -1,6 +1,7 @@
 """Contract discovery and command execution against a synthetic HTTP device."""
 from copy import deepcopy
 import hashlib
+import time
 import unittest
 from unittest.mock import patch
 
@@ -8,7 +9,7 @@ from miner_scanner import stock_compatibility as compat
 from miner_scanner.commands import execute_command, declarative_command
 from miner_scanner.models import Credentials
 from miner_scanner.repository import DeviceRepository
-from miner_scanner.runtime import DeadlineExceeded, Operation
+from miner_scanner.runtime import DeadlineExceeded, Operation, ScanOptions
 from miner_scanner.service import ScannerService
 from tests.fakes import FakeFactory, FakeTransport
 from tests.test_stock_mode_timeout import device
@@ -267,7 +268,10 @@ class StockCompatibilityTests(unittest.TestCase):
         service.poll('192.0.2.1', force_identify=True)
         self.assertEqual(factory.calls.count(('192.0.2.1', '/miner.html')), before + 1)
         fingerprint, _, evidence = service._interface_cache['192.0.2.1']
-        service._interface_cache['192.0.2.1'] = (fingerprint, 0, evidence)
+        # CI may have a monotonic clock younger than the cache TTL. Expire
+        # relative to the current clock instead of assuming a long host uptime.
+        expired = time.monotonic() - ScanOptions().metadata_ttl - 1
+        service._interface_cache['192.0.2.1'] = (fingerprint, expired, evidence)
         service.poll('192.0.2.1')
         self.assertEqual(factory.calls.count(('192.0.2.1', '/miner.html')), before + 2)
 
