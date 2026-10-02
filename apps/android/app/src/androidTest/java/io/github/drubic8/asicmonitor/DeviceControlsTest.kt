@@ -3,6 +3,13 @@ package io.github.drubic8.asicmonitor
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
@@ -95,6 +102,28 @@ class DeviceControlsTest {
         compose.onNodeWithText("Подтверждено", substring = true).assertIsDisplayed()
         compose.onNodeWithText("Не поддерживается", substring = true).assertIsDisplayed()
         screenshot("command-journal")
+    }
+
+    @Test fun compactControlsRemainReachableOnSmallAndWideLayoutsWithLargeText() {
+        val devices = listOf(device("192.0.2.1", "Antminer S21+ с длинным названием прошивки", "bitmain.stock", setOf("mining_start")))
+        for ((width, height, scale) in listOf(Triple(375, 520, 1f), Triple(375, 520, 2f), Triple(740, 320, 1f))) {
+            compose.activity.runOnUiThread {
+                compose.activity.setContent { MaterialTheme(colorScheme = Palette) {
+                    val density = LocalDensity.current.density
+                    CompositionLocalProvider(LocalDensity provides Density(density, scale)) {
+                        Box(Modifier.width(width.dp).height(height.dp)) {
+                            DevicesScreen(MonitorState(ready = true, status = "Тест", devices = devices),
+                                onScan = {}, onCancel = {}, onNetworks = {}, onExport = {}, onDevice = {},
+                                onCompact = {}, onCommand = {}, onJournal = {})
+                        }
+                    }
+                } }
+            }
+            compose.onNodeWithTag("device-list").performScrollToNode(hasContentDescription("Выбрать 192.0.2.1"))
+            compose.onNodeWithContentDescription("Выбрать 192.0.2.1", useUnmergedTree = true).performClick()
+            compose.onNodeWithText("Команды · 1").assertIsDisplayed().assertIsEnabled()
+            screenshot("compact-${width}-${scale}")
+        }
     }
 
     private fun screenshot(name: String) {
