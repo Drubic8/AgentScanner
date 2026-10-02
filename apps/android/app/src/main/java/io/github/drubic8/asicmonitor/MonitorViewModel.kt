@@ -33,13 +33,17 @@ data class MonitorState(val ready: Boolean = false, val busy: Boolean = false,
     val stopping: Boolean = false, val processed: Int = 0, val total: Int = 0,
     val errors: Int = 0, val status: String = "Подготовка сканера…", val notice: String = "",
     val devices: List<Device> = emptyList(), val groups: List<NetworkGroup> = emptyList(),
-    val workers: Int = 8, val auth: String = "digest")
+    val workers: Int = 8, val auth: String = "digest", val compact: Boolean = true,
+    val commanding: Boolean = false, val commandTotal: Int = 0, val results: List<DeviceCommandResult> = emptyList())
+
+data class DeviceCommandResult(val ip: String, val action: String, val status: String, val message: String)
 
 class MonitorViewModel(application: Application) : AndroidViewModel(application) {
     private val preferences = application.getSharedPreferences("monitor", 0)
     private val mutable = MutableStateFlow(MonitorState(groups = loadGroups(),
         workers = preferences.getInt("workers", 8).takeIf { it in listOf(4, 8, 16, 32) } ?: 8,
-        auth = preferences.getString("auth", "digest")?.takeIf { it in listOf("basic", "digest") } ?: "digest"))
+        auth = preferences.getString("auth", "digest")?.takeIf { it in listOf("basic", "digest") } ?: "digest",
+        compact = preferences.getBoolean("compact", true)))
     val state = mutable.asStateFlow()
     private lateinit var bridge: PyObject
     private val connectivity = application.getSystemService(ConnectivityManager::class.java)
@@ -111,6 +115,10 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
         preferences.edit().putInt("workers", workers).putString("auth", auth).apply()
         mutable.update { it.copy(workers = workers, auth = auth) }
     }
+    fun compact(value: Boolean) {
+        preferences.edit().putBoolean("compact", value).apply()
+        mutable.update { it.copy(compact = value) }
+    }
     private fun networkReady(): Boolean {
         fun suitable(network: Network?): Boolean {
             val capabilities = connectivity.getNetworkCapabilities(network) ?: return false
@@ -138,7 +146,8 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
         val ranges = current.groups.filter { it.selected }.joinToString("\n") { it.ranges }
         if (ranges.isBlank()) { notice("Добавьте и выберите сеть во вкладке «Сети»."); return }
         if (!networkReady()) return
-        mutable.update { it.copy(busy = true, stopping = false, notice = "", status = "Сканирование…") }
+        mutable.update { it.copy(busy = true, stopping = false, commanding = false, results = emptyList(),
+            notice = "", status = "Сканирование…") }
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { bridge.callAttr("start", ranges, username, password, current.auth, current.workers) }
@@ -156,12 +165,16 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
             }
         }
     }
-    fun command(device: Device, action: String) {
+    fun command(devices: List<Device>, action: String, username: String, password: String) {
         if (!state.value.ready || state.value.busy || !foreground || !networkReady()) return
-        mutable.update { it.copy(busy = true, stopping = false, notice = "", status = "Отправка команды…") }
+        val targets = JSONArray()
+        devices.forEach { targets.put(JSONObject().put("ip", it.ip).put("device_id", it.id)) }
+        mutable.update { it.copy(busy = true, stopping = false, commanding = true, commandTotal = devices.size,
+            results = emptyList(), notice = "", status = "Отправка команды…") }
         viewModelScope.launch {
             try {
-                withContext(Dispatchers.IO) { bridge.callAttr("command", device.ip, device.id, action) }
+                withContext(Dispatchers.IO) { bridge.callAttr("command_many", targets.toString(), action,
+                    username, password, state.value.auth) }
                 if (!foreground || state.value.stopping) withContext(Dispatchers.IO) { bridge.callAttr("cancel") }
                 observe()
             } catch (cancelled: CancellationException) {
@@ -185,11 +198,18 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
                     .sortedWith(compareBy { device -> device.ip.split('.').fold(0L) { value, part -> value * 256 + part.toLong() } })
             }
             val running = snapshot.getBoolean("running")
+            val commanding = snapshot.optString("operation") == "command"
+            val commands = snapshot.optJSONArray("commands") ?: JSONArray()
+            val results = List(commands.length()) { index -> commands.getJSONObject(index).let {
+                DeviceCommandResult(it.getString("ip"), it.getString("action"), it.getString("status"), it.getString("message"))
+            } }.sortedBy { it.ip }
             mutable.update { it.copy(busy = running, devices = devices, processed = snapshot.getInt("processed"),
                 total = snapshot.getInt("total"), errors = snapshot.getInt("errors"),
+                commanding = commanding, commandTotal = snapshot.optInt("command_total"), results = results,
                 status = if (running) it.status else if (snapshot.getBoolean("cancelled")) "Остановлено" else "Завершено",
-                notice = snapshot.optJSONObject("command")?.let { result -> "${result.getString("status")}: ${result.getString("message")}" }
-                    ?: snapshot.getString("error").ifBlank { it.notice }) }
+                notice = if (running) it.notice else snapshot.getString("error").ifBlank {
+                    if (commanding) "Обработано устройств: ${results.size}. Результаты — в журнале команд." else it.notice
+                }) }
             if (running) delay(500)
         } while (running)
     }
@@ -220,7 +240,7 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
 }
 
 private fun JSONObject.text(key: String): String = if (isNull(key)) "—" else optString(key, "—")
-private fun parseDevice(row: JSONObject): Device {
+internal fun parseDevice(row: JSONObject): Device {
     val identity = row.getJSONObject("identity")
     val telemetry = row.getJSONObject("telemetry")
     val temperatures = telemetry.getJSONArray("temperatures_c")
@@ -228,8 +248,9 @@ private fun parseDevice(row: JSONObject): Device {
     val capabilities = row.getJSONObject("capabilities")
     return Device(identity.getString("device_id"), identity.getString("ip"), identity.text("model"),
         identity.text("firmware"), identity.text("firmware_version"),
-        if (telemetry.isNull("rate")) "—" else "${telemetry.text("rate")} ${telemetry.text("rate_unit")}",
-        maxTemperature?.let { "$it °C" } ?: "—", telemetry.text("mining_state"), telemetry.getBoolean("stale"),
+        row.optString("rate_display", "—"),
+        maxTemperature?.let { "${String.format(java.util.Locale.ROOT, "%.0f", it)} °C" } ?: "—",
+        telemetry.text("mining_state"), telemetry.getBoolean("stale"),
         telemetry.text("observed_at"), identity.text("profile_id"),
         capabilities.keys().asSequence().filter { capabilities.optString(it) == "supported" }.toSet())
 }
