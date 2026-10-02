@@ -77,11 +77,6 @@ class SettingsDialog(QDialog):
             self.theme.addItem(text, value)
         self.theme.setCurrentIndex(self.theme.findData(self.settings["theme"]))
         form.addRow("Тема", self.theme)
-        self.density = QComboBox()
-        self.density.addItem("Обычная", "comfortable")
-        self.density.addItem("Компактная", "compact")
-        self.density.setCurrentIndex(self.density.findData(self.settings["density"]))
-        form.addRow("Плотность таблицы", self.density)
         layout.addLayout(form)
         self.check_updates = QCheckBox("Проверять обновления при запуске")
         self.check_updates.setChecked(self.settings["check_updates"])
@@ -142,6 +137,18 @@ class SettingsDialog(QDialog):
 
     def _columns_page(self):
         layout = self._page("Таблица", "Отображаемые столбцы. IP-адрес остаётся видимым. Состав отчётов настраивается отдельно.")
+        form = QFormLayout()
+        self.density = QComboBox()
+        self.density.addItem("Обычный", "comfortable")
+        self.density.addItem("Компактный", "compact")
+        self.density.setCurrentIndex(self.density.findData(self.settings["density"]))
+        form.addRow("Режим таблицы", self.density)
+        layout.addLayout(form)
+        hint = QLabel("Компактный режим уменьшает ширину столбцов, высоту строк и отступы. "
+                      "Ширину можно изменить вручную за границу заголовка. Полный текст ячейки — при наведении.")
+        hint.setObjectName("Muted")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
         self.list_ui_cols = self._column_list(layout, "ui_cols")
 
     def _export_page(self, kind, title):

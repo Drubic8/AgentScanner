@@ -1,0 +1,49 @@
+name: Publish Windows and Android release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    uses: ./.github/workflows/windows-build.yml
+  android:
+    uses: ./.github/workflows/android.yml
+  publish:
+    needs: [windows, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: ASIC-Monitor-Windows
+          path: release/windows
+      - uses: actions/download-artifact@v4
+        with:
+          name: ASIC-Monitor-Android
+          path: release/android
+      - name: Verify assets and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(python -c 'import json; print(json.load(open("version.json"))["version"])')
+          test "$GITHUB_REF_NAME" = "v$version"
+          test -f "docs/releases/$version.md"
+          (cd release/windows && sha256sum -c SHA256SUMS.txt)
+          (cd release/android && sha256sum -c SHA256SUMS.txt)
+          cp release/windows/ASIC_Monitor.exe release/
+          cp "release/android/ASIC_Monitor-android-${version}-test.apk" release/
+          (cd release && sha256sum ASIC_Monitor.exe "ASIC_Monitor-android-${version}-test.apk" > SHA256SUMS.txt)
+          gh release create "$GITHUB_REF_NAME" --verify-tag --latest \
+            --title "ASIC Monitor $version — Windows и Android (тестовый APK)" \
+            --notes-file "docs/releases/$version.md" \
+            release/ASIC_Monitor.exe "release/ASIC_Monitor-android-${version}-test.apk" release/SHA256SUMS.txt

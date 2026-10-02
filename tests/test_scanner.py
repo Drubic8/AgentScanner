@@ -88,6 +88,12 @@ class ScannerTests(unittest.TestCase):
         result = self.service.poll("192.0.2.1")
         self.assertTrue(result.telemetry.stale)
         self.assertEqual(result.telemetry.rate, previous.telemetry.rate)
+        display = result.to_legacy()
+        self.assertEqual(display["Real"], "—")
+        self.assertEqual(display["Fan"], "—")
+        self.assertEqual(display["Uptime"], "—")
+        self.assertIsNone(display["RawHash"])
+        self.assertEqual(display["Status"], "Unknown")
 
     def test_streaming_and_cancel_preserve_completed_results(self):
         cancel = Event()

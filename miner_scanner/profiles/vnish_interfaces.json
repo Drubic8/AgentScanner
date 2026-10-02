@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "index": {
+    "3e9a7fd2863b9ae31a24291dae514e78b9a7cc23dd3b14703010eec606a1c92c": {
+      "source_asset": "index-CdF1v03q.js",
+      "led_api": "locate-miner"
+    }
+  }
+}

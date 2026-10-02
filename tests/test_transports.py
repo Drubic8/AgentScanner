@@ -4,6 +4,9 @@ import struct
 import threading
 import time
 import unittest
+from unittest.mock import MagicMock, patch
+import requests
+from urllib3.exceptions import ProtocolError as RawProtocolError, ReadTimeoutError
 
 from miner_scanner.runtime import Cancelled, DeadlineExceeded, Operation, ProtocolError, ScanOptions
 from miner_scanner.transports import Transport, recv_exact
@@ -27,6 +30,17 @@ class FragmentSocket:
 
 
 class TransportTests(unittest.TestCase):
+    def test_interrupted_stream_is_a_normal_transport_error(self):
+        for raw_error, expected in ((RawProtocolError('truncated response'), requests.ConnectionError),
+                                    (ReadTimeoutError(None, '/config', 'slow body'), requests.ReadTimeout)):
+            with self.subTest(error=type(raw_error).__name__), Transport('192.0.2.27', Operation()) as transport:
+                response = MagicMock(status_code=200)
+                response.raw.read1.side_effect = raw_error
+                response.__enter__.return_value = response
+                with patch.object(transport.session, 'request', return_value=response):
+                    with self.assertRaises(expected):
+                        transport.http('/cgi-bin/get_miner_conf.cgi')
+
     def test_fragmented_rpc_header_and_unicode_byte_length(self):
         response = b'{"code":0}'
         header = struct.pack("<I", len(response))

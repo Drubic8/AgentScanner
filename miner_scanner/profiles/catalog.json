@@ -3,7 +3,7 @@
   "profiles": [
     {
       "id": "bitmain.stock",
-      "version": 1,
+      "version": 2,
       "make": "Bitmain",
       "firmware": "Stock",
       "signature": "antminer",
@@ -21,7 +21,8 @@
           "stats",
           "cgminer",
           "stats",
-          false
+          false,
+          {"repair": "antminer_stats"}
         ],
         [
           "summary",
@@ -58,6 +59,259 @@
         ]
       ],
       "verified_commands": []
+    },
+    {
+      "id": "bitmain.stock.z11.20190423",
+      "version": 1,
+      "make": "Bitmain",
+      "firmware": "Stock",
+      "signature": "antminer",
+      "priority": 20,
+      "parser": "antminer",
+      "control": "antminer",
+      "match": {
+        "models": ["Antminer Z11"],
+        "compile_times": ["Tue Apr 23 13:15:06 CST 2019"],
+        "api_versions": ["3.1"]
+      },
+      "queries": [
+        ["version", "cgminer", "version", true],
+        ["stats", "cgminer", "stats", false, {"repair": "antminer_stats"}],
+        ["summary", "cgminer", "summary", false],
+        ["pools", "cgminer", "pools", true],
+        ["system", "http", "/cgi-bin/get_system_info.cgi", true],
+        ["config", "http", "/cgi-bin/get_miner_conf.cgi", false],
+        ["warnings", "text", "/warning", true, {"port": 6060}]
+      ],
+      "verified_commands": [],
+      "metrics": {
+        "rate": {
+          "path": ["summary", "SUMMARY", 0, "GHS 5s"],
+          "fallback_paths": [["stats", "STATS", 1, "GHS 5s"]],
+          "unit": "kSol/s"
+        },
+        "average_rate": {
+          "path": ["summary", "SUMMARY", 0, "GHS av"],
+          "fallback_paths": [["stats", "STATS", 1, "GHS av"]],
+          "unit": "kSol/s"
+        }
+      }
+    },
+    {
+      "id": "bitmain.stock.s19.20221206",
+      "version": 1,
+      "make": "Bitmain",
+      "firmware": "Stock",
+      "signature": "antminer",
+      "priority": 20,
+      "parser": "antminer",
+      "control": "antminer",
+      "match": {
+        "models": ["Antminer S19"],
+        "firmware_versions": ["Tue Dec 6 16:10:00 CST 2022"],
+        "api_versions": ["3.1"]
+      },
+      "queries": [
+        ["version", "cgminer", "version", true],
+        ["stats", "cgminer", "stats", false, {"repair": "antminer_stats"}],
+        ["summary", "cgminer", "summary", false],
+        ["pools", "cgminer", "pools", true],
+        ["system", "http", "/cgi-bin/get_system_info.cgi", true],
+        ["config", "http", "/cgi-bin/get_miner_conf.cgi", false],
+        ["warnings", "text", "/warning", true, {"port": 6060}]
+      ],
+      "verified_commands": ["reboot"]
+    },
+    {
+      "id": "bitmain.stock.l9.20250210",
+      "version": 1,
+      "make": "Bitmain",
+      "firmware": "Stock",
+      "signature": "antminer",
+      "priority": 20,
+      "parser": "antminer",
+      "control": "antminer",
+      "match": {
+        "models": ["Antminer L9"],
+        "firmware_versions": ["Mon Feb 10 10:01:06 CST 2025"],
+        "api_versions": ["3.1"]
+      },
+      "queries": [
+        ["version", "cgminer", "version", true],
+        ["stats", "cgminer", "stats", false, {"repair": "antminer_stats"}],
+        ["summary", "cgminer", "summary", false],
+        ["pools", "cgminer", "pools", true],
+        ["system", "http", "/cgi-bin/get_system_info.cgi", true],
+        ["config", "http", "/cgi-bin/get_miner_conf.cgi", false],
+        ["warnings", "text", "/warning", true, {"port": 6060}]
+      ],
+      "verified_commands": ["mining_start", "identify_on", "identify_off"],
+      "command_rules": {
+        "identify_on": {
+          "path": "/cgi-bin/blink.cgi",
+          "method": "POST",
+          "payload": {"blink": true},
+          "verify": {"path": "/cgi-bin/get_blink_status.cgi", "field": ["blink"], "equals": true}
+        },
+        "identify_off": {
+          "path": "/cgi-bin/blink.cgi",
+          "method": "POST",
+          "payload": {"blink": false},
+          "success_codes": ["B000", "B100"],
+          "verify": {"path": "/cgi-bin/get_blink_status.cgi", "field": ["blink"], "equals": false}
+        },
+        "mining_start": {
+          "path": "/cgi-bin/set_miner_conf.cgi",
+          "method": "POST",
+          "read_config": "/cgi-bin/get_miner_conf.cgi",
+          "config_fields": {
+            "pools": "pools",
+            "bitmain-fan-ctrl": "bitmain-fan-ctrl",
+            "bitmain-fan-pwm": "bitmain-fan-pwm",
+            "freq-level": "bitmain-freq-level"
+          },
+          "payload": {"miner-mode": 0},
+          "verify": {"path": "/cgi-bin/get_miner_conf.cgi", "field": ["bitmain-work-mode"], "equals": "0"}
+        }
+      }
+    },
+    {
+      "id": "bitmain.stock.t21.20250116",
+      "version": 1,
+      "make": "Bitmain",
+      "firmware": "Stock",
+      "signature": "antminer",
+      "priority": 20,
+      "parser": "antminer",
+      "control": "antminer",
+      "match": {"models": ["Antminer T21"], "firmware_versions": ["Thu Jan 16 11:00:25 CST 2025"], "api_versions": ["3.1"]},
+      "queries": [
+        ["version", "cgminer", "version", true],
+        ["stats", "cgminer", "stats", false, {"repair": "antminer_stats"}],
+        ["summary", "cgminer", "summary", false],
+        ["pools", "cgminer", "pools", true],
+        ["system", "http", "/cgi-bin/get_system_info.cgi", true],
+        ["config", "http", "/cgi-bin/get_miner_conf.cgi", false],
+        ["warnings", "text", "/warning", true, {"port": 6060}]
+      ],
+      "verified_commands": ["identify_on", "identify_off", "reboot", "mining_stop", "mining_start", "hem", "normal_power"],
+      "command_rules": {
+        "identify_on": {
+          "path": "/cgi-bin/blink.cgi", "method": "POST", "payload": {"blink": true},
+          "verify": {"path": "/cgi-bin/get_blink_status.cgi", "field": ["blink"], "equals": true}
+        },
+        "identify_off": {
+          "path": "/cgi-bin/blink.cgi", "method": "POST", "payload": {"blink": false},
+          "success_codes": ["B000", "B100"],
+          "verify": {"path": "/cgi-bin/get_blink_status.cgi", "field": ["blink"], "equals": false}
+        },
+        "mining_stop": {
+          "path": "/cgi-bin/set_miner_conf.cgi", "method": "POST",
+          "success_codes": ["B000", "M000"],
+          "read_config": "/cgi-bin/get_miner_conf.cgi",
+          "config_fields": {"pools": "pools", "bitmain-fan-ctrl": "bitmain-fan-ctrl", "bitmain-fan-pwm": "bitmain-fan-pwm", "bitmain-hashrate-percent": "bitmain-hashrate-percent", "bitmain-user-ip-cat": "bitmain-user-ip-cat"},
+          "payload": {"miner-mode": 1},
+          "verify": {"path": "/cgi-bin/get_miner_conf.cgi", "field": ["bitmain-work-mode"], "equals": "1"}
+        },
+        "mining_start": {
+          "path": "/cgi-bin/set_miner_conf.cgi", "method": "POST",
+          "success_codes": ["B000", "M000"],
+          "read_config": "/cgi-bin/get_miner_conf.cgi",
+          "config_fields": {"pools": "pools", "bitmain-fan-ctrl": "bitmain-fan-ctrl", "bitmain-fan-pwm": "bitmain-fan-pwm", "bitmain-hashrate-percent": "bitmain-hashrate-percent", "bitmain-user-ip-cat": "bitmain-user-ip-cat"},
+          "payload": {"miner-mode": 0},
+          "verify": {"path": "/cgi-bin/get_miner_conf.cgi", "field": ["bitmain-work-mode"], "equals": "0"}
+        },
+        "hem": {
+          "path": "/cgi-bin/set_miner_conf.cgi", "method": "POST",
+          "success_codes": ["B000", "M000"],
+          "read_config": "/cgi-bin/get_miner_conf.cgi",
+          "config_fields": {"pools": "pools", "bitmain-fan-ctrl": "bitmain-fan-ctrl", "bitmain-fan-pwm": "bitmain-fan-pwm", "bitmain-hashrate-percent": "bitmain-hashrate-percent", "bitmain-user-ip-cat": "bitmain-user-ip-cat"},
+          "payload": {"miner-mode": 2},
+          "verify": {"path": "/cgi-bin/get_miner_conf.cgi", "field": ["bitmain-work-mode"], "equals": "2"}
+        },
+        "normal_power": {
+          "path": "/cgi-bin/set_miner_conf.cgi", "method": "POST",
+          "success_codes": ["B000", "M000"],
+          "read_config": "/cgi-bin/get_miner_conf.cgi",
+          "config_fields": {"pools": "pools", "bitmain-fan-ctrl": "bitmain-fan-ctrl", "bitmain-fan-pwm": "bitmain-fan-pwm", "bitmain-hashrate-percent": "bitmain-hashrate-percent", "bitmain-user-ip-cat": "bitmain-user-ip-cat"},
+          "payload": {"miner-mode": 0},
+          "verify": {"path": "/cgi-bin/get_miner_conf.cgi", "field": ["bitmain-work-mode"], "equals": "0"}
+        }
+      }
+    },
+    {
+      "id": "bitmain.stock.t21.20240926",
+      "version": 1,
+      "make": "Bitmain",
+      "firmware": "Stock",
+      "signature": "antminer",
+      "priority": 20,
+      "parser": "antminer",
+      "control": "antminer",
+      "match": {"models": ["Antminer T21"], "firmware_versions": ["Thu Sep 26 11:39:05 CST 2024"]},
+      "queries": [
+        ["version", "cgminer", "version", true],
+        ["stats", "cgminer", "stats", false, {"repair": "antminer_stats"}],
+        ["summary", "cgminer", "summary", false],
+        ["pools", "cgminer", "pools", true],
+        ["system", "http", "/cgi-bin/get_system_info.cgi", true],
+        ["config", "http", "/cgi-bin/get_miner_conf.cgi", false],
+        ["warnings", "text", "/warning", true, {"port": 6060}]
+      ],
+      "verified_commands": [],
+      "command_rules": {
+        "hem": {
+          "path": "/cgi-bin/set_miner_conf.cgi", "method": "POST",
+          "read_config": "/cgi-bin/get_miner_conf.cgi",
+          "config_fields": {"pools": "pools", "bitmain-fan-ctrl": "bitmain-fan-ctrl", "bitmain-fan-pwm": "bitmain-fan-pwm", "bitmain-hashrate-percent": "bitmain-hashrate-percent"},
+          "payload": {"miner-mode": 2},
+          "verify": {"path": "/cgi-bin/get_miner_conf.cgi", "field": ["bitmain-work-mode"], "equals": "2"}
+        },
+        "normal_power": {
+          "path": "/cgi-bin/set_miner_conf.cgi", "method": "POST",
+          "read_config": "/cgi-bin/get_miner_conf.cgi",
+          "config_fields": {"pools": "pools", "bitmain-fan-ctrl": "bitmain-fan-ctrl", "bitmain-fan-pwm": "bitmain-fan-pwm", "bitmain-hashrate-percent": "bitmain-hashrate-percent"},
+          "payload": {"miner-mode": 0},
+          "verify": {"path": "/cgi-bin/get_miner_conf.cgi", "field": ["bitmain-work-mode"], "equals": "0"}
+        }
+      }
+    },
+    {
+      "id": "bitmain.stock.s21.fr112",
+      "version": 1,
+      "make": "Bitmain",
+      "firmware": "Stock",
+      "signature": "antminer",
+      "priority": 20,
+      "parser": "antminer",
+      "control": "antminer",
+      "match": {"models": ["Antminer S21"], "firmware_versions": ["FR-1.12(251009-S21)"]},
+      "queries": [
+        ["version", "cgminer", "version", true],
+        ["stats", "cgminer", "stats", false, {"repair": "antminer_stats"}],
+        ["summary", "cgminer", "summary", false],
+        ["pools", "cgminer", "pools", true],
+        ["system", "http", "/cgi-bin/get_system_info.cgi", true],
+        ["config", "http", "/cgi-bin/get_miner_conf.cgi", false],
+        ["warnings", "text", "/warning", true, {"port": 6060}]
+      ],
+      "verified_commands": [],
+      "command_rules": {
+        "low": {
+          "path": "/cgi-bin/set_miner_conf.cgi", "method": "POST",
+          "read_config": "/cgi-bin/get_miner_conf.cgi",
+          "config_fields": {"pools": "pools", "bitmain-fan-ctrl": "bitmain-fan-ctrl", "bitmain-fan-pwm": "bitmain-fan-pwm", "bitmain-hashrate-percent": "bitmain-hashrate-percent", "bitmain-user-ip-cat": "bitmain-user-ip-cat"},
+          "payload": {"miner-mode": 3},
+          "verify": {"path": "/cgi-bin/get_miner_conf.cgi", "field": ["bitmain-work-mode"], "equals": "3"}
+        },
+        "normal_power": {
+          "path": "/cgi-bin/set_miner_conf.cgi", "method": "POST",
+          "read_config": "/cgi-bin/get_miner_conf.cgi",
+          "config_fields": {"pools": "pools", "bitmain-fan-ctrl": "bitmain-fan-ctrl", "bitmain-fan-pwm": "bitmain-fan-pwm", "bitmain-hashrate-percent": "bitmain-hashrate-percent", "bitmain-user-ip-cat": "bitmain-user-ip-cat"},
+          "payload": {"miner-mode": 0},
+          "verify": {"path": "/cgi-bin/get_miner_conf.cgi", "field": ["bitmain-work-mode"], "equals": "0"}
+        }
+      }
     },
     {
       "id": "bitmain.vnish",

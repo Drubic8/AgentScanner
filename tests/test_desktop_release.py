@@ -38,8 +38,12 @@ class PreferenceTests(unittest.TestCase):
 
     def test_release_versions_match(self):
         version, parts = release_version()
-        self.assertEqual(version, "2.0.3")
-        self.assertEqual(parts, (2, 0, 3))
+        self.assertEqual(version, "2.1.0")
+        self.assertEqual(parts, (2, 1, 0))
+        import re
+        android = (Path(__file__).resolve().parents[1] / 'apps/android/app/build.gradle.kts').read_text(encoding='utf-8')
+        self.assertEqual(re.search(r'versionName\s*=\s*"([^"]+)"', android).group(1), version)
+        self.assertGreater(int(re.search(r'versionCode\s*=\s*(\d+)', android).group(1)), 1)
 
 
 @unittest.skipUnless(importlib.util.find_spec("PyQt6") and importlib.util.find_spec("pandas") and importlib.util.find_spec("fpdf"), "Desktop dependencies not installed")

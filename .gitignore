@@ -62,6 +62,8 @@ build-windows/
 artifacts/
 
 # Local references and diagnostic bundles must not be published.
+docs/wireshark/*.pcap
+docs/wireshark/*.pcapng
 docs/pyasic_docs/
 diagnostics/
 outputs/
@@ -87,6 +89,7 @@ outputs/
 !apps/android/gradlew.bat
 !apps/android/gradle/wrapper/gradle-wrapper.jar
 !.github/workflows/android.yml
+!.github/workflows/release.yml
 apps/android/**/build/
 apps/android/.gradle/
 apps/android/.kotlin/
@@ -94,3 +97,5 @@ apps/android/**/local.properties
 apps/android/**/*.jks
 apps/android/**/*.keystore
 apps/android/**/__pycache__/
+# Vendor downloads and raw support material are local references.
+docs/Whatsminer demo/

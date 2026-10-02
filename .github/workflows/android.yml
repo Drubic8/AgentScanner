@@ -1,11 +1,9 @@
 name: Android APK
 on:
-  push:
-    branches: [main]
-    paths: ['apps/android/**', 'miner_scanner/**', 'tests/test_android_bridge.py', '.github/workflows/android.yml']
   pull_request:
     paths: ['apps/android/**', 'miner_scanner/**', 'tests/test_android_bridge.py', '.github/workflows/android.yml']
   workflow_dispatch:
+  workflow_call:
 permissions:
   contents: read
 concurrency:
@@ -55,12 +53,13 @@ jobs:
       - name: Prepare test distribution
         run: |
           mkdir -p android-dist
-          cp apps/android/app/build/outputs/apk/debug/app-debug.apk android-dist/ASIC_Monitor-android-alpha.apk
+          version=$(python -c 'import json; print(json.load(open("version.json"))["version"])')
+          cp apps/android/app/build/outputs/apk/debug/app-debug.apk "android-dist/ASIC_Monitor-android-${version}-test.apk"
           cd android-dist
-          sha256sum ASIC_Monitor-android-alpha.apk > SHA256SUMS.txt
+          sha256sum *.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: ASIC-Monitor-Android-alpha
+          name: ASIC-Monitor-Android
           path: android-dist/
           if-no-files-found: error
       - uses: actions/upload-artifact@v4

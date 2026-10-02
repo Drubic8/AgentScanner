@@ -12,8 +12,12 @@ import requests
 from .models import CommandResult
 from .normalization import value_at
 from .runtime import AuthenticationError, Cancelled, DeadlineExceeded, Operation, ProtocolError, ScanOptions
+from .whatsminer_compatibility import WhatsminerAccessError
 
-ALIASES = {"led_on": "identify_on", "led_off": "identify_off", "sleep": "mining_stop", "normal": "mining_start"}
+# User actions are independent of the device's protocol and power-mode names.
+# Keep `normal` for existing callers; drivers receive only `mining_start`.
+ALIASES = {"led_on": "identify_on", "led_off": "identify_off",
+           "sleep": "mining_stop", "wakeup": "mining_start", "normal": "mining_start"}
 _slots = BoundedSemaphore(8)
 
 
@@ -54,7 +58,7 @@ def mode_payload(config, target, model, *, pitbit=False):
     return result, key
 
 
-def _http_accept(transport, path, method="POST", payload=None, headers=None):
+def _http_accept(transport, path, method="POST", payload=None, headers=None, *, success_codes=(0, "0", "B000")):
     status, raw = transport.http(path, method, payload=payload, headers=headers)
     if status not in (200, 204):
         return False
@@ -66,8 +70,10 @@ def _http_accept(transport, path, method="POST", payload=None, headers=None):
         if isinstance(response, dict):
             if response.get("success") is False or response.get("error"):
                 return False
+            if "stats" in response and response["stats"] != "success":
+                return False
             code = response.get("code")
-            if code is not None and code not in (0, "0", "B000"):
+            if code is not None and code not in success_codes:
                 return False
     return True
 
@@ -94,10 +100,20 @@ def antminer(transport, record, action, credentials):
     return accepted, verify
 
 
-def vnish(transport, record, action, credentials):
+def vnish(transport, record, action, credentials, *, credential_candidates=None, on_authenticated=None, control_rule=None):
     if credentials is None:
         raise AuthenticationError("Введите пароль VNish")
-    token = transport.http_json("/api/v1/unlock", "POST", payload={"pw": credentials.password})
+    token = None
+    candidates = list(dict.fromkeys(credential_candidates or [credentials]))[:3]
+    for candidate in candidates:
+        try:
+            token = transport.http_json("/api/v1/unlock", "POST", payload={"pw": candidate.password})
+        except AuthenticationError:
+            continue
+        # Do not try another password on rate limiting, malformed replies or 5xx.
+        if token and token.get("token") and on_authenticated:
+            on_authenticated(candidate)
+        break
     if not token or not token.get("token"):
         raise AuthenticationError("VNish не выдал токен")
     headers = {"Authorization": "Bearer " + str(token["token"])}
@@ -108,19 +124,31 @@ def vnish(transport, record, action, credentials):
         "mining_stop": ("/api/v1/mining/stop", None),
         "mining_start": ("/api/v1/mining/start", None),
     }
+    if control_rule is not None:
+        if action not in ('identify_on', 'identify_off') or control_rule != {'_vnish_interface': 'locate-miner'}:
+            raise ProtocolError('Unknown VNish command contract')
+        definitions[action] = ('/api/v1/locate-miner', {'is_enabled': action == 'identify_on'})
     path, payload = definitions[action]
     accepted = _http_accept(transport, path, payload=payload, headers=headers)
     def verify():
-        data = transport.http_json("/api/v1/summary") or {}
+        if action in ("identify_on", "identify_off"):
+            data = transport.http_json("/api/v1/status", headers=headers) or {}
+            return data.get("find_miner") is (action == "identify_on")
+        data = transport.http_json("/api/v1/summary", headers=headers) or {}
         miner = data.get("miner", data)
         state = miner.get("miner_status", {}).get("miner_state")
         return state in ({"stopped", "paused", "sleep"} if action == "mining_stop" else {"mining"})
-    return accepted, verify if action in ("mining_stop", "mining_start") else None
+    return accepted, verify if action != "reboot" else None
 
 
 def whatsminer(transport, record, action, credentials):
+    from .whatsminer_compatibility import resolve, info_message
     if credentials is None:
-        raise AuthenticationError("Введите учётные данные Whatsminer")
+        raise WhatsminerAccessError("Добавьте профиль доступа WhatsMiner: логин super или user1–user3 и пароль этой учётной записи")
+    if credentials.username not in {'super', 'user1', 'user2', 'user3'}:
+        raise WhatsminerAccessError("WhatsMiner RPC 3: нужен логин super или user1–user3 и непустой пароль этой учётной записи; admin/root не подходят")
+    if not credentials.password:
+        raise WhatsminerAccessError("Укажите пароль учётной записи API в профиле WhatsMiner в «Доступ к ASIC». Общий профиль с адресами * применяется ко всем WhatsMiner")
     definitions = {
         "reboot": ("set.system.reboot", None),
         "mining_stop": ("set.miner.service", "stop"),
@@ -131,18 +159,34 @@ def whatsminer(transport, record, action, credentials):
     command, parameter = definitions[action]
     with transport.connection(4433) as sock:
         info = transport.rpc_packet(sock, {"cmd": "get.device.info"})
-        salt = info.get("msg", {}).get("salt")
-        if not salt:
-            raise AuthenticationError("Whatsminer не выдал salt")
+        compatibility = resolve(info)
+        if action not in compatibility['rules']:
+            raise WhatsminerAccessError(compatibility['reason'])
+        msg = info_message(info)
+        if msg['miner']['type'] != record.identity.model:
+            raise ProtocolError("Whatsminer identity changed before write")
+        if record.identity.firmware_version and msg['system'].get('fwversion') != record.identity.firmware_version:
+            raise ProtocolError("Whatsminer firmware changed before write")
+        salt = msg['salt']
         timestamp = int(time.time())
         source = f"{command}{credentials.password}{salt}{timestamp}".encode()
         token = base64.b64encode(hashlib.sha256(source).digest()).decode()[:8]
-        result = transport.rpc_packet(sock, {"cmd": command, "param": parameter, "ts": timestamp, "token": token, "account": credentials.username})
+        packet = {"cmd": command, "ts": timestamp, "token": token, "account": credentials.username}
+        if parameter is not None:
+            packet['param'] = parameter
+        result = transport.rpc_packet(sock, packet)
+    if type(result.get('code')) is int and result['code'] == -4:
+        raise WhatsminerAccessError("WhatsMiner отказал в доступе (-4): проверьте API Write, учётную запись, её пароль и разрешение на команду")
     def verify():
         info = transport.rpc("get.device.info")
-        working = info.get("msg", {}).get("miner", {}).get("working")
-        return str(working).lower() == ("false" if action == "mining_stop" else "true")
-    return result.get("code") == 0, verify if action in ("mining_stop", "mining_start") else None
+        msg = info_message(info)
+        if msg is None or msg['miner']['type'] != record.identity.model:
+            return False
+        if action in ('identify_on', 'identify_off'):
+            return msg['system'].get('ledstatus') in (('manual', 'flash') if action == 'identify_on' else ('auto',))
+        return str(msg['miner']['working']).lower() == ("false" if action == "mining_stop" else "true")
+    accepted = type(result.get('code')) is int and result['code'] == 0 and result.get('desc') == command
+    return accepted, verify if action != 'reboot' else None
 
 
 def elphapex(transport, record, action, credentials):
@@ -153,11 +197,17 @@ def elphapex(transport, record, action, credentials):
         "mining_start": ("setworkmode.cgi", {"workmode": "0"}),
     }
     path, payload = definitions[action]
-    accepted = _http_accept(transport, "/cgi-bin/luci/" + path, payload=payload)
+    accepted = _http_accept(transport, "/cgi-bin/luci/" + path,
+                            "GET" if action == "reboot" else "POST",
+                            payload=None if action == "reboot" else payload,
+                            success_codes=(0, "0", "B000", "M000"))
     def verify():
+        if action in ("identify_on", "identify_off"):
+            data = transport.http_json("/cgi-bin/luci/get_blink_status.cgi") or {}
+            return data.get("blink") is (action == "identify_on")
         data = transport.http_json("/cgi-bin/luci/get_miner_conf.cgi") or {}
         return str(data.get("fc-work-mode")) == ("-1000" if action == "mining_stop" else "0")
-    return accepted, verify if action in ("mining_stop", "mining_start") else None
+    return accepted, verify if action != "reboot" else None
 
 
 def jasminer(transport, record, action, credentials):
@@ -168,9 +218,10 @@ def jasminer(transport, record, action, credentials):
 
 
 def avalon(transport, record, action, credentials):
-    command = {"identify_toggle": "ascset|0,led,0-1", "reboot": "ascset|0,reboot,1", "mining_stop": "ascset|0,softoff", "mining_start": "ascset|0,reboot,1"}[action]
-    response = transport.text_command(command)
-    return bool(re.search(r"(?:^|[,|])STATUS=[SI](?:[,|]|$)", response)), None
+    from .avalon_compatibility import LED_ACTIONS, led_command, power_command
+    if action in LED_ACTIONS:
+        return led_command(transport, action)
+    return power_command(transport, action)
 
 
 EXECUTORS = {"antminer": antminer, "pitbit": antminer, "vnish": vnish, "whatsminer": whatsminer, "elphapex": elphapex, "jasminer": jasminer, "avalon": avalon}
@@ -179,7 +230,7 @@ SUPPORTED_ACTIONS = {
     for key in ("antminer", "pitbit", "vnish", "whatsminer", "elphapex")
 }
 SUPPORTED_ACTIONS["jasminer"] = {"identify_on", "identify_off"}
-SUPPORTED_ACTIONS["avalon"] = {"identify_toggle", "reboot", "mining_stop", "mining_start"}
+SUPPORTED_ACTIONS["avalon"] = {"identify_on", "identify_off", "identify_toggle", "reboot", "mining_stop", "mining_start"}
 
 
 def declarative_command(transport, rule):
@@ -196,8 +247,27 @@ def declarative_command(transport, rule):
             return isinstance(value, str) and len(value) >= 3 and set(value) <= {"*", "•"}
         if has_masked(config):
             raise ProtocolError("Configuration contains masked fields")
-        payload = {**config, **payload}
-    accepted = _http_accept(transport, rule["path"], rule.get("method", "POST"), payload)
+        mapping = rule.get("config_fields")
+        if '_stock_contract' in rule:
+            from .stock_compatibility import config_mapping
+            if config_mapping(config, rule['_stock_contract']) != mapping:
+                raise ProtocolError("Configuration schema changed after compatibility detection")
+            current = value_at(config, rule['verify']['field'])
+            if type(current) is not type(rule['verify']['equals']):
+                raise ProtocolError("Configuration mode type changed")
+        if mapping is not None:
+            if any(source not in config or config[source] is None for source in mapping.values()):
+                raise ProtocolError("Required configuration fields are unavailable")
+            payload = {**{target: config[source] for target, source in mapping.items()}, **payload}
+        else:
+            payload = {**config, **payload}
+    try:
+        accepted = _http_accept(transport, rule["path"], rule.get("method", "POST"), payload,
+                                success_codes=tuple(rule.get("success_codes", (0, "0", "B000"))))
+    except (OSError, requests.RequestException):
+        # Configuration writes can finish on the device after our HTTP timeout.
+        # Read back the intended state, but never repeat the write.
+        accepted = None
     verification = rule["verify"]
     def verify():
         data = transport.http_json(verification["path"])
@@ -215,7 +285,7 @@ def execute_command(service, ip, action, *, device_id=None, command_id=None, can
         return existing
     action = ALIASES.get(action, action)
     cancel = cancel if cancel is not None else Event()
-    op = Operation(ScanOptions(device_timeout=30), cancel)
+    op = Operation(ScanOptions(read_timeout=10, device_timeout=30), cancel)
     record = None
     def finish(status, message, accepted=False):
         result = CommandResult(command_id, status, message, accepted, record.identity.device_id if record else device_id, record.identity.profile_id if record else None)
@@ -241,22 +311,42 @@ def execute_command(service, ip, action, *, device_id=None, command_id=None, can
         if record is None or record.telemetry.stale:
             return finish("skipped", "Не удалось подтвердить актуальность профиля")
         if record.identity.fingerprint != previous.identity.fingerprint or (device_id and record.identity.device_id != device_id):
-            return finish("skipped", "Устройство или прошивка изменились; обновите выбор")
+            names = {'model': 'модель', 'firmware_version': 'версия прошивки',
+                     'api_version': 'версия API', 'serial': 'серийный номер',
+                     'mac': 'MAC-адрес', 'profile_id': 'профиль устройства',
+                     'profile_version': 'версия профиля'}
+            changed = [label for field, label in names.items()
+                       if getattr(record.identity, field) != getattr(previous.identity, field)]
+            if record.identity.fingerprint != previous.identity.fingerprint and not changed:
+                changed.append('метаданные идентификации прошивки')
+            if device_id and record.identity.device_id != device_id:
+                changed.append('идентификатор выбранной строки')
+            return finish("skipped", "Проверка перед командой: изменились " + ', '.join(changed)
+                          + ". Запрос управления не отправлен. Проверьте актуальные данные устройства.")
         profile = service.registry.by_id[record.identity.profile_id]
-        rule = (profile.command_rules or {}).get(action)
+        compatibility = service._control_contracts.get(ip, {})
+        if action in compatibility.get('blocked', ()):
+            return finish("unsupported", compatibility.get('reason', "Совместимость команды не подтверждена для текущего интерфейса или конфигурации ASIC"))
+        compatible = action in compatibility.get('rules', {})
+        rule = compatibility['rules'][action] if compatible else (profile.command_rules or {}).get(action)
         if rule is None and action not in SUPPORTED_ACTIONS.get(profile.control, set()):
             return finish("unsupported", "Для этого профиля действие не реализовано")
-        if action not in profile.verified_commands and not allow_unverified:
-            return finish("unsupported", "Команда перенесена из старого кода, но не подтверждена для точной версии прошивки")
+        if not compatible and action not in profile.verified_commands and not allow_unverified:
+            return finish("unsupported", "Не подтверждена совместимость API для этой команды; нужен поддерживаемый интерфейс или проверенный профиль")
         op.remaining()
         # Persist uncertain intent before any write. A crash must never cause replay.
         finish("unconfirmed", "Выполнение начато; конечный результат пока неизвестен")
         with service.transport_factory(ip, op, service.credentials_for(ip)) as transport:
-            if rule is not None:
+            if profile.control == 'vnish':
+                accepted, verify = vnish(transport, record, action, service.credentials_for(ip),
+                                         credential_candidates=service.credential_candidates(ip, 'vnish'),
+                                         on_authenticated=lambda credentials: service.remember_credentials(ip, credentials),
+                                         control_rule=rule)
+            elif rule is not None:
                 accepted, verify = declarative_command(transport, rule)
             else:
                 accepted, verify = EXECUTORS[profile.control](transport, record, action, service.credentials_for(ip))
-            if not accepted:
+            if accepted is False:
                 return finish("failed", "API отклонил команду")
             if verify is None:
                 return finish("unconfirmed", "API принял команду; состояние не подтверждено", True)
@@ -264,12 +354,18 @@ def execute_command(service, ip, action, *, device_id=None, command_id=None, can
                 op.pause(1)
                 try:
                     if verify():
-                        return finish("succeeded", "Ожидаемое состояние подтверждено чтением API", True)
+                        message = ("Ожидаемое состояние подтверждено чтением API" if accepted else
+                                   "Ответ на запись не получен; целевое состояние подтверждено чтением API")
+                        return finish("succeeded", message, bool(accepted))
                 except (OSError, requests.RequestException, ProtocolError):
                     continue
-            return finish("unconfirmed", "API принял команду, но ожидаемое состояние не подтверждено", True)
+            message = ("API принял команду, но ожидаемое состояние не подтверждено" if accepted else
+                       "Ответ на запись не получен, состояние не подтверждено; команда не повторяется")
+            return finish("unconfirmed", message, bool(accepted))
     except Cancelled:
         return finish("unconfirmed" if service.repository.command_result(command_id) else "cancelled", "Операция остановлена; отправленная команда не повторяется")
+    except WhatsminerAccessError as exc:
+        return finish("failed", str(exc))
     except AuthenticationError:
         return finish("failed", "Требуются корректные учётные данные и разрешение записи API")
     except (OSError, requests.RequestException, DeadlineExceeded):

@@ -6,9 +6,16 @@ from contextlib import contextmanager
 
 import requests
 from requests.auth import HTTPBasicAuth, HTTPDigestAuth
+from urllib3.exceptions import HTTPError as RawHTTPError, ReadTimeoutError
 
 from .models import Credentials
 from .runtime import AuthenticationError, Operation, ProtocolError
+
+
+class ExplicitHeaderAuth(requests.auth.AuthBase):
+    """Keep caller-supplied token auth; do not inherit HTTP Basic/Digest hooks."""
+    def __call__(self, request):
+        return request
 
 
 def recv_exact(sock, length: int, operation: Operation) -> bytes:
@@ -54,16 +61,18 @@ class Transport:
         finally:
             sock.close()
 
-    def http(self, path: str, method: str = "GET", *, payload=None, headers=None, port=80):
+    def http(self, path: str, method: str = "GET", *, payload=None, headers=None, port=80, read_timeout=None):
         if not path.startswith("/") or path.startswith("//"):
             raise ValueError("Expected a local absolute API path")
         op = self.operation
         op.request_count += 1
         scheme = "https" if port == 443 else "http"
+        explicit_auth = headers and any(key.lower() in {"authorization", "x-api-key"} for key in headers)
         with self.session.request(
             method, f"{scheme}://{self.ip}:{port}{path}", json=payload,
-            headers=headers, timeout=(op.timeout(op.options.connect_timeout), op.timeout()),
+            headers=headers, timeout=(op.timeout(op.options.connect_timeout), op.timeout(read_timeout)),
             stream=True, allow_redirects=False,
+            auth=ExplicitHeaderAuth() if explicit_auth else None,
         ) as response:
             if response.status_code in (401, 403):
                 raise AuthenticationError("Device credentials or write access required")
@@ -72,7 +81,12 @@ class Transport:
             # This allows a deadline check even against a trickling HTTP peer.
             while True:
                 op.remaining()
-                chunk = response.raw.read1(4096, decode_content=True)
+                try:
+                    chunk = response.raw.read1(4096, decode_content=True)
+                except ReadTimeoutError:
+                    raise requests.ReadTimeout("Timed out reading HTTP response") from None
+                except RawHTTPError:
+                    raise requests.ConnectionError("Interrupted HTTP response") from None
                 if not chunk:
                     break
                 content.extend(chunk)
@@ -119,7 +133,14 @@ class Transport:
                 except (ValueError, UnicodeError):
                     if complete:
                         if repair is not None:
-                            return json.loads(repair(raw_data.decode("utf-8")))
+                            try:
+                                value = json.loads(repair(raw_data.decode("utf-8")))
+                            except (ValueError, UnicodeError) as exc:
+                                raise ProtocolError("Invalid legacy CGMiner JSON response") from exc
+                            if not isinstance(value, dict):
+                                raise ProtocolError("Expected a CGMiner JSON object")
+                            op.errors.append("cgminer:legacy_json_repaired")
+                            return value
                         raise ProtocolError("Invalid CGMiner JSON response")
 
     def rpc(self, command: str, parameter=None, *, port=4433):

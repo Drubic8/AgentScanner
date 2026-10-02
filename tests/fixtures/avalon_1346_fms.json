@@ -1,0 +1,31 @@
+{
+  "source": "Avalon FMS 3.3.4 capture, 2026-10-02; Sleep, scan, Wakeup confirmed by operator",
+  "version": {
+    "VERSION": [
+      {
+        "API": "3.7",
+        "PROD": "AvalonMiner 1346-110",
+        "MODEL": "1346-110",
+        "HWTYPE": "MM4v1_X3",
+        "SWTYPE": "MM317",
+        "VERSION": "24041001_08b0955_0196aba"
+      }
+    ]
+  },
+  "after_sleep": {
+    "STATS": [
+      {
+        "MM Count": 1,
+        "MM ID0": "Ver[1346-110-24041001_08b0955_0196aba] SYSTEMSTATU[Work: In Idle, Hash Board: 3 ] Elapsed[474] BOOTBY[0x01.00000000] GHSspd[0.00] PS[0 1197 0 0 0 1393 11] SoftOFF[6]"
+      }
+    ]
+  },
+  "sleep": {
+    "request": "ascset|0,softoff",
+    "response": "STATUS=S,When=478,Code=119,Msg=ASC 0 set OK,Description=cgminer 4.11.1|"
+  },
+  "wakeup": {
+    "request": "ascset|0,reboot,1",
+    "response": "STATUS=S,When=495,Code=119,Msg=ASC 0 set OK,Description=cgminer 4.11.1|"
+  }
+}

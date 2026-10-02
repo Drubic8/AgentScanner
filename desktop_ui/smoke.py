@@ -85,6 +85,17 @@ def run_smoke(app, window_type, output):
                     if window.table.item(i, 0).checkState() == Qt.CheckState.Checked]
         assert selected == ["192.0.2.2"], selected
         window.search_input.clear()
+        # A command preflight/readback must replace the selected row, including
+        # its identity, rather than keep an old ID or append another device.
+        refreshed = dict(rows[1], DeviceId='demo-refreshed', Status='Sleep', Real='0.00 TH/s')
+        counts_before = window.table.rowCount(), len(window.scan_data)
+        window.on_result([refreshed])
+        assert (window.table.rowCount(), len(window.scan_data)) == counts_before
+        item = next(window.table.item(i, 0) for i in range(window.table.rowCount())
+                    if window.table.item(i, 0).text() == '192.0.2.2')
+        assert item.checkState() == Qt.CheckState.Checked
+        assert item.data(Qt.ItemDataRole.UserRole + 1)['DeviceId'] == 'demo-refreshed'
+        window.on_result([rows[1]])
         # Exercise actual GUI export handlers with modal dialogs intercepted.
         errors = []
         with patch.object(QMessageBox, "information"), patch.object(QMessageBox, "critical", side_effect=lambda *args: errors.append(str(args))):

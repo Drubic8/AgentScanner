@@ -108,6 +108,31 @@ class NetworkUITests(unittest.TestCase):
         self.assertTrue(window.ranges_config[0]["enabled"])
         self.assertEqual(window.list_ranges.item(0).checkState(), self.gui.Qt.CheckState.Checked)
 
+    def test_shift_ctrl_selection_bulk_toggle_and_filtered_scope(self):
+        from PyQt6.QtTest import QTest
+        window, path = self.window()
+        window.commit_ranges([{"name": f"Site {i}", "ranges": [f"192.0.2.{i+1}"], "enabled": False}
+                              for i in range(4)])
+        window.show()
+        self.app.processEvents()
+        panel = window.ranges_panel
+        listing = panel.list_ranges
+        qt = self.gui.Qt
+        def click(row, modifier=qt.KeyboardModifier.NoModifier):
+            QTest.mouseClick(listing.viewport(), qt.MouseButton.LeftButton, modifier,
+                             listing.visualItemRect(listing.item(row)).center())
+        click(0)
+        click(2, qt.KeyboardModifier.ShiftModifier)
+        self.assertEqual(len(listing.selectedItems()), 3)
+        click(1, qt.KeyboardModifier.ControlModifier)
+        self.assertEqual(len(listing.selectedItems()), 2)
+        panel.enable_selected.click()
+        self.assertEqual([g['enabled'] for g in load_json(path)], [True, False, True, False])
+        self.assertEqual(len(listing.selectedItems()), 2)
+        panel.search.setText("Site 0")
+        panel.disable_selected.click()
+        self.assertEqual([g['enabled'] for g in load_json(path)], [False, False, True, False])
+
     def test_delete_cancel_and_failure_never_change_saved_networks(self):
         window, _ = self.window()
         with patch.object(self.gui.QMessageBox, "question", return_value=self.gui.QMessageBox.StandardButton.No):

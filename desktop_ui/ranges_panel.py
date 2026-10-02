@@ -1,7 +1,7 @@
 """Saved networks: focus selects an editor target, checkboxes select scan targets."""
 from copy import deepcopy
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QItemSelectionModel
 from PyQt6.QtWidgets import (QAbstractItemView, QCheckBox, QHBoxLayout, QLabel,
                              QLineEdit, QListWidget, QListWidgetItem, QPushButton,
                              QVBoxLayout, QWidget)
@@ -21,7 +21,7 @@ class RangesPanel(QWidget):
         self.groups = []
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
+        layout.setSpacing(6)
         header = QHBoxLayout()
         title = QLabel("Сети для сканирования")
         title.setObjectName("RangeSectionTitle")
@@ -42,11 +42,20 @@ class RangesPanel(QWidget):
         self.list_ranges.setObjectName("NetworkList")
         self.list_ranges.setMinimumHeight(110)
         self.list_ranges.setAccessibleName("Сети; отметьте галочками сети для сканирования")
-        self.list_ranges.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.list_ranges.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.list_ranges.itemChanged.connect(self.on_item_changed)
         self.list_ranges.currentRowChanged.connect(self.update_actions)
+        self.list_ranges.itemSelectionChanged.connect(self.update_actions)
         self.list_ranges.itemDoubleClicked.connect(lambda item: self.edit_requested.emit(item.data(Qt.ItemDataRole.UserRole)))
         layout.addWidget(self.list_ranges, 1)
+        bulk = QHBoxLayout()
+        self.enable_selected = QPushButton("Включить")
+        self.disable_selected = QPushButton("Выключить")
+        for button, enabled in ((self.enable_selected, True), (self.disable_selected, False)):
+            button.setToolTip("Применить к выделенным строкам (Shift / Ctrl); скрытые поиском сети не меняются")
+            button.clicked.connect(lambda checked=False, value=enabled: self.toggle_selected(value))
+            bulk.addWidget(button)
+        layout.addLayout(bulk)
         self.empty = QLabel("Сохранённых сетей пока нет. Добавьте первую сеть.")
         self.empty.setObjectName("Muted")
         self.empty.setWordWrap(True)
@@ -78,6 +87,9 @@ class RangesPanel(QWidget):
         return item.data(Qt.ItemDataRole.UserRole) if item is not None else -1
 
     def set_groups(self, groups, current=None):
+        selected = {item.data(Qt.ItemDataRole.UserRole) for item in self.list_ranges.selectedItems()}
+        scroll = self.list_ranges.verticalScrollBar().value()
+        preserve_selection = current is None
         if current is None:
             current = self.current_index()
         self.groups = deepcopy(groups)
@@ -86,14 +98,17 @@ class RangesPanel(QWidget):
         for index, group in enumerate(groups):
             ranges = group.get("ranges", [])
             description = ranges[0] if len(ranges) == 1 else f"Диапазонов: {len(ranges)}"
-            item = QListWidgetItem(f"{group.get('name', 'Сеть')}\n{description}")
+            item = QListWidgetItem(f"{group.get('name', 'Сеть')} · {description}")
             item.setData(Qt.ItemDataRole.UserRole, index)
             item.setToolTip("\n".join([group.get("name", "Сеть"), *ranges]))
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Checked if group.get("enabled", True) else Qt.CheckState.Unchecked)
             self.list_ranges.addItem(item)
         if 0 <= current < len(groups):
-            self.list_ranges.setCurrentRow(current)
+            self.list_ranges.setCurrentRow(current, QItemSelectionModel.SelectionFlag.NoUpdate)
+        for index in (selected if preserve_selection else {current}):
+            if index is not None and 0 <= index < len(groups):
+                self.list_ranges.item(index).setSelected(True)
         self.list_ranges.blockSignals(False)
         enabled = sum(group.get("enabled", True) for group in groups)
         self.select_all.setEnabled(bool(groups))
@@ -104,6 +119,7 @@ class RangesPanel(QWidget):
         except ValueError:
             self.summary.setText(f"Выбрано сетей: {enabled} из {len(groups)}\nПроверьте адреса или лимит 4096 IP.")
         self.filter_groups()
+        self.list_ranges.verticalScrollBar().setValue(scroll)
         self.update_actions()
 
     def filter_groups(self):
@@ -115,7 +131,7 @@ class RangesPanel(QWidget):
             visible += int(matches)
         self.empty.setVisible(visible == 0)
         self.empty.setText("Сети не найдены. Измените поиск." if self.groups else "Сохранённых сетей пока нет. Добавьте первую сеть.")
-        self.hint.setText("Поиск скрывает строки, но сохраняет галочки. Сканируются все отмеченные сети." if query else "Галочка включает сеть в сканирование. Выбор строки — для изменения.")
+        self.hint.setText("Скрытые сети сохраняют галочки. Кнопки меняют только видимое выделение." if query else "Shift — диапазон, Ctrl — отдельные строки. Затем «Включить» или «Выключить». Сканируются сети с галочками.")
         self.update_actions()
 
     def update_actions(self):
@@ -123,6 +139,18 @@ class RangesPanel(QWidget):
         available = item is not None and not item.isHidden()
         self.edit_button.setEnabled(available)
         self.delete_button.setEnabled(available)
+        selected = len([item for item in self.list_ranges.selectedItems() if not item.isHidden()])
+        self.enable_selected.setEnabled(bool(selected))
+        self.disable_selected.setEnabled(bool(selected))
+        self.enable_selected.setText(f"Включить ({selected})" if selected else "Включить")
+        self.disable_selected.setText(f"Выключить ({selected})" if selected else "Выключить")
+
+    def toggle_selected(self, checked):
+        candidate = deepcopy(self.groups)
+        for item in self.list_ranges.selectedItems():
+            if not item.isHidden():
+                candidate[item.data(Qt.ItemDataRole.UserRole)]["enabled"] = checked
+        self.changed.emit(candidate)
 
     def on_item_changed(self, item):
         candidate = deepcopy(self.groups)

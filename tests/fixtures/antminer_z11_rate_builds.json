@@ -1,0 +1,106 @@
+{
+  "cases": [
+    {
+      "version": {
+        "VERSION": [
+          {
+            "CGMiner": "4.9.0",
+            "API": "3.1",
+            "Miner": "9.0.0.5",
+            "CompileTime": "Tue Apr 23 13:15:06 CST 2019",
+            "Type": "Antminer Z11"
+          }
+        ]
+      },
+      "stats": {
+        "STATS": [
+          {
+            "CGMiner": "4.9.0",
+            "Miner": "9.0.0.5",
+            "CompileTime": "Tue Apr 23 13:15:06 CST 2019",
+            "Type": "Antminer Z11"
+          },
+          {
+            "Elapsed": 67471,
+            "GHS 5s": "227.40",
+            "GHS av": 70.6,
+            "chain_hw1": 349565,
+            "chain_hw2": 423920,
+            "chain_hw3": 384961,
+            "chain_hw4": 0,
+            "chain_rate1": "62.26",
+            "chain_rate2": "42.60",
+            "chain_rate3": "122.55",
+            "chain_rate4": ""
+          }
+        ]
+      },
+      "summary": {
+        "SUMMARY": [
+          {
+            "Elapsed": 67471,
+            "GHS 5s": "227.40",
+            "GHS av": 70.6,
+            "Hardware Errors": 0
+          }
+        ]
+      },
+      "system": {
+        "minertype": "Antminer Z11",
+        "system_kernel_version": "Linux 4.6.0-xilinx-gff8137b-dirty #22 SMP PREEMPT Fri Dec 22 12:25:44 CST 2017",
+        "system_filesystem_version": "Tue Apr 23 13:15:06 CST 2019"
+      }
+    },
+    {
+      "version": {
+        "VERSION": [
+          {
+            "CGMiner": "4.9.0",
+            "API": "3.1",
+            "Miner": "9.0.0.5",
+            "CompileTime": "Thu Oct 24 11:09:07 CST 2019",
+            "Type": "Antminer Z11"
+          }
+        ]
+      },
+      "stats": {
+        "STATS": [
+          {
+            "CGMiner": "4.9.0",
+            "Miner": "9.0.0.5",
+            "CompileTime": "Thu Oct 24 11:09:07 CST 2019",
+            "Type": "Antminer Z11"
+          },
+          {
+            "Elapsed": 67479,
+            "GHS 5s": "147769.98",
+            "GHS av": 140476.54,
+            "chain_hw1": 0,
+            "chain_hw2": 0,
+            "chain_hw3": 0,
+            "chain_hw4": 0,
+            "chain_rate1": "51.44",
+            "chain_rate2": "44.56",
+            "chain_rate3": "51.77",
+            "chain_rate4": ""
+          }
+        ]
+      },
+      "summary": {
+        "SUMMARY": [
+          {
+            "Elapsed": 67479,
+            "GHS 5s": "147769.98",
+            "GHS av": 140476.54,
+            "Hardware Errors": 0
+          }
+        ]
+      },
+      "system": {
+        "minertype": "Antminer Z11",
+        "system_kernel_version": "Linux 4.6.0-xilinx-g0387054-dirty #45 SMP PREEMPT Wed Jun 19 15:03:51 CST 2019",
+        "system_filesystem_version": "Thu Oct 24 11:09:07 CST 2019"
+      }
+    }
+  ]
+}

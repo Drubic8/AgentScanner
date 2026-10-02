@@ -5,7 +5,7 @@ import json
 import re
 
 
-IDENTITY_KEYS = {"type", "model", "minertype", "miner", "product_type", "prod", "g-model", "ver", "fw_name", "fw_version", "firmware", "firmware_version", "miner_version", "compiletime", "system_filesystem_version"}
+IDENTITY_KEYS = {"type", "model", "minertype", "miner", "product_type", "prod", "g-model", "ver", "fw_name", "fw_version", "fwversion", "firmware", "firmware_version", "miner_version", "compiletime", "system_filesystem_version"}
 
 
 def identity_values(data):
@@ -98,7 +98,7 @@ class Profile:
         if self.signature not in signatures(data):
             return False
         match = self.match or {}
-        for key, fields in (("firmware_versions", {"fw_version", "firmware_version", "system_filesystem_version"}), ("api_versions", {"api", "api_ver", "api_version"})):
+        for key, fields in (("firmware_versions", {"fw_version", "fwversion", "firmware_version", "system_filesystem_version"}), ("api_versions", {"api", "api_ver", "api_version"}), ("compile_times", {"compiletime"})):
             if key in match and first_field(data, fields) not in match[key]:
                 return False
         if "models" in match and first_field(data, {"model", "minertype", "type", "product_type"}) not in match["models"]:
@@ -123,11 +123,24 @@ class ProfileRegistry:
             for query in profile.queries:
                 if len(query) not in (4, 5) or query[1] not in {"cgminer", "http", "http_post", "rpc", "html", "text"}:
                     raise ValueError(f"Invalid query in {profile.id}")
-                if len(query) == 5 and (set(query[4]) - {"port"} or not 1 <= query[4].get("port", 80) <= 65535):
-                    raise ValueError("Invalid query transport options")
+                if len(query) == 5:
+                    options = query[4]
+                    if set(options) - {"port", "repair"} or not 1 <= options.get("port", 80) <= 65535:
+                        raise ValueError("Invalid query transport options")
+                    if "repair" in options and (options["repair"] != "antminer_stats" or query[1:3] != ("cgminer", "stats")):
+                        raise ValueError("Legacy JSON repair is limited to the stats read")
             if profile.verified_commands and not (profile.match and profile.match.get("firmware_versions") and profile.match.get("models")):
                 raise ValueError("Verified control requires explicit models and firmware versions")
             for action, rule in (profile.command_rules or {}).items():
+                if "success_codes" in rule:
+                    codes = rule["success_codes"]
+                    if not isinstance(codes, list) or not codes or any(type(code) not in (str, int) for code in codes):
+                        raise ValueError("Command success codes must be a nonempty list of strings or integers")
+                if "config_fields" in rule:
+                    mapping = rule["config_fields"]
+                    if (not rule.get("read_config") or not isinstance(mapping, dict) or not mapping
+                            or not all(isinstance(k, str) and k and isinstance(v, str) and v for k, v in mapping.items())):
+                        raise ValueError("Config field mapping requires a config read and nonempty field names")
                 if rule.get("method", "POST") not in {"GET", "POST"}:
                     raise ValueError("Unsupported command method")
                 for path in (rule.get("path", ""), rule.get("verify", {}).get("path", "")):
@@ -140,6 +153,9 @@ class ProfileRegistry:
             for metric, mapping in (profile.metrics or {}).items():
                 if metric not in {"rate", "average_rate"} or mapping.get("unit") not in {"H/s", "MH/s", "GH/s", "TH/s", "Sol/s", "kSol/s"} or not mapping.get("path"):
                     raise ValueError("Invalid explicit metric mapping")
+                paths = [mapping["path"], *mapping.get("fallback_paths", [])]
+                if any(not isinstance(path, list) or not path or any(type(part) not in (str, int) for part in path) for path in paths):
+                    raise ValueError("Metric paths must be nonempty lists of keys or indexes")
 
     def resolve(self, data):
         matches = sorted((p for p in self.profiles if p.matches(data)), key=lambda p: p.priority, reverse=True)

@@ -9,8 +9,10 @@ from uuid import uuid4
 import requests
 
 from .models import DeviceIdentity, DeviceRecord
-from .normalization import normalize, format_rate
+from .normalization import (normalize, format_rate, block, antminer_fan_channels,
+                            antminer_fan_readings, antminer_model_name, STOCK_FAN_COUNTS)
 from .profiles import first_field
+from .protocol_compat import repair_antminer_stats
 from .runtime import AuthenticationError, ProtocolError
 from .parsers.antminer import parse_antminer_stock
 from .parsers.vnish import parse_antminer_vnish
@@ -24,7 +26,9 @@ from .parsers.jasminer import parse_jasminer
 
 def query(transport, definition):
     key, protocol, command, _ = definition[:4]
-    options = definition[4] if len(definition) > 4 else {}
+    options = dict(definition[4]) if len(definition) > 4 else {}
+    if options.get("repair") == "antminer_stats":
+        options["repair"] = repair_antminer_stats
     try:
         if protocol == "cgminer":
             value = transport.cgminer(command, **options)
@@ -89,7 +93,7 @@ def warnings(data):
 
 
 PARSERS = {
-    "antminer": lambda ip, d: parse_antminer_stock(ip, d, diagnostics=warnings(d), work_mode=d.get("config", {}).get("bitmain-work-mode", d.get("config", {}).get("miner-mode"))),
+    "antminer": lambda ip, d: parse_antminer_stock(ip, d, diagnostics=warnings(d)),
     "vnish": lambda ip, d: parse_antminer_vnish(ip, d, {"info": d.get("vnish_info", {}), "summary": d.get("vnish_summary", {})}),
     "pitbit": lambda ip, d: parse_antminer_pitbit(ip, d, diagnostics=warnings(d), work_mode=None if "bitmain-work-mode" not in d.get("config", {}) else str(d["config"]["bitmain-work-mode"]) == "1"),
     "whatsminer": lambda ip, d: parse_whatsminer_data(ip, d.get("rpc_info", {}), d.get("rpc_summary", {}), d.get("rpc_pools", {})),
@@ -98,6 +102,27 @@ PARSERS = {
     "jasminer": lambda ip, d: parse_jasminer(ip, d.get("jasminer_status", {})),
     "generic": parse_generic, "cgminer_web": parse_generic,
 }
+
+
+def antminer_firmware_metadata(data):
+    """Read firmware metadata from named endpoints, never CGMiner telemetry.
+
+    stats.miner_version uses a software version (e.g. 86.48-2.0.0), while
+    system_filesystem_version identifies the image by its build date. Do not
+    swap these formats when telemetry disappears during sleep. Keep all
+    explicit firmware metadata fields as change evidence.
+    """
+    names = ('fw_version', 'fwversion', 'firmware_version', 'system_filesystem_version')
+    evidence = {}
+    for endpoint in ('version', 'system'):
+        values = {name: first_field(data.get(endpoint), {name}) for name in names}
+        evidence[endpoint] = {name: value.strip() for name, value in values.items() if value is not None}
+    candidates = [*evidence['version'].values()]
+    system = evidence['system']
+    if system.get('system_filesystem_version'):
+        candidates.append(system['system_filesystem_version'])
+    candidates.extend(value for name, value in system.items() if name != 'system_filesystem_version')
+    return next(iter(candidates), None), evidence
 
 
 def make_record(profile, ip, data, previous=None):
@@ -109,21 +134,40 @@ def make_record(profile, ip, data, previous=None):
         row["ErrorDetails"] = "Ответ API не соответствует ожидаемой структуре"
     raw_model = first_field(data, {"model", "minertype", "product_type", "type", "g-model"})
     model = raw_model or row.get("Model", "Unknown")
-    version = first_field(data, {"fw_version", "firmware_version", "system_filesystem_version", "miner_version"})
+    version = first_field(data, {"fw_version", "fwversion", "firmware_version", "system_filesystem_version", "miner_version"})
+    firmware_evidence = None
+    if profile.parser == 'antminer':
+        version, firmware_evidence = antminer_firmware_metadata(data)
+    if profile.parser == 'avalon':
+        version = block(data.get('version'), 'VERSION').get('VERSION') or version
     api_version = first_field(data, {"api", "api_ver", "api_version"})
     serial = first_field(data, {"serial", "serial_number", "sn"})
     mac = first_field(data, {"mac", "macaddr", "mac_address"})
     fields = [profile.id, profile.version, model, version, api_version, serial, mac]
+    if firmware_evidence is not None:
+        fields.append(firmware_evidence)
     fingerprint = hashlib.sha256(json.dumps(fields, ensure_ascii=True).encode()).hexdigest()
     same_hardware = previous and (serial or mac) and (serial, mac, model, profile.make) == (previous.identity.serial, previous.identity.mac, previous.identity.model, previous.identity.make)
     device_id = previous.identity.device_id if previous and (same_hardware or previous.identity.fingerprint == fingerprint) else str(uuid4())
     identity = DeviceIdentity(device_id, ip, profile.make, model, profile.firmware, version, api_version, serial, mac, profile.id, profile.version, fingerprint)
+    if profile.parser == "antminer":
+        values = {**block(data.get("stats"), "STATS"), **block(data.get("summary"), "SUMMARY")}
+        cached_channels = ()
+        if (previous and (serial or mac) and previous.identity.fingerprint == fingerprint
+                and previous.display.get("FanChannelsConfirmed")):
+            cached_channels = previous.display.get("FanChannels", ())
+        channels, confirmed = antminer_fan_channels(values, row.get("Model", ""), cached_channels)
+        row["FanChannels"], row["FanChannelsConfirmed"] = channels, confirmed
+        readings = antminer_fan_readings(values, row.get("Model", ""), channels)
+        labelled = not confirmed and antminer_model_name(model) in STOCK_FAN_COUNTS
+        row["Fan"] = " ".join((f"{key}=" if labelled else "") + ("—" if rpm is None else f"{rpm:g}")
+                              for key, rpm in zip(channels, readings))
     snapshot = normalize(data, row, profile.parser, profile.metrics)
     row.setdefault("SortIP", int(ipaddress.IPv4Address(ip)))
     row.setdefault("Status", "Running" if snapshot.mining_state == "running" else "Unknown")
     row.setdefault("Error", "")
     row.setdefault("ErrorDetails", "")
-    row.update({"Real": format_rate(snapshot.rate, snapshot.rate_unit), "Avg": format_rate(snapshot.average_rate, snapshot.rate_unit), "RawHash": snapshot.rate})
+    row.update({"Real": format_rate(snapshot.rate, snapshot.rate_unit, snapshot.algorithm), "Avg": format_rate(snapshot.average_rate, snapshot.rate_unit, snapshot.algorithm), "RawHash": snapshot.rate})
     if snapshot.uptime_seconds is not None:
         from .utils import get_uptime_str
         row["Uptime"] = get_uptime_str(snapshot.uptime_seconds)

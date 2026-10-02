@@ -18,6 +18,7 @@ from .repository import DeviceRepository
 from .runtime import ScanOptions
 from .service import ScannerService
 from .transports import Transport
+from .stock_compatibility import ASSET_PATH
 
 # Explicitly reviewed reads. A future profile cannot silently enable a write here.
 HTTP_READS = {
@@ -25,11 +26,13 @@ HTTP_READS = {
     "/api/v1/info", "/api/v1/summary", "/cgi-bin/luci/stats.cgi",
     "/cgi-bin/luci/get_miner_conf.cgi", "/cgi-bin/luci/get_system_info.cgi",
     "/cgi-bin/minerStatus.cgi", "/cgi-bin/minerConfiguration.cgi", "/warning",
+    "/miner.html", "/index.html", "/cgi-bin/get_blink_status.cgi",
 }
 SENSITIVE = re.compile(r"pass|pwd|secret|token|auth|cookie|salt|sign|user|worker|wallet|pool|url|host|serial|(^|_)sn$|mac|address|fingerprint|device.?id|(^|_)ip$", re.I)
 SAFE_TEXT = {"model", "minertype", "type", "make", "firmware", "firmwareversion",
              "firmware_version", "api_version", "version", "compiletime", "compile_time",
-             "product_type", "g-model", "profile_id", "algorithm", "rate_unit", "mining_state"}
+             "product_type", "g-model", "profile_id", "algorithm", "algo", "api",
+             "system_filesystem_version", "rate_unit", "mining_state"}
 
 
 def redact(value, key="", secrets=()):
@@ -47,6 +50,10 @@ def redact(value, key="", secrets=()):
         if any(secret and secret in value for secret in secrets):
             return "[redacted]"
         if re.fullmatch(r"-?\d+(\.\d+)?", value):
+            return value
+        if (re.fullmatch(r"(?:temp2_|temp_chip|temp)\d+", key, re.I)
+                and len(value) <= 160
+                and re.fullmatch(r"\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)+", value)):
             return value
         if key.lower() in SAFE_TEXT and len(value) <= 160:
             if not re.search(r"(?:\d{1,3}\.){3}\d{1,3}|(?:[0-9a-f]{2}:){5}|://|@", value, re.I):
@@ -101,7 +108,7 @@ class RecordingTransport:
             protocol == "cgminer" and command in {"version", "stats", "summary", "pools"}
             or protocol == "rpc" and (command, args[0] if args else None) in {
                 ("get.device.info", None), ("get.miner.status", "pools"), ("get.miner.status", "summary")}
-            or protocol in {"http", "http_json"} and command in HTTP_READS
+            or protocol in {"http", "http_json"} and (command in HTTP_READS or ASSET_PATH.fullmatch(command))
             and (args[0] if args else "GET") in ({"GET", "POST"} if command == "/cgi-bin/minerStatus.cgi" else {"GET"})
         )
         if not allowed or any(k in kwargs for k in ("payload", "headers", "raw")):

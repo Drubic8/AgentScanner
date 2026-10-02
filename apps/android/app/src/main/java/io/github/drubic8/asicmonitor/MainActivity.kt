@@ -185,8 +185,10 @@ private fun DevicesScreen(state: MonitorState, onScan: () -> Unit, onCancel: () 
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(device.ip, color = Blue, fontWeight = FontWeight.Medium)
                         Text(if (device.stale) "Устарело" else when (device.state) {
-                            "running", "mining" -> "Майнинг"; "stopped", "sleep", "paused" -> "Остановлен"; else -> "Обнаружен"
-                        }, color = if (device.stale) Amber else Positive, style = MaterialTheme.typography.labelMedium)
+                            "running", "mining" -> "Майнинг"; "stopped", "sleep", "paused" -> "Остановлен"
+                            "stopping" -> "Засыпает"; "starting" -> "Запускается"; else -> "Обнаружен"
+                        }, color = if (device.stale || device.state in setOf("stopping", "starting")) Amber else Positive,
+                            style = MaterialTheme.typography.labelMedium)
                     }
                     Text(device.model, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                     Text("${device.firmware} ${device.version}", color = Muted, style = MaterialTheme.typography.bodySmall)

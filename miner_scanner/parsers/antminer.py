@@ -1,175 +1,87 @@
+"""Stock Bitmain presentation, using the same numeric telemetry as the service."""
 import ipaddress
 import re
-from ..utils import get_uptime_str, normalize_hashrate
+
+from ..normalization import antminer_fan_readings, block, format_rate, normalize, number
+from ..profiles import first_field
+from ..utils import get_uptime_str
+
+
+def algorithm_for(model, data):
+    # Algorithms are properties of the model, not of the CGMiner field name.
+    name = re.sub(r"^antminer\s*", "", model.strip(), flags=re.I).upper()
+    for prefix, algorithm in (("Z", "Equihash"), ("D", "X11"), ("L", "Scrypt"),
+                              ("E", "Etchash"), ("KS", "kHeavyHash"),
+                              ("KA", "Blake2S"), ("K", "Eaglesong"),
+                              ("S", "SHA-256"), ("T", "SHA-256")):
+        if re.match(re.escape(prefix) + r"\d", name):
+            return algorithm
+    hint = first_field(data, {"algo", "algorithm"}) or ""
+    for marker, algorithm in (("SHA", "SHA-256"), ("BTC", "SHA-256"),
+                              ("SCRYPT", "Scrypt"), ("LTC", "Scrypt"),
+                              ("X11", "X11"), ("DASH", "X11"),
+                              ("EQUIHASH", "Equihash"), ("ZEC", "Equihash"),
+                              ("HEAVY", "kHeavyHash"), ("ETH", "Etchash")):
+        if marker in hint.upper():
+            return algorithm
+    return hint or "Unknown"
+
 
 def parse_antminer_stock(ip, resp, diagnostics=("", ""), work_mode=None):
-    summary_block = {}
-    if resp.get("summary", {}).get('SUMMARY'):
-        summary_block = resp["summary"]['SUMMARY'][0]
+    raw_model = first_field(resp, {"model", "minertype", "product_type", "type", "g-model"})
+    model = raw_model or "Antminer Unknown"
+    if raw_model and not model.lower().startswith("antminer"):
+        model = f"Antminer {model}"
+    row = {"IP": ip, "Make": "Bitmain", "Model": model,
+           "Algo": algorithm_for(model, resp), "SortIP": int(ipaddress.IPv4Address(ip))}
+    snapshot = normalize(resp, row, "antminer")
+    stats = block(resp.get("stats"), "STATS")
+    config = resp.get("config")
+    config = config if isinstance(config, dict) else {}
+    if work_mode is None:
+        work_mode = config.get("bitmain-work-mode")
+        if work_mode is None:
+            work_mode = config.get("miner-mode")
 
-    flat_data = {}
-    if resp.get("stats", {}).get('STATS'):
-        for item in resp["stats"]['STATS']:
-            if isinstance(item, dict):
-                flat_data.update(item)
+    failed = [str(i) for i in range(1, 17)
+              if re.search(r"[x-]", str(stats.get(f"chain_acs{i}", "")), re.I)]
+    short_error, detail_error = diagnostics
+    if failed:
+        boards = ",".join(failed)
+        short_error = " + ".join(filter(None, (f"HW ERR (B{boards})", short_error)))
+        detail_error = "\n".join(filter(None, (f"API сообщает неработающие чипы на платах {boards}", detail_error)))
 
-    # === БАЗОВЫЕ ДАННЫЕ ===
-    r_val = float(summary_block.get('GHS 5s', summary_block.get('MHS 5s', 0)))
-    a_val = float(summary_block.get('GHS av', summary_block.get('MHS av', 0)))
-    uptime_sec = int(summary_block.get('Elapsed', flat_data.get('Elapsed', 0)))
-
-    # === АНАЛИЗ ПУЛОВ ===
-    pool, worker = "", ""
-    pools_disabled = False 
-    
-    if resp.get("pools", {}).get('POOLS'):
-        pools_list = resp["pools"]['POOLS']
-        if pools_list:
-            p = pools_list[0]
-            pool = p.get('URL', '')
-            worker = p.get('User', '')
-            
-            if all(str(px.get('Status', '')).lower() in ["disabled", "deed", "dead"] for px in pools_list):
-                pools_disabled = True
-
-    is_sleeping = str(work_mode) == "1"
-
-    # === 1. ОПРЕДЕЛЯЕМ МОДЕЛЬ ===
-    raw_type = flat_data.get('Type', summary_block.get('Type', ''))
-    model = str(raw_type).replace("Antminer", "").strip()
-    final_model = f"Antminer {model}" if model else "Antminer Unknown"
-
-    # === 2. ЛОГИКА АЛГОРИТМОВ ===
-    api_algo = flat_data.get('algo', summary_block.get('algo', ''))
-    final_algo = "SHA-256"
-
-    if api_algo:
-        s_algo = str(api_algo).upper().strip()
-        if "SHA" in s_algo or "BTC" in s_algo: final_algo = "SHA-256"
-        elif "SCRYPT" in s_algo or "LTC" in s_algo: final_algo = "Scrypt"
-        elif "X11" in s_algo: final_algo = "X11"
-        elif "KAS" in s_algo or "HEAVY" in s_algo: final_algo = "kHeavyHash"
-        elif "ETH" in s_algo: final_algo = "Etchash"
-        elif "EQUIHASH" in s_algo or "ZEC" in s_algo: final_algo = "Equihash"
-        else: final_algo = str(api_algo)
-    else:
-        m_upper = final_model.upper()
-        if any(x in m_upper for x in ["L3", "L7", "L9"]): final_algo = "Scrypt"
-        elif "D9" in m_upper or "D7" in m_upper: final_algo = "X11"
-        elif "E9" in m_upper: final_algo = "Etchash"
-        elif "KS" in m_upper: final_algo = "kHeavyHash"
-        elif "K7" in m_upper: final_algo = "Eaglesong"
-        elif any(x in m_upper for x in ["Z15", "Z11", "Z9"]): final_algo = "Equihash"
-        elif any(x in m_upper for x in ["S19", "S21", "T21", "T19", "S9"]): final_algo = "SHA-256"
-
-    # === 3. ТОЧНЫЙ ФОРМАТТЕР ХЕШРЕЙТА ===
-    def format_hr(val, algo, current_model):
-        if algo == "SHA-256": return f"{val/1000:.2f}", "TH/s"
-        elif algo == "Scrypt": 
-            if val < 500: return f"{val:.2f}", "GH/s"
-            else: return f"{val/1000:.2f}", "GH/s"
-        elif algo == "Equihash": 
-            if "Pro" in current_model or "Z15+" in current_model: return f"{val:.2f}", "kSol/s"
-            return f"{val/1000:.2f}", "kSol/s"
-        elif algo == "X11": return f"{val:.2f}", "GH/s"
-        elif algo == "Etchash": return f"{val:.2f}", "MH/s"
-        elif algo == "kHeavyHash": return f"{val/1000:.2f}", "TH/s"
-        else: return f"{val:.2f}", "H/s"
-
-    final_real_val, u_r = format_hr(r_val, final_algo, final_model)
-    final_avg_val, u_a = format_hr(a_val, final_algo, final_model)
-
-    # === 4. КУЛЕРЫ И ТЕМПЕРАТУРЫ ===
-    fans = []
-    for i in range(1, 9):
-        f = flat_data.get(f'fan{i}')
-        if f and str(f).isdigit() and int(f) > 0:
-            fans.append(str(f))
-
-    temps = []
-    for i in range(1, 9):
-        t = flat_data.get(f'temp2_{i}')
-        if not t: t = flat_data.get(f'temp_chip{i}')
-        if not t: t = flat_data.get(f'temp{i}')
-        
-        # ДОБАВЛЯЕМ ПРОВЕРКУ: значение должно быть числом и больше 0
-        try:
-            if t is not None and float(str(t)) > 0:
-                if isinstance(t, str) and '-' in t:
-                    t_vals = [int(x) for x in t.split('-') if x.isdigit()]
-                    if t_vals: temps.append(str(max(t_vals)))
-                else:
-                    temps.append(str(int(float(t)))) # Округляем до целого для красоты
-        except:
-            pass
-
-    # === 5. НОМЕРА СЛОМАННЫХ ПЛАТ ===
-    has_hw_error = False
-    failed_boards = [] 
-    error_str = ""
-    error_details = ""
-    
-    for i in range(1, 9):
-        chain_key = f"chain_acs{i}"
-        if chain_key in flat_data:
-            # Отвалившиеся чипы могут быть 'x' или '-'
-            val_str = str(flat_data[chain_key]).lower()
-            if 'x' in val_str or '-' in val_str:
-                has_hw_error = True
-                failed_boards.append(str(i)) 
-
-    if has_hw_error:
-        boards_str = ",".join(failed_boards) 
-        error_str = f"HW ERR (B{boards_str})" 
-        error_details = f"Сгоревшие или отвалившиеся чипы ('x', '-') на плате {boards_str}"
-
-    # === 6. ОПРОС ПОРТА 6060 (ПРИОРИТЕТ НАД СНОМ) ===
-    short_6060_err, detail_6060_err = diagnostics
-    
-    if short_6060_err:
-        has_hw_error = True
-        if error_str:
-            error_str = f"{error_str} + {short_6060_err}"
-            error_details = f"{error_details}\n{detail_6060_err}"
-        else:
-            error_str = short_6060_err
-            error_details = detail_6060_err
-
-    # Если есть аппаратная ошибка (плата или порт 6060), то устройство ТОЧНО не спит!
-    if has_hw_error and work_mode is None:
-        is_sleeping = False
-
-    # === 7. ЖЕСТКАЯ ЛОГИКА СТАТУСОВ ===
-    if is_sleeping:
+    if number(work_mode) == 1:
         status = "Sleep"
-        error_str = ""
-        error_details = ""
-    elif float(r_val) > 0.0:
+        short_error, detail_error = diagnostics
+    elif snapshot.rate is not None and snapshot.rate > 0:
         status = "Running"
-    else:
+    elif short_error:
         status = "Error"
-        if not error_str:
-            error_str = "NO HASH"
-            error_details = "Устройство не спит, но хешрейт равен 0."
+    elif snapshot.rate == 0 and number(work_mode) == 0:
+        status, short_error = "Error", "NO HASH"
+        detail_error = "Майнинг включён в конфигурации, но текущий хешрейт равен 0."
+    else:
+        # Missing counters and inaccessible configuration prove neither fault nor sleep.
+        status, short_error = "Unknown", "STATE UNCONFIRMED"
+        detail_error = "Недостаточно данных для определения режима. Проверьте доступ к API и авторизацию."
 
-    try: raw_h = float(str(final_real_val).replace(',', '.').strip())
-    except: raw_h = 0.0
-
-    return {
-        "IP": ip, 
-        "Make": "Bitmain", 
-        "Model": final_model, 
-        "Algo": final_algo, 
-        "Status": status, 
-        "Uptime": get_uptime_str(uptime_sec),
-        "Real": f"{raw_h} {u_r}", 
-        "Avg": f"{final_avg_val} {u_a}",
-        "Fan": " ".join(fans),
-        "Temp": " ".join(temps), 
-        "Pool": pool, 
-        "Worker": worker,
-        "SortIP": int(ipaddress.IPv4Address(ip)),
-        "RawHash": float(r_val),
-        "Error": error_str, 
-        "ErrorDetails": error_details
-    }
+    pools = resp.get("pools", {})
+    pools = pools.get("POOLS", []) if isinstance(pools, dict) else []
+    pool = next((p for p in pools if isinstance(p, dict)), {})
+    if not pool:
+        configured = config.get("pools", [])
+        pool = next((p for p in configured if isinstance(p, dict)), {})
+    row.update({
+        "Status": status, "Error": short_error, "ErrorDetails": detail_error,
+        "Uptime": get_uptime_str(snapshot.uptime_seconds) if snapshot.uptime_seconds is not None else "—",
+        "Real": format_rate(snapshot.rate, snapshot.rate_unit, snapshot.algorithm),
+        "Avg": format_rate(snapshot.average_rate, snapshot.rate_unit, snapshot.algorithm),
+        "RawHash": snapshot.rate,
+        "Fan": " ".join("—" if v is None else f"{v:g}" for v in antminer_fan_readings(
+            {**stats, **block(resp.get("summary"), "SUMMARY")}, model)),
+        "Temp": " ".join(f"{v:g}" for v in snapshot.temperatures_c),
+        "Pool": pool.get("URL", pool.get("url", "")),
+        "Worker": pool.get("User", pool.get("user", "")),
+    })
+    return row

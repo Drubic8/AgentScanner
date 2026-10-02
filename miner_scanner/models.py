@@ -60,7 +60,7 @@ class DeviceRecord:
         result = dict(self.display)
         result.update({
             "IP": self.identity.ip, "Make": self.identity.make,
-            "Model": self.identity.model, "DeviceId": self.identity.device_id,
+            "Model": self.display.get("Model") or self.identity.model, "DeviceId": self.identity.device_id,
             "ProfileId": self.identity.profile_id,
             "Firmware": self.identity.firmware,
             "FirmwareVersion": self.identity.firmware_version,
@@ -68,6 +68,13 @@ class DeviceRecord:
             "Identity": asdict(self.identity), "Telemetry": asdict(self.telemetry),
             "Capabilities": dict(self.capabilities), "Stale": self.telemetry.stale,
         })
+        if self.telemetry.stale:
+            # Retain the historical snapshot internally, never present its metrics
+            # as a new measurement to legacy GUI/export consumers.
+            for key in ("Real", "Avg", "Uptime", "Temp", "Fan", "Pool", "Worker"):
+                result[key] = "—"
+            result["RawHash"] = None
+            result["Status"] = "Unknown"
         return result
 
 

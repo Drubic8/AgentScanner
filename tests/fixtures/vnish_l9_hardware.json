@@ -1,0 +1,50 @@
+[
+  {
+    "info": {
+      "miner": "Antminer L9",
+      "model": "l9",
+      "fw_name": "Vnish",
+      "fw_version": "1.2.7",
+      "algorithm": "scrypt",
+      "hr_measure": "MH/s"
+    },
+    "summary": {
+      "miner": {
+        "miner_type": "Antminer L9 (Vnish 1.2.7)",
+        "hr_realtime": 17394.832,
+        "hr_average": 17222.453,
+        "hr_stock": 17038.0,
+        "instant_hashrate": 17.394833,
+        "average_hashrate": 17.222454,
+        "miner_status": {
+          "miner_state": "mining",
+          "miner_state_time": 656931
+        }
+      }
+    }
+  },
+  {
+    "info": {
+      "miner": "Antminer L9",
+      "model": "l9",
+      "fw_name": "Vnish",
+      "fw_version": "1.2.6",
+      "algorithm": "scrypt",
+      "hr_measure": "MH/s"
+    },
+    "summary": {
+      "miner": {
+        "miner_type": "Antminer L9 (Vnish 1.2.6)",
+        "hr_realtime": 17265.559,
+        "hr_average": 17198.357,
+        "hr_stock": 16500.0,
+        "instant_hashrate": 17.265558,
+        "average_hashrate": 17.198357,
+        "miner_status": {
+          "miner_state": "mining",
+          "miner_state_time": 477851
+        }
+      }
+    }
+  }
+]

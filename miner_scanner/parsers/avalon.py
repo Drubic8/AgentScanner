@@ -1,6 +1,7 @@
 import ipaddress
 import re
 from ..utils import get_uptime_str, normalize_hashrate
+from ..avalon_compatibility import display_status
 
 def parse_avalon(ip, resp):
     r_stats = resp.get('stats', {})
@@ -53,12 +54,12 @@ def parse_avalon(ip, resp):
 
     # Хешрейт (Разделение на Real и Avg)
     ghs_real = 0.0
-    if summary_data.get('MHS 1m'):
-        ghs_real = float(summary_data['MHS 1m']) / 1000.0
-    elif stats_data.get('GHSspd'):
+    if stats_data.get('GHSspd') is not None:
         ghs_real = float(stats_data['GHSspd'])
-    elif stats_data.get('GHSmm'):
+    elif stats_data.get('GHSmm') is not None:
         ghs_real = float(stats_data['GHSmm'])
+    elif summary_data.get('MHS 1m') is not None:
+        ghs_real = float(summary_data['MHS 1m']) / 1000.0
 
     ghs_avg = 0.0
     if summary_data.get('MHS av'):
@@ -109,7 +110,7 @@ def parse_avalon(ip, resp):
 
     pool = pool.replace("Stratum+tcp://", "").replace("stratum+tcp://", "").replace("stratum+ssl://", "")
 
-    return {
+    result = {
         "IP": ip, 
         "Make": "Canaan", 
         "Model": full_model, 
@@ -124,3 +125,7 @@ def parse_avalon(ip, resp):
         "Algo": "SHA-256",
         "RawHash": ghs_avg / 1000.0
     }
+    status = display_status(resp)
+    if status is not None:
+        result['Status'] = status
+    return result

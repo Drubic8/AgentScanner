@@ -1,0 +1,238 @@
+{
+  "schema_version": 1,
+  "miner": {
+    "eb4f91c3de8744a3d3130084c88c4ccd9350cae85b138452ac0e255d07161e4e": {
+      "source_asset": "miner.b91570.js",
+      "write_mode": "miner-mode",
+      "required": {
+        "pools": "pools",
+        "bitmain-fan-ctrl": "bitmain-fan-ctrl",
+        "bitmain-fan-pwm": "bitmain-fan-pwm",
+        "bitmain-hashrate-percent": "bitmain-hashrate-percent"
+      },
+      "optional": {
+        "freq-level": "bitmain-freq-level",
+        "bitmain-user-ip-cat": "bitmain-user-ip-cat"
+      },
+      "modes": {
+        "T21": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0,
+          "hem": 2
+        },
+        "S21": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0,
+          "low": 3
+        },
+        "S21+": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0,
+          "low": 3
+        },
+        "S21 Pro": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0
+        },
+        "S21 XP": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0
+        }
+      }
+    },
+    "c72f7acaee182e04d08bc5f4e31ce547e759d7ec731ab3716f18123d83e608ec": {
+      "source_asset": "miner.2a6d03.js",
+      "write_mode": "miner-mode",
+      "required": {
+        "pools": "pools",
+        "bitmain-fan-ctrl": "bitmain-fan-ctrl",
+        "bitmain-fan-pwm": "bitmain-fan-pwm",
+        "bitmain-hashrate-percent": "bitmain-hashrate-percent"
+      },
+      "optional": {
+        "freq-level": "bitmain-freq-level",
+        "bitmain-user-ip-cat": "bitmain-user-ip-cat"
+      },
+      "modes": {
+        "T21": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0,
+          "hem": 2
+        },
+        "S21": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0,
+          "low": 3
+        },
+        "S21+": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0,
+          "low": 3
+        },
+        "S21 Pro": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0
+        },
+        "S21 XP": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0
+        }
+      }
+    },
+    "c0c3df91676a567769a7ce0fc0650dacd91fd690636ee2c442351a16017c36f9": {
+      "source_asset": "miner.4dc679.js",
+      "write_mode": "miner-mode",
+      "required": {
+        "pools": "pools",
+        "bitmain-fan-ctrl": "bitmain-fan-ctrl",
+        "bitmain-fan-pwm": "bitmain-fan-pwm",
+        "bitmain-hashrate-percent": "bitmain-hashrate-percent"
+      },
+      "optional": {
+        "freq-level": "bitmain-freq-level"
+      },
+      "modes": {
+        "T21": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0,
+          "hem": 2
+        },
+        "S21": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0,
+          "low": 3
+        },
+        "S21+": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0,
+          "low": 3
+        },
+        "S21 Pro": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0
+        },
+        "S21 XP": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0
+        }
+      }
+    },
+    "6f1322964d14f03c7f4b3c31483a6dadd9a76e0d32e79395f4828eac6e7c9798": {
+      "source_asset": "miner.0ef2dc.js",
+      "write_mode": "miner-mode",
+      "required": {
+        "pools": "pools",
+        "bitmain-fan-ctrl": "bitmain-fan-ctrl",
+        "bitmain-fan-pwm": "bitmain-fan-pwm",
+        "freq-level": "bitmain-freq-level"
+      },
+      "optional": {},
+      "read_only": [
+        "algo",
+        "bitmain-freq",
+        "bitmain-voltage"
+      ],
+      "modes": {
+        "L9": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0
+        }
+      }
+    },
+    "3a9adfcbc1e7bb9bfef2970cc423f8a32375ff9a9bf54a5dc6efb788bc094a5a": {
+      "source_asset": "miner.c8af43.js",
+      "write_mode": "bitmain-work-mode",
+      "required": {
+        "pools": "pools",
+        "bitmain-fan-ctrl": "bitmain-fan-ctrl",
+        "bitmain-fan-pwm": "bitmain-fan-pwm",
+        "bitmain-user-ip-cat": "bitmain-user-ip-cat",
+        "bitmain-freq": "bitmain-freq",
+        "bitmain-voltage": "bitmain-voltage",
+        "bitmain-freq-level": "bitmain-freq-level"
+      },
+      "optional": {},
+      "modes": {
+        "S21+": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0
+        }
+      }
+    },
+    "f6a77087e1b0ac2389bb3d44afb057f26d1b7d5b78fc042b3bc2fdc6ff170c13": {
+      "source_asset": "miner.dc8dd8.js",
+      "write_mode": "miner-mode",
+      "required": {
+        "pools": "pools",
+        "bitmain-fan-ctrl": "bitmain-fan-ctrl",
+        "bitmain-fan-pwm": "bitmain-fan-pwm",
+        "bitmain-freq": "bitmain-freq",
+        "bitmain-voltage": "bitmain-voltage",
+        "freq-level": "bitmain-freq-level"
+      },
+      "optional": {},
+      "read_only": [
+        "algo"
+      ],
+      "modes": {
+        "D9": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0
+        }
+      }
+    }
+  },
+  "index": {
+    "b492d517342d914bd4794c07f6497a447707b6f0feab25aed7509a13a003af89": {
+      "source_asset": "index.4be6b1.js"
+    },
+    "187a62283e008987f6bdadf9dc0579dd00298b3d441bceba2fd8ea8eaad8b00a": {
+      "source_asset": "index.d5a821.js"
+    },
+    "0b06b3ea59dde751bb8afb2128f8c9ddab6c35465c6e75d9a780626adf07869d": {
+      "source_asset": "index.db9b87.js"
+    },
+    "fe388e83f2ed6f7dad726b2468c335d88c0ec1378a8d2cd2e5d3f2cfa59313c4": {
+      "source_asset": "index.16ab47.js"
+    },
+    "dec161e29503471220530015c0ebbec4e095bd318080d4229b98da9186197ac3": {
+      "source_asset": "index.0e8706.js"
+    },
+    "549a734b3cf9f7d07f58216a10440dc06274ca2a731bd560ac44a4bc25c693ca": {
+      "source_asset": "index.084178.js"
+    },
+    "0bf71a8325adedb942b82f0333a919a28a4675f4266811421e4c8f0349bec273": {
+      "source_asset": "index.acb1b2.js"
+    }
+  },
+  "legacy_reboot": {
+    "712fbee71caa8c94ccb51b148ea61ce4323530f400af61208048d66b867ff8cb": {
+      "source_asset": "reboot.html",
+      "method": "GET",
+      "path": "/cgi-bin/reboot.cgi"
+    },
+    "8c6c727e12aa256640a78aea2203707fe0deb727297b01d701a36b5962700e95": {
+      "source_asset": "reboot.html",
+      "method": "GET",
+      "path": "/cgi-bin/reboot.cgi"
+    }
+  }
+}

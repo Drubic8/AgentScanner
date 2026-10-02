@@ -49,7 +49,8 @@ def apply_theme(app, dark=False):
         #RangeSummary { color: %(accent)s; font-size: 19px; font-weight: 600; }
         #ValidationError { color: %(danger)s; }
         #RangeEditor { font-family: 'Consolas'; font-size: 14px; }
-        #NetworkList::item { padding: 10px 7px; }
+        #NetworkList::item { padding: 5px 7px; }
+        #DashDetails { color: %(muted)s; background: transparent; border: none; padding: 0; }
         QPushButton[primary="true"]:disabled { background: %(field)s; color: %(muted)s; border-color: %(line)s; }
         #RangeAction { padding: 8px 4px; }
         QPushButton:disabled { color: %(muted)s; background: %(field)s; border-color: %(line)s; }

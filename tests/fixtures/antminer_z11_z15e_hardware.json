@@ -1,0 +1,113 @@
+{
+  "_fixture": "Sanitized live read-only captures of Stock Z11/Z15e, 2026-09-28; physical fan failure was not induced.",
+  "cases": [
+    {
+      "version": {
+        "VERSION": [
+          {
+            "API": "3.1",
+            "CompileTime": "Thu Oct 24 11:09:07 CST 2019",
+            "Type": "Antminer Z11"
+          }
+        ]
+      },
+      "stats": {
+        "STATS": [
+          {
+            "CompileTime": "Thu Oct 24 11:09:07 CST 2019",
+            "Type": "Antminer Z11"
+          },
+          {
+            "Elapsed": 334773,
+            "GHS 5s": "138267.72",
+            "GHS av": 139417.57,
+            "fan_num": 2,
+            "fan1": 3840,
+            "fan2": 3840,
+            "fan3": 0,
+            "fan4": 0,
+            "fan5": 0,
+            "fan6": 0,
+            "temp_num": 3,
+            "temp1": 45,
+            "temp2": 49,
+            "temp3": 49,
+            "temp4": 0,
+            "temp2_1": 62,
+            "temp2_2": 65,
+            "temp2_3": 66,
+            "temp2_4": 0
+          }
+        ]
+      },
+      "summary": {
+        "SUMMARY": [
+          {
+            "Elapsed": 334773,
+            "GHS 5s": "138267.72",
+            "GHS av": 139417.57
+          }
+        ]
+      },
+      "system": {
+        "minertype": "Antminer Z11",
+        "system_filesystem_version": "Thu Oct 24 11:09:07 CST 2019"
+      },
+      "config": {}
+    },
+    {
+      "version": {
+        "VERSION": [
+          {
+            "API": "3.1",
+            "CompileTime": "Tue Jan 12 16:16:20 CST 2021",
+            "Type": "Antminer Z15e"
+          }
+        ]
+      },
+      "stats": {
+        "STATS": [
+          {
+            "CompileTime": "Tue Jan 12 16:16:20 CST 2021",
+            "Type": "Antminer Z15e"
+          },
+          {
+            "Elapsed": 350727,
+            "GHS 5s": "306692.67",
+            "GHS av": 269183.86,
+            "fan_num": 2,
+            "fan1": 0,
+            "fan2": 0,
+            "fan3": 4560,
+            "fan4": 4560,
+            "fan5": 0,
+            "fan6": 0,
+            "temp_num": 3,
+            "temp1": 40,
+            "temp2": 39,
+            "temp3": 44,
+            "temp4": 0,
+            "temp2_1": 59,
+            "temp2_2": 60,
+            "temp2_3": 66,
+            "temp2_4": 0
+          }
+        ]
+      },
+      "summary": {
+        "SUMMARY": [
+          {
+            "Elapsed": 350727,
+            "GHS 5s": "306692.67",
+            "GHS av": 269183.86
+          }
+        ]
+      },
+      "system": {
+        "minertype": "Antminer Z15e",
+        "system_filesystem_version": "Tue Jan 12 16:16:20 CST 2021"
+      },
+      "config": {}
+    }
+  ]
+}

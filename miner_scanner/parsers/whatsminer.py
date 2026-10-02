@@ -2,7 +2,7 @@ import ipaddress
 import re
 from ..utils import get_uptime_str, normalize_hashrate
 
-from ..handlers.whatsminer_dict import WHATSMINER_ERRORS
+from ..whatsminer_errors import decode_errors
 
 def safe_float(val, mult=1.0):
     try:
@@ -35,65 +35,8 @@ def parse_whatsminer_data(ip, resp_info, resp_summary, resp_pools):
             ctype = info.get('miner', {}).get('cointype', 'SHA-256')
             if 'BTC' not in str(ctype).upper(): algo = str(ctype)
 
-            # === УМНОЕ ИЗВЛЕЧЕНИЕ КОДОВ ОШИБОК И ИХ ОПИСАНИЙ ===
             err = info.get('error-code') or info.get('error_code')
-            err_list = []
-            err_details = [] 
-
-            def get_error_description(code_str, api_reason):
-                if code_str in WHATSMINER_ERRORS:
-                    return WHATSMINER_ERRORS[code_str]
-                
-                if len(code_str) == 6 and code_str.startswith("5") and code_str[1] in "456":
-                    err_type = code_str[:2]
-                    board = code_str[2]    
-                    chip = code_str[3:]    
-                    chip_text = "всех чипов" if chip == "999" else f"чипа №{int(chip)}"
-                    
-                    if err_type == "54":
-                        return f"Slot {board} chip error (Сбой {chip_text} на плате {board} - Требуется ремонт платы)"
-                    elif err_type == "55":
-                        return f"Slot {board} chips reset (Сброс {chip_text} на плате {board} - Возможна проблема с БП)"
-                    elif err_type == "56":
-                        return f"Slot {board} chip error (Ошибка {chip_text} на плате {board})"
-
-                return api_reason if api_reason else "Неизвестная ошибка"
-
-            if err:
-                if isinstance(err, list):
-                    for e_item in err:
-                        if isinstance(e_item, dict):
-                            reason_api = e_item.get('reason', '').strip()
-                            for k in e_item.keys():
-                                if k != 'reason' and str(k) != "0":
-                                    k_str = str(k)
-                                    err_list.append(k_str)
-                                    desc = get_error_description(k_str, reason_api)
-                                    err_details.append(f"Код {k_str}: {desc}")
-                        elif str(e_item) != "0":
-                            k_str = str(e_item)
-                            err_list.append(k_str)
-                            desc = get_error_description(k_str, "")
-                            err_details.append(f"Код {k_str}: {desc}")
-                elif isinstance(err, dict):
-                    reason_api = err.get('reason', '').strip()
-                    for k in err.keys():
-                        if k != 'reason' and str(k) != "0":
-                            k_str = str(k)
-                            err_list.append(k_str)
-                            desc = get_error_description(k_str, reason_api)
-                            err_details.append(f"Код {k_str}: {desc}")
-                elif str(err) != "0":
-                    k_str = str(err)
-                    err_list.append(k_str)
-                    desc = get_error_description(k_str, "")
-                    err_details.append(f"Код {k_str}: {desc}")
-                    
-            if err_list:
-                error_code = "-".join(err_list)
-                error_details_str = "\n".join(err_details)
-            else:
-                error_details_str = ""
+            error_code, error_details_str = decode_errors(err)
 
     raw_hash = 0.0
     avg_hash = 0.0

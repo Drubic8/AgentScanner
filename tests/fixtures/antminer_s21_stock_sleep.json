@@ -1,0 +1,36 @@
+{
+  "_fixture": "Sanitized read-only capture, Antminer S21 Stock, 2026-09-28. No control commands executed.",
+  "version": {
+    "VERSION": [
+      {
+        "API": "3.1",
+        "CompileTime": "Fri Oct 11 16:34:48 CST 2024",
+        "Type": "Antminer S21"
+      }
+    ]
+  },
+  "stats": {
+    "STATS": [
+      {
+        "CompileTime": "Fri Oct 11 16:34:48 CST 2024",
+        "Type": "Antminer S21"
+      }
+    ]
+  },
+  "summary": {
+    "SUMMARY": [
+      {
+        "Elapsed": 1,
+        "GHS 5s": 0.0,
+        "GHS av": 0.0
+      }
+    ]
+  },
+  "system": {
+    "minertype": "Antminer S21",
+    "system_filesystem_version": "Fri Oct 11 16:34:48 CST 2024"
+  },
+  "config": {
+    "bitmain-work-mode": "1"
+  }
+}

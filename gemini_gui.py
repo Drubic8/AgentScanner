@@ -1,4 +1,5 @@
 import sys
+from html import escape
 import re
 import os
 import json
@@ -17,6 +18,9 @@ from copy import deepcopy
 from desktop_ui.theme import apply_theme as apply_desktop_theme
 from desktop_ui.updates import UpdateCheckWorker, version_tuple
 from desktop_ui.reports import export_frame, sorted_frame
+from desktop_ui.access_dialog import AccessProfilesDialog
+from desktop_ui.access_store import AccessStore
+from miner_scanner.access import AccessProfiles
 from collections import Counter, defaultdict
 
 
@@ -41,7 +45,7 @@ def is_system_dark_mode():
     return True # По умолчанию темная
 
 # Константы автообновления
-CURRENT_VERSION = "2.0.3"
+CURRENT_VERSION = "2.1.0"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
@@ -256,6 +260,7 @@ class ScanWorker(QThread):
 
 class ActionWorker(QThread):
     log_signal = pyqtSignal(str)
+    result_signal = pyqtSignal(list)
 
     def __init__(self, targets, action_type, experimental_ids=()):
         super().__init__()
@@ -265,16 +270,32 @@ class ActionWorker(QThread):
 
     def run(self):
         from concurrent.futures import ThreadPoolExecutor, as_completed
+        service = default_service()
+        def perform(row):
+            result = execute_command(service, row['IP'], self.action,
+                                     device_id=row.get('DeviceId'),
+                                     allow_unverified=row.get('DeviceId') in self.experimental_ids)
+            # Preflight may refresh identity even when the write was skipped.
+            # After an attempted write, read the state once. Never replay it.
+            current = service.get_record(row['IP'])
+            if result.status in ('succeeded', 'unconfirmed'):
+                try:
+                    current = service.poll(row['IP']) or current
+                except Exception:
+                    pass  # Preserve the command result when readback fails.
+            return result, current.to_legacy() if current is not None else None
+
         with ThreadPoolExecutor(max_workers=8, thread_name_prefix="asic-control") as executor:
             futures = {
-                executor.submit(execute_command, default_service(), row["IP"], self.action,
-                                device_id=row.get("DeviceId"), allow_unverified=row.get("DeviceId") in self.experimental_ids): row["IP"]
+                executor.submit(perform, row): row["IP"]
                 for row in self.targets
             }
             for future in as_completed(futures):
                 ip = futures[future]
                 try:
-                    result = future.result()
+                    result, current = future.result()
+                    if current is not None:
+                        self.result_signal.emit([current])
                     self.log_signal.emit(f"{ip}: [{result.status}] {result.message}")
                 except Exception as exc:
                     self.log_signal.emit(f"{ip}: ошибка управления ({type(exc).__name__})")
@@ -351,6 +372,15 @@ class GeminiApp(QMainWindow):
         self.scan_data = [] 
         self.ranges_config = self.load_config() if ranges is None else normalize_groups(ranges)
         self.app_settings = load_app_settings() if settings is None else normalize(settings)
+        self.access_store = AccessStore(data_directory() / 'access_profiles.dat')
+        self.access_load_error = None
+        try:
+            self.access_profiles = self.access_store.load()
+        except (OSError, ValueError, KeyError, TypeError):
+            self.access_profiles = AccessProfiles([])
+            self.access_load_error = 'Не удалось прочитать сохранённые профили доступа. Откройте «Доступ к ASIC» и настройте профили для этой учётной записи Windows.'
+        if SCANNER_AVAIL:
+            default_service().set_access_profiles(self.access_profiles)
         self.dark_mode = self.app_settings["theme"] == "dark" or (self.app_settings["theme"] == "system" and is_system_dark_mode())
         
         # --- ИНИЦИАЛИЗАЦИЯ ОКНА ЛОГОВ ---
@@ -362,6 +392,8 @@ class GeminiApp(QMainWindow):
         self.stats_timer.timeout.connect(self.update_stats)
         self.init_ui()
         self.apply_theme()
+        if self.access_load_error:
+            QTimer.singleShot(0, lambda: QMessageBox.warning(self, 'Профили доступа', self.access_load_error))
 
     def init_ui(self):
         main_widget = QWidget()
@@ -497,9 +529,9 @@ class GeminiApp(QMainWindow):
         self.layout_hashrate = QVBoxLayout(self.box_hashrate)
         self.layout_hashrate.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        self.dash_layout.addWidget(self.box_status)
-        self.dash_layout.addWidget(self.box_models)
-        self.dash_layout.addWidget(self.box_hashrate)
+        self.dash_layout.addWidget(self.box_status, 1)
+        self.dash_layout.addWidget(self.box_models, 2)
+        self.dash_layout.addWidget(self.box_hashrate, 1)
         
         # Обворачиваем dash_layout в виджет, а его в QScrollArea
         self.dash_widget = QWidget()
@@ -508,7 +540,7 @@ class GeminiApp(QMainWindow):
         self.dash_scroll = QScrollArea()
         self.dash_scroll.setWidgetResizable(True)
         self.dash_scroll.setWidget(self.dash_widget)
-        self.dash_scroll.setFixedHeight(156)
+        self.dash_scroll.setFixedHeight(190)
         self.dash_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.dash_scroll.setStyleSheet("QScrollArea { background-color: transparent; }")
         
@@ -536,8 +568,7 @@ class GeminiApp(QMainWindow):
         ctrl_menu.addAction("Включить подсветку", lambda: self.run_action("led_on"))
         ctrl_menu.addAction("Выключить подсветку", lambda: self.run_action("led_off"))
         ctrl_menu.addAction("Перезагрузить", lambda: self.run_action("reboot"))
-        ctrl_menu.addAction("Остановить майнинг", lambda: self.run_action("sleep"))
-        ctrl_menu.addAction("Возобновить майнинг", lambda: self.run_action("normal"))
+        self.add_mining_actions(ctrl_menu)
         btn_remote.setMenu(ctrl_menu)
         
         # === НОВЫЙ СЧЕТЧИК ВЫДЕЛЕННЫХ УСТРОЙСТВ ===
@@ -558,6 +589,7 @@ class GeminiApp(QMainWindow):
         self.search_input.textChanged.connect(self.apply_table_filter)
         self.status_filter = QComboBox()
         for text, code in (("Все состояния", ""), ("Работает", "Running"), ("Сон", "Sleep"),
+                           ("Засыпает", "Stopping"),
                            ("Ожидание", "WaitWork"), ("Ошибка", "Error"), ("Неизвестно", "Unknown"),
                            ("Устаревшие данные", "stale")):
             self.status_filter.addItem(text, code)
@@ -591,8 +623,7 @@ class GeminiApp(QMainWindow):
         h = self.table.horizontalHeader()
         h.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         h.setStretchLastSection(True)
-        for index, width in enumerate((145, 180, 110, 120, 145, 130, 135, 155, 130, 135, 240, 170)):
-            self.table.setColumnWidth(index, width)
+        self.table.setTextElideMode(Qt.TextElideMode.ElideRight)
 
         self.table_stack = QStackedWidget()
         self.table_stack.addWidget(self.table)
@@ -649,7 +680,7 @@ class GeminiApp(QMainWindow):
         # Меню Файл
         file_menu = menubar.addMenu("Файл")
 
-        access_act = QAction("🔑 Доступ к ASIC (на текущий сеанс)", self)
+        access_act = QAction("🔑 Профили доступа к ASIC", self)
         access_act.triggered.connect(self.configure_device_access)
         file_menu.addAction(access_act)
 
@@ -697,10 +728,21 @@ class GeminiApp(QMainWindow):
             self.apply_ui_settings() # <--- ТЕПЕРЬ ОНО ПРИМЕНИТЬСЯ МГНОВЕННО
 
     def apply_ui_settings(self):
-        """Жестко скрывает/показывает столбцы таблицы"""
+        """Apply table layout; keep manual column sizes until density changes."""
         all_cols = ["IP", "Model", "Algo", "Status", "Error", "Uptime", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker"]
         ui_cols = self.app_settings.get("ui_cols", all_cols)
-        self.table.verticalHeader().setDefaultSectionSize(32 if self.app_settings.get("density") == "compact" else 42)
+        density = self.app_settings.get("density", "comfortable")
+        compact = density == "compact"
+        self.table.verticalHeader().setDefaultSectionSize(32 if compact else 42)
+        if getattr(self, '_applied_table_density', None) != density:
+            widths = ((118, 145, 90, 96, 115, 100, 112, 126, 100, 104, 170, 125) if compact else
+                      (145, 180, 110, 120, 145, 130, 135, 155, 130, 135, 240, 170))
+            for index, width in enumerate(widths):
+                self.table.setColumnWidth(index, width)
+            self.table.setStyleSheet(
+                "QTableWidget::item { padding: 2px 4px; } "
+                "QHeaderView::section { padding: 8px 4px; }" if compact else "")
+            self._applied_table_density = density
         
         for i, col in enumerate(all_cols):
             if col in ui_cols:
@@ -841,6 +883,26 @@ class GeminiApp(QMainWindow):
         self.btn_select_all.setChecked(all_selected)
         self.btn_select_all.setText("Снять выделение" if all_selected else "Выделить всё")
 
+    def add_mining_actions(self, menu):
+        """Use the same mining actions in the toolbar and row context menu."""
+        menu.addSeparator()
+        menu.addAction("Сон (остановить майнинг)", lambda: self.run_action("sleep"))
+        menu.addAction("Пробуждение (возобновить майнинг)", lambda: self.run_action("wakeup"))
+        power_menu = menu.addMenu("Режим мощности")
+        power_actions = {}
+        for action, label in (("low", "Low"), ("normal_power", "Обычная мощность (Normal)"), ("hem", "HEM")):
+            power_actions[action] = power_menu.addAction(label, lambda checked=False, action=action: self.run_action(action))
+
+        def update_modes():
+            selected = [self.table.item(r, 0).data(Qt.ItemDataRole.UserRole + 1)
+                        for r in range(self.table.rowCount())
+                        if self.table.item(r, 0) and self.table.item(r, 0).checkState() == Qt.CheckState.Checked]
+            for action, item in power_actions.items():
+                item.setEnabled(any(row and row.get("Capabilities", {}).get(action) == "supported" for row in selected))
+            power_menu.setEnabled(any(item.isEnabled() for item in power_actions.values()))
+
+        menu.aboutToShow.connect(update_modes)
+
     def show_context_menu(self, pos):
         # Контекстное меню (ПКМ) в таблице
         menu = QMenu()
@@ -849,12 +911,7 @@ class GeminiApp(QMainWindow):
         menu.addAction("Выключить подсветку", lambda: self.run_action("led_off"))
         menu.addAction("💡 Переключить индикацию (Avalon)", lambda: self.run_action("identify_toggle"))
         menu.addAction("Перезагрузить", lambda: self.run_action("reboot"))
-        menu.addAction("Остановить майнинг", lambda: self.run_action("sleep"))
-        menu.addAction("Возобновить майнинг", lambda: self.run_action("normal"))
-        for action, label in (("low", "Режим Low"), ("normal_power", "Обычный режим мощности"), ("hem", "Режим HEM")):
-            item = menu.addAction(label, lambda checked=False, action=action: self.run_action(action))
-            selected = [self.table.item(r, 0).data(Qt.ItemDataRole.UserRole + 1) for r in range(self.table.rowCount()) if self.table.item(r, 0).checkState() == Qt.CheckState.Checked]
-            item.setEnabled(any(row and row.get("Capabilities", {}).get(action) == "supported" for row in selected))
+        self.add_mining_actions(menu)
         menu.exec(self.table.viewport().mapToGlobal(pos))
 
     def run_action(self, action_type, confirm_needed=True):
@@ -870,7 +927,7 @@ class GeminiApp(QMainWindow):
             QMessageBox.warning(self, "Внимание", "Сначала отметьте галочками устройства в таблице!")
             return
 
-        nice_names = {"reboot": "Перезагрузить", "led_on": "Подсветить", "led_off": "Отключить подсветку", "sleep": "Остановить майнинг", "normal": "Возобновить майнинг", "identify_toggle": "Переключить индикацию", "low": "Режим Low", "normal_power": "Обычный режим мощности", "hem": "Режим HEM"}
+        nice_names = {"reboot": "Перезагрузить", "led_on": "Подсветить", "led_off": "Отключить подсветку", "sleep": "Сон (остановить майнинг)", "wakeup": "Пробуждение (возобновить майнинг)", "normal": "Пробуждение (возобновить майнинг)", "identify_toggle": "Переключить индикацию", "low": "Режим Low", "normal_power": "Обычный режим мощности", "hem": "Режим HEM"}
 
         targets = [self.table.item(r, 0).data(Qt.ItemDataRole.UserRole + 1) for r in rows]
         targets = [row for row in targets if row]
@@ -878,7 +935,7 @@ class GeminiApp(QMainWindow):
             return
 
         consequences = ""
-        if action_type == "normal" and any(row.get("ProfileId") == "canaan.avalon" for row in targets):
+        if action_type in ("wakeup", "normal", "mining_start") and any(row.get("ProfileId") == "canaan.avalon" for row in targets):
             consequences = "\nДля Avalon возобновление выполняется через перезагрузку."
         
         if confirm_needed:
@@ -893,6 +950,7 @@ class GeminiApp(QMainWindow):
         
         worker = ActionWorker(targets, action_type, getattr(self, "experimental_device_ids", set()))
         worker.log_signal.connect(self.handle_worker_log)
+        worker.result_signal.connect(self.on_result)
         if not hasattr(self, 'workers'):
             self.workers = []
         self.workers.append(worker)
@@ -907,44 +965,22 @@ class GeminiApp(QMainWindow):
         targets = [self.table.item(r, 0).data(Qt.ItemDataRole.UserRole + 1)
                    for r in range(self.table.rowCount())
                    if self.table.item(r, 0).checkState() == Qt.CheckState.Checked]
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Доступ к выбранным ASIC — на текущий сеанс" if targets else "Доступ для сканирования — на текущий сеанс")
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(QLabel("Логин"))
-        username = QLineEdit()
-        layout.addWidget(username)
-        layout.addWidget(QLabel("Пароль (не сохраняется на диск)"))
-        password = QLineEdit()
-        password.setEchoMode(QLineEdit.EchoMode.Password)
-        layout.addWidget(password)
-        auth = QComboBox()
-        auth.addItems(["digest", "basic"])
-        layout.addWidget(QLabel("HTTP-авторизация (для RPC используется логин выше)"))
-        layout.addWidget(auth)
-        experimental = QCheckBox("Разрешить перенесённые команды без аппаратного подтверждения совместимости")
-        experimental.setEnabled(bool(targets))
-        experimental.setChecked(all(row and row.get("DeviceId") in getattr(self, "experimental_device_ids", set()) for row in targets))
-        layout.addWidget(experimental)
-        button = QPushButton("Применить к выбранным" if targets else "Использовать при сканировании")
-        button.clicked.connect(dialog.accept)
-        layout.addWidget(button)
+        dialog = AccessProfilesDialog(self.access_profiles, self.access_store,
+            target_ips=[row['IP'] for row in targets if row],
+            experimental=all(row and row.get('DeviceId') in getattr(self, 'experimental_device_ids', set()) for row in targets),
+            parent=self)
         if dialog.exec():
-            if not username.text().strip():
-                QMessageBox.warning(self, "Доступ", "Укажите логин")
-                return
-            credentials = Credentials(username.text().strip(), password.text(), auth.currentText())
-            if not targets:
-                default_service().set_default_credentials(credentials)
+            self.access_profiles = dialog.result_profiles
+            default_service().set_access_profiles(self.access_profiles)
             if not hasattr(self, "experimental_device_ids"):
                 self.experimental_device_ids = set()
             for row in targets:
                 if row:
-                    default_service().set_credentials(row["IP"], credentials)
-                    if experimental.isChecked():
+                    if dialog.experimental.isChecked():
                         self.experimental_device_ids.add(row.get("DeviceId"))
                     else:
                         self.experimental_device_ids.discard(row.get("DeviceId"))
-            self.add_log(f"Доступ настроен для {len(targets)} устройств на текущий сеанс" if targets else "Учётные данные для сканирования заданы на текущий сеанс")
+            self.add_log('Профили доступа сохранены. Они будут применены при следующем сканировании.')
 
     # --- ОСТАЛЬНЫЕ ФУНКЦИИ (Config, Scan, Export) ---
     def load_config(self):
@@ -1078,7 +1114,16 @@ class GeminiApp(QMainWindow):
         sorting = self.table.isSortingEnabled()
         self.table.setSortingEnabled(False)
         self.table.blockSignals(True)
+        table_rows = {self.table.item(r, 0).text(): r for r in range(self.table.rowCount())
+                      if self.table.item(r, 0) is not None}
+        data_rows = {row.get('IP'): i for i, row in enumerate(self.scan_data)}
         for row in res_list:
+            ip = str(row.get('IP', ''))
+            existing = table_rows.get(ip)
+            if row.get('Stale') and existing is None:
+                self.add_log(f"{row.get('IP', '')}: актуальные данные не получены "
+                             f"({row.get('Error') or 'нет ответа'}). Сохранённая запись исключена из результатов.")
+                continue
             # === ФИКС ДЛЯ JASMINER, IPOLLO И AVALON ===
             # Принудительно задаем статус в базу, если парсер его не вернул
             if 'Status' not in row:
@@ -1087,9 +1132,19 @@ class GeminiApp(QMainWindow):
                 row['Error'] = ''
             # =========================================
             
-            self.scan_data.append(row)
-            r = self.table.rowCount()
-            self.table.insertRow(r)
+            if ip in data_rows:
+                self.scan_data[data_rows[ip]] = row
+            else:
+                data_rows[ip] = len(self.scan_data)
+                self.scan_data.append(row)
+            checked = Qt.CheckState.Unchecked
+            if existing is None:
+                r = self.table.rowCount()
+                self.table.insertRow(r)
+                table_rows[ip] = r
+            else:
+                r = existing
+                checked = self.table.item(r, 0).checkState()
             
             # УМНЫЙ КЛАСС СОРТИРОВКИ ЯЧЕЕК
             class SmartSortItem(QTableWidgetItem):
@@ -1108,7 +1163,7 @@ class GeminiApp(QMainWindow):
             ip_str = str(row.get('IP', ''))
             ip_item = SmartSortItem(ip_str)
             ip_item.setFlags(ip_item.flags() | Qt.ItemFlag.ItemIsUserCheckable) # <--- ДОБАВИТЬ
-            ip_item.setCheckState(Qt.CheckState.Unchecked)                      # <--- ДОБАВИТЬ
+            ip_item.setCheckState(checked)
             ip_item.setData(Qt.ItemDataRole.UserRole, row.get('SortIP', 0))
             ip_item.setData(Qt.ItemDataRole.UserRole + 1, row)
             ip_item.setToolTip(f"Прошивка: {row.get('Firmware', 'Unknown')} {row.get('FirmwareVersion') or ''}\nПрофиль: {row.get('ProfileId', 'Unknown')}\nДанные: {'устарели' if row.get('Stale') else 'актуальны'}")
@@ -1120,11 +1175,11 @@ class GeminiApp(QMainWindow):
             
             # === 3. Status ===
             status_str = str(row.get('Status', 'Running'))
-            status_item = QTableWidgetItem({"Running": "Работает", "Sleep": "Сон", "WaitWork": "Ожидание", "Error": "Ошибка", "Unknown": "Неизвестно"}.get(status_str, status_str))
+            status_item = QTableWidgetItem({"Running": "Работает", "Sleep": "Сон", "Stopping": "Засыпает", "WaitWork": "Ожидание", "Error": "Ошибка", "Unknown": "Неизвестно"}.get(status_str, status_str))
             status_item.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
             if status_str == "Running":
                 status_item.setForeground(QColor("#00E676") if getattr(self, 'dark_mode', False) else QColor("#007e33"))
-            elif status_str == "WaitWork":
+            elif status_str in ("WaitWork", "Stopping"):
                 status_item.setForeground(QColor("#FFA000"))
             self.table.setItem(r, 3, status_item)
             
@@ -1136,7 +1191,9 @@ class GeminiApp(QMainWindow):
                 err_item.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
                 details = str(row.get('ErrorDetails', ''))
                 if details:
-                    err_item.setToolTip(details)
+                    err_item.setToolTip(
+                        '<qt>' + escape(details).replace('\n', '<br>') + '</qt>'
+                    )
             self.table.setItem(r, 4, err_item)
             
             # === 5. Uptime (Переводим дни и часы в минуты для математической сортировки) ===
@@ -1173,9 +1230,14 @@ class GeminiApp(QMainWindow):
             self.table.setItem(r, 9, QTableWidgetItem(str(row.get('Fan'))))
             self.table.setItem(r, 10, QTableWidgetItem(str(row.get('Pool'))))
             self.table.setItem(r, 11, QTableWidgetItem(str(row.get('Worker', '-'))))
+            for column in range(1, self.table.columnCount()):
+                cell = self.table.item(r, column)
+                if cell is not None and not cell.toolTip():
+                    cell.setToolTip(cell.text())
 
         self.table.blockSignals(False)
         self.table.setSortingEnabled(sorting)
+        self.update_selected_count()
         self.apply_table_filter()
         if not self.stats_timer.isActive():
             self.stats_timer.start()
@@ -1233,6 +1295,7 @@ class GeminiApp(QMainWindow):
         states = Counter(row.get("Status", "Unknown") for row in self.scan_data)
         statuses = {"Всего устройств": {"val": str(len(self.scan_data)), "color": None}}
         for code, label in (("Running", "Работает"), ("Sleep", "Сон"), ("WaitWork", "Ожидание"),
+                            ("Stopping", "Засыпает"),
                             ("Error", "Ошибка"), ("Unknown", "Неизвестно")):
             if states[code]:
                 statuses[label] = {"val": str(states[code]), "color": None}
@@ -1256,13 +1319,21 @@ class GeminiApp(QMainWindow):
     def refresh_dashboard(self, statuses, models, hashrates):
         summaries = (
             (self.layout_status, "Устройства", str(len(self.scan_data)),
-             " · ".join(f"{key}: {value['val']}" for key, value in statuses.items() if key != "Всего устройств") or "Ожидание результатов"),
+             "\n".join(f"{key}: {value['val']}" for key, value in statuses.items() if key != "Всего устройств") or "Ожидание результатов"),
             (self.layout_models, "Модели", str(len(models)),
-             " · ".join(f"{key}: {value['val']}" for key, value in models.items()) or "Появятся после сканирования"),
+             "\n".join(f"{key}: {value['val']}" for key, value in models.items()) or "Появятся после сканирования"),
             (self.layout_hashrate, "Хешрейт", next(iter(hashrates.values()))["val"] if len(hashrates) == 1 else "—" if not hashrates else f"{len(hashrates)} групп",
-             " · ".join(f"{key}: {value['val']}" for key, value in hashrates.items()) or "Нет актуальных измерений"),
+             "\n".join(f"{key}: {value['val']}" for key, value in hashrates.items()) or "Нет актуальных измерений"),
         )
         for layout, title, value, detail in summaries:
+            if layout.count() == 3:
+                layout.itemAt(1).widget().setText(value)
+                description = layout.itemAt(2).widget()
+                if description.toPlainText() != detail:
+                    position = description.verticalScrollBar().value()
+                    description.setPlainText(detail)
+                    description.verticalScrollBar().setValue(position)
+                continue
             while layout.count():
                 item = layout.takeAt(0)
                 if item.widget():
@@ -1274,11 +1345,16 @@ class GeminiApp(QMainWindow):
             heading.setObjectName("DashTitle")
             number = QLabel(value)
             number.setObjectName("CardValue")
-            description = QLabel(detail)
-            description.setObjectName("Muted")
-            description.setWordWrap(True)
-            description.setFixedHeight(38)
-            description.setToolTip(detail)
+            description = QTextEdit()
+            description.setObjectName("DashDetails")
+            description.setAccessibleName(f"{title}: подробности")
+            description.setReadOnly(True)
+            description.setPlainText(detail)
+            description.setMinimumWidth(0)
+            description.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
+            description.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            description.setTabChangesFocus(True)
+            description.document().setDocumentMargin(0)
             layout.addWidget(heading)
             layout.addWidget(number)
             layout.addWidget(description)
@@ -1490,6 +1566,7 @@ class GeminiApp(QMainWindow):
             if item:
                 colors = {"Running": "#69d7ad" if self.dark_mode else "#147652",
                           "WaitWork": "#eebc65" if self.dark_mode else "#93600d",
+                          "Stopping": "#eebc65" if self.dark_mode else "#93600d",
                           "Sleep": "#a4b3c6" if self.dark_mode else "#5e7088",
                           "Error": "#ff919b" if self.dark_mode else "#b93649"}
                 record = self.table.item(row, 0).data(Qt.ItemDataRole.UserRole + 1) or {}

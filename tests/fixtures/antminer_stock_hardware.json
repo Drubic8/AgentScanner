@@ -1,0 +1,282 @@
+{
+  "_fixture": "Sanitized real read-only API captures, 2026-09-28. No command tests. Optional warning endpoint unavailable on Z15, Z15 Pro and D9.",
+  "cases": [
+    {
+      "version": {
+        "VERSION": [
+          {
+            "API": "3.1",
+            "CompileTime": "Fri Jul  3 11:39:06 CST 2020",
+            "Type": "Antminer Z15"
+          }
+        ]
+      },
+      "stats": {
+        "STATS": [
+          {
+            "CompileTime": "Fri Jul  3 11:39:06 CST 2020",
+            "Type": "Antminer Z15"
+          },
+          {
+            "Elapsed": 431587,
+            "GHS 5s": "444313.18",
+            "GHS av": 436705.51,
+            "fan1": 0,
+            "fan2": 0,
+            "fan3": 4200,
+            "fan4": 4200,
+            "fan5": 0,
+            "fan6": 0,
+            "temp1": 45,
+            "temp2": 47,
+            "temp3": 44,
+            "temp4": 0,
+            "temp2_1": 63,
+            "temp2_2": 68,
+            "temp2_3": 63,
+            "temp2_4": 0
+          }
+        ]
+      },
+      "summary": {
+        "SUMMARY": [
+          {
+            "Elapsed": 431587,
+            "GHS 5s": "444313.18",
+            "GHS av": 436705.51
+          }
+        ]
+      },
+      "system": {
+        "minertype": "Antminer Z15",
+        "system_filesystem_version": "Fri Jul 3 11:39:06 CST 2020"
+      },
+      "config": {}
+    },
+    {
+      "version": {
+        "VERSION": [
+          {
+            "API": "3.1",
+            "CompileTime": "Tue May 28 09:27:48 CST 2024",
+            "Type": "Antminer D9"
+          }
+        ]
+      },
+      "stats": {
+        "STATS": [
+          {
+            "CompileTime": "Tue May 28 09:27:48 CST 2024",
+            "Type": "Antminer D9"
+          },
+          {
+            "Elapsed": 431470,
+            "GHS 5s": 1752.34,
+            "GHS av": 1789.48,
+            "Mode": 2,
+            "fan1": 3120,
+            "fan2": 3120,
+            "fan3": 3120,
+            "fan4": 3120,
+            "temp1": 60,
+            "temp2_1": 72,
+            "temp2": 55,
+            "temp2_2": 67,
+            "temp3": 57,
+            "temp2_3": 69
+          }
+        ]
+      },
+      "summary": {
+        "SUMMARY": [
+          {
+            "Elapsed": 431470,
+            "GHS 5s": 1752.34,
+            "GHS av": 1789.48
+          }
+        ]
+      },
+      "system": {
+        "minertype": "Antminer D9",
+        "system_filesystem_version": "Tue May 28 09:27:48 CST 2024"
+      },
+      "config": {
+        "bitmain-work-mode": "0"
+      }
+    },
+    {
+      "version": {
+        "VERSION": [
+          {
+            "API": "3.1",
+            "CompileTime": "Wed Dec 13 11:33:17 CST 2023",
+            "Type": "Antminer Z15 Pro"
+          }
+        ]
+      },
+      "stats": {
+        "STATS": [
+          {
+            "CompileTime": "Wed Dec 13 11:33:17 CST 2023",
+            "Type": "Antminer Z15 Pro"
+          },
+          {
+            "Elapsed": 431366,
+            "GHS 5s": 629.01,
+            "GHS av": 866.19,
+            "Mode": 2,
+            "fan1": 3840,
+            "fan2": 3840,
+            "temp2": 52,
+            "temp2_2": 68,
+            "temp3": 52,
+            "temp2_3": 69,
+            "temp4": 52,
+            "temp2_4": 70
+          }
+        ]
+      },
+      "summary": {
+        "SUMMARY": [
+          {
+            "Elapsed": 431366,
+            "GHS 5s": 629.01,
+            "GHS av": 866.19
+          }
+        ]
+      },
+      "system": {
+        "minertype": "Antminer Z15 Pro",
+        "system_filesystem_version": "Wed Dec 13 11:33:17 CST 2023"
+      },
+      "config": {
+        "bitmain-work-mode": "0"
+      }
+    },
+    {
+      "version": {
+        "VERSION": [
+          {
+            "API": "3.1",
+            "CompileTime": "Sun Jan 26 18:50:43 CST 2025",
+            "Type": "Antminer T21"
+          }
+        ]
+      },
+      "stats": {
+        "STATS": [
+          {
+            "CompileTime": "Sun Jan 26 18:50:43 CST 2025",
+            "Type": "Antminer T21"
+          }
+        ]
+      },
+      "summary": {
+        "SUMMARY": [
+          {
+            "Elapsed": 1,
+            "GHS 5s": 0.0,
+            "GHS av": 0.0
+          }
+        ]
+      },
+      "system": {
+        "minertype": "Antminer T21",
+        "system_filesystem_version": "Sun Jan 26 18:50:43 CST 2025"
+      },
+      "config": {
+        "bitmain-work-mode": "1"
+      }
+    },
+    {
+      "version": {
+        "VERSION": [
+          {
+            "API": "3.1",
+            "CompileTime": "Fri Oct 11 16:34:48 CST 2024",
+            "Type": "Antminer S21"
+          }
+        ]
+      },
+      "stats": {
+        "STATS": [
+          {
+            "CompileTime": "Fri Oct 11 16:34:48 CST 2024",
+            "Type": "Antminer S21"
+          }
+        ]
+      },
+      "summary": {
+        "SUMMARY": [
+          {
+            "Elapsed": 1,
+            "GHS 5s": 0.0,
+            "GHS av": 0.0
+          }
+        ]
+      },
+      "system": {
+        "minertype": "Antminer S21",
+        "system_filesystem_version": "Fri Oct 11 16:34:48 CST 2024"
+      },
+      "config": {
+        "bitmain-work-mode": "1"
+      }
+    },
+    {
+      "version": {
+        "VERSION": [
+          {
+            "API": "1.0.0",
+            "CompileTime": "Tue Apr 22 15:05:57 CST 2025",
+            "Type": "Antminer S21+"
+          }
+        ]
+      },
+      "stats": {
+        "STATS": [
+          {
+            "CompileTime": "Tue Apr 22 15:05:57 CST 2025",
+            "Type": "Antminer S21+"
+          },
+          {
+            "Elapsed": 0,
+            "GHS 5s": 0.0,
+            "GHS av": 0.0,
+            "Mode": 1,
+            "fan1": 0,
+            "fan2": 0,
+            "fan3": 0,
+            "fan4": 0,
+            "temp1": 22,
+            "temp2_1": 27,
+            "temp2": 22,
+            "temp2_2": 27,
+            "temp3": 22,
+            "temp2_3": 27,
+            "temp_chip1": "27-27-27-27",
+            "temp_chip2": "27-27-27-27",
+            "temp_chip3": "27-27-27-27",
+            "temp_chip4": "0-0-0-0"
+          }
+        ]
+      },
+      "summary": {
+        "SUMMARY": [
+          {
+            "Elapsed": 0,
+            "GHS 5s": 0.0,
+            "GHS av": 0.0
+          }
+        ]
+      },
+      "system": {
+        "minertype": "Antminer S21+",
+        "system_filesystem_version": "FR-1.15(250422-S21+)"
+      },
+      "config": {
+        "bitmain-work-mode": 1
+      }
+    }
+  ]
+}

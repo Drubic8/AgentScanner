@@ -12,6 +12,16 @@ from tests.fakes import FakeFactory
 
 
 class DiagnosticTests(unittest.TestCase):
+    def test_stock_sensor_tuples_and_firmware_survive_redaction(self):
+        data = {"temp2_1": "61-67-64", "system_filesystem_version": "Fri Oct 11 16:34:48 CST 2024",
+                "algo": "Equihash", "worker": "61-67-64", "temp2_2": "private text"}
+        clean = redact(data)
+        self.assertEqual(clean["temp2_1"], "61-67-64")
+        self.assertEqual(clean["system_filesystem_version"], data["system_filesystem_version"])
+        self.assertEqual(clean["algo"], "Equihash")
+        self.assertEqual(clean["worker"], "[redacted]")
+        self.assertEqual(clean["temp2_2"], "[text omitted]")
+
     def test_redaction_retains_model_and_numbers_but_not_secrets(self):
         raw = {"model": "Antminer Z15", "firmware_version": "v1.2.3",
                "temp": 60, "User": "worker.foo", "password": "123456",

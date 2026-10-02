@@ -1,6 +1,7 @@
 import ipaddress
 import re
-from ..utils import get_uptime_str, normalize_hashrate
+from ..utils import get_uptime_str
+from ..normalization import vnish_rates, format_rate
 
 def parse_antminer_vnish(ip, resp, api_data=None):
     api_data = api_data or {"summary": {}, "info": {}}
@@ -19,7 +20,7 @@ def parse_antminer_vnish(ip, resp, api_data=None):
             if isinstance(item, dict): stats_block.update(item)
 
     # --- Модель ---
-    raw_type = stats_block.get('Type', sum_block.get('Model', 'Unknown'))
+    raw_type = api_data.get("info", {}).get("miner") or stats_block.get('Type', sum_block.get('Model', 'Unknown'))
     raw_type = str(raw_type).replace("Antminer", "").strip()
     model = f"Antminer {raw_type}".strip()
     if "Vnish" not in model: model += " (Vnish)"
@@ -99,9 +100,8 @@ def parse_antminer_vnish(ip, resp, api_data=None):
         elif any(x in m_upper for x in ["S19", "S21", "T21", "T19", "S9"]): 
             final_algo, algo_unit = "SHA-256", "SHA"
 
-    # --- Нормализация Хешрейта (на основе данных 4028) ---
-    final_real, u_r = normalize_hashrate(r_val, algo_unit)
-    final_avg, u_a = normalize_hashrate(a_val, algo_unit)
+    # REST supplies explicit units; CGMiner-compatible labels may be incorrect.
+    real_rate, average_rate = vnish_rates(miner_info, api_data.get("summary", {}))
 
     # --- Статусы и Ошибки ---
     status = "Starting"
@@ -145,16 +145,13 @@ def parse_antminer_vnish(ip, resp, api_data=None):
                 error_str = "NO HASH"
                 error_details = "Хешрейт 0, Web API недоступно"
 
-    try: raw_h = float(str(final_real).replace(',', '.').strip())
-    except: raw_h = 0.0
-
     return {
         "IP": ip, 
         "Make": "Bitmain", 
         "Model": model, 
         "Uptime": get_uptime_str(uptime_sec),
-        "Real": f"{raw_h} {u_r}", 
-        "Avg": f"{final_avg} {u_a}",
+        "Real": format_rate(real_rate, algorithm=final_algo),
+        "Avg": format_rate(average_rate, algorithm=final_algo),
         "Fan": " ".join(fans), 
         "Temp": " ".join(temps), 
         "Pool": pool.replace("stratum+tcp://", ""), 
@@ -164,5 +161,5 @@ def parse_antminer_vnish(ip, resp, api_data=None):
         "Status": status,
         "Error": error_str.strip(' +'),
         "ErrorDetails": error_details.strip(),
-        "RawHash": raw_h
+        "RawHash": real_rate
     }
