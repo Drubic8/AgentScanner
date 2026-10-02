@@ -5,6 +5,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.test.platform.app.InstrumentationRegistry
+import android.graphics.Bitmap
+import java.io.File
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -24,6 +27,7 @@ class DeviceControlsTest {
         compose.onNodeWithText("Компактно").performClick().assertIsSelected()
         compose.activityRule.scenario.recreate()
         compose.onNodeWithText("Компактно").assertIsSelected()
+        screenshot("compact-devices")
     }
 
     @Test fun compactSelectionOffersOnlyCompatibleCommandsAndWarnsAboutAvalonWakeup() {
@@ -57,6 +61,7 @@ class DeviceControlsTest {
         compose.onNodeWithText("Режим Low Power", substring = true).assertDoesNotExist()
         compose.onNodeWithText("Пробудить / возобновить майнинг · 2/2").performClick()
         compose.onNodeWithText("Avalon пробуждается через перезагрузку", substring = true).assertIsDisplayed()
+        screenshot("group-wakeup")
         assertNull(submitted) // Opening a command and confirmation never sends it.
         compose.onNodeWithText("Отправить").performClick()
         compose.runOnIdle {
@@ -89,5 +94,17 @@ class DeviceControlsTest {
         compose.onNodeWithText("192.0.2.2").assertIsDisplayed()
         compose.onNodeWithText("Подтверждено", substring = true).assertIsDisplayed()
         compose.onNodeWithText("Не поддерживается", substring = true).assertIsDisplayed()
+        screenshot("command-journal")
+    }
+
+    private fun screenshot(name: String) {
+        compose.waitForIdle()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val output = InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
+            ?: instrumentation.targetContext.getExternalFilesDir(null)!!.absolutePath
+        val folder = File(output, "screenshots").apply { mkdirs() }
+        val bitmap = instrumentation.uiAutomation.takeScreenshot()
+        File(folder, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
     }
 }

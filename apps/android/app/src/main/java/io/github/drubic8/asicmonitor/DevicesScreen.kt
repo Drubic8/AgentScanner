@@ -23,20 +23,21 @@ internal fun DevicesScreen(state: MonitorState, onScan: () -> Unit, onCancel: ()
     onNetworks: () -> Unit, onExport: () -> Unit, onDevice: (Device) -> Unit,
     onCompact: (Boolean) -> Unit, onCommand: (List<Device>) -> Unit, onJournal: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
-    var selectedKeys by remember { mutableStateOf(emptySet<String>()) }
+    var selectedKeys by rememberSaveable { mutableStateOf(emptyList<String>()) }
     val filtered = remember(state.devices, query) {
         state.devices.filter { "${it.ip} ${it.model} ${it.firmware} ${it.id}".contains(query.trim(), ignoreCase = true) }
     }
     val selected = filtered.filter { it.selectionKey() in selectedKeys }
     LaunchedEffect(filtered.map { it.selectionKey() }) {
-        selectedKeys = selectedKeys.intersect(filtered.map { it.selectionKey() }.toSet())
+        val visible = filtered.map { it.selectionKey() }.toSet()
+        selectedKeys = selectedKeys.filter { it in visible }
     }
     Column(Modifier.fillMaxSize()) {
         // Selection controls remain visible while scrolling through a subnet.
         if (state.devices.isNotEmpty()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(enabled = !state.busy, onClick = {
-                    selectedKeys = if (selected.size == filtered.size) emptySet() else filtered.map { it.selectionKey() }.toSet()
+                    selectedKeys = if (selected.size == filtered.size) emptyList() else filtered.map { it.selectionKey() }
                 }, modifier = Modifier.weight(1f)) {
                     Text(if (selected.isNotEmpty() && selected.size == filtered.size) "Снять выбор" else "Выбрать найденные")
                 }
@@ -57,7 +58,7 @@ internal fun DevicesScreen(state: MonitorState, onScan: () -> Unit, onCancel: ()
                                     style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                                 Text(state.status, color = Color(0xFFCFD9EB), style = MaterialTheme.typography.bodySmall)
                             }
-                            Button(onClick = { if (state.busy) onCancel() else { selectedKeys = emptySet(); onScan() } },
+                            Button(onClick = { if (state.busy) onCancel() else { selectedKeys = emptyList(); onScan() } },
                                 enabled = state.ready && !(state.stopping && state.busy), modifier = Modifier.heightIn(min = 48.dp)) {
                                 Icon(if (state.busy) Icons.Outlined.Stop else Icons.Outlined.Search, null)
                                 Spacer(Modifier.width(6.dp)); Text(if (state.busy) "Стоп" else "Сканировать")

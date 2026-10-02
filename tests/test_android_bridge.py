@@ -215,3 +215,20 @@ class AndroidControlTests(unittest.TestCase):
                 result = self.finish()
         execute.assert_called_once()
         self.assertEqual(result["command"]["status"], "succeeded")
+
+    def test_preflight_identity_change_skips_write_and_refreshes_visible_record(self):
+        self.factory.data["system"]["system_filesystem_version"] = "different build"
+        self.mobile.command(self.record.identity.ip, self.record.identity.device_id, "mining_start")
+        result = self.finish()
+        self.assertEqual(result["command"]["status"], "skipped")
+        self.assertEqual(result["rows"][0]["identity"]["firmware_version"], "different build")
+        self.assertFalse(self.factory.writes)
+
+    def test_scan_and_command_overlap_are_rejected(self):
+        self.mobile.state["running"] = True
+        with self.assertRaises(ValueError):
+            self.mobile.command(self.record.identity.ip, self.record.identity.device_id, "mining_start")
+        with self.assertRaises(ValueError):
+            self.mobile.command_many(json.dumps([{"ip": self.record.identity.ip,
+                                                  "device_id": self.record.identity.device_id}]), "mining_start")
+        self.assertFalse(self.factory.writes)
