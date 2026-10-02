@@ -12,17 +12,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 internal fun DevicesScreen(state: MonitorState, onScan: () -> Unit, onCancel: () -> Unit,
     onNetworks: () -> Unit, onExport: () -> Unit, onDevice: (Device) -> Unit,
     onCompact: (Boolean) -> Unit, onCommand: (List<Device>) -> Unit, onJournal: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
+    val largeText = LocalDensity.current.fontScale > 1.3f
     var selectedKeys by rememberSaveable { mutableStateOf(emptyList<String>()) }
     val filtered = remember(state.devices, query) {
         state.devices.filter { "${it.ip} ${it.model} ${it.firmware} ${it.id}".contains(query.trim(), ignoreCase = true) }
@@ -35,14 +39,20 @@ internal fun DevicesScreen(state: MonitorState, onScan: () -> Unit, onCancel: ()
     Column(Modifier.fillMaxSize()) {
         // Selection controls remain visible while scrolling through a subnet.
         if (state.devices.isNotEmpty()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(enabled = !state.busy, onClick = {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val allSelected = selected.isNotEmpty() && selected.size == filtered.size
+                TriStateCheckbox(enabled = !state.busy && filtered.isNotEmpty(), state = when {
+                    allSelected -> ToggleableState.On
+                    selected.isEmpty() -> ToggleableState.Off
+                    else -> ToggleableState.Indeterminate
+                }, onClick = {
                     selectedKeys = if (selected.size == filtered.size) emptyList() else filtered.map { it.selectionKey() }
-                }, modifier = Modifier.weight(1f)) {
-                    Text(if (selected.isNotEmpty() && selected.size == filtered.size) "Снять выбор" else "Выбрать найденные")
-                }
+                }, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics {
+                    contentDescription = if (allSelected) "Снять выбор" else "Выбрать найденные"
+                })
                 FilledTonalButton(onClick = { onCommand(selected) }, enabled = selected.isNotEmpty() && !state.busy,
-                    modifier = Modifier.heightIn(min = 48.dp)) {
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
                     Icon(Icons.Outlined.Tune, null); Spacer(Modifier.width(6.dp)); Text("Команды · ${selected.size}")
                 }
             }
@@ -52,7 +62,16 @@ internal fun DevicesScreen(state: MonitorState, onScan: () -> Unit, onCancel: ()
             item {
                 Surface(color = Ink, shape = MaterialTheme.shapes.large) {
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (largeText) {
+                            Text("${state.devices.size} ASIC", color = Color.White,
+                                style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                            Text(state.status, color = Color(0xFFCFD9EB), style = MaterialTheme.typography.bodySmall)
+                            Button(onClick = { if (state.busy) onCancel() else { selectedKeys = emptyList(); onScan() } },
+                                enabled = state.ready && !(state.stopping && state.busy), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                                Icon(if (state.busy) Icons.Outlined.Stop else Icons.Outlined.Search, null)
+                                Spacer(Modifier.width(6.dp)); Text(if (state.busy) "Стоп" else "Сканировать")
+                            }
+                        } else Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text("${state.devices.size} ASIC", color = Color.White,
                                     style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
@@ -87,8 +106,8 @@ internal fun DevicesScreen(state: MonitorState, onScan: () -> Unit, onCancel: ()
                 }
             }
             item {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     FilterChip(selected = state.compact, onClick = { onCompact(true) }, label = { Text("Компактно") },
                         leadingIcon = { Icon(Icons.Outlined.ViewList, null, Modifier.size(18.dp)) }, modifier = Modifier.heightIn(min = 48.dp))
                     FilterChip(selected = !state.compact, onClick = { onCompact(false) }, label = { Text("Карточки") },
@@ -125,6 +144,7 @@ internal fun deviceStateLabel(device: Device) = if (device.stale) "Устаре�
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 internal fun DeviceItem(device: Device, compact: Boolean, selected: Boolean, enabled: Boolean,
     onSelect: (Boolean) -> Unit, onClick: () -> Unit) {
     val statusColor = when {
@@ -141,7 +161,7 @@ internal fun DeviceItem(device: Device, compact: Boolean, selected: Boolean, ena
                 modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                     .semantics { contentDescription = "Выбрать ${device.ip}" })
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (compact) 3.dp else 8.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(device.ip, color = Blue, style = MaterialTheme.typography.labelLarge)
                     Text(deviceStateLabel(device), color = statusColor, style = MaterialTheme.typography.labelMedium)
                 }
@@ -151,7 +171,7 @@ internal fun DeviceItem(device: Device, compact: Boolean, selected: Boolean, ena
                     Text("${device.firmware} ${device.version}", color = Muted, style = MaterialTheme.typography.bodySmall)
                     HorizontalDivider(color = Color(0xFFEBEFF5))
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(device.rate, fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyMedium)
                     Text(device.temperature, color = Muted, style = MaterialTheme.typography.bodyMedium)
                 }

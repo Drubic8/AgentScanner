@@ -36,7 +36,6 @@ class DeviceControlsTest {
         compose.onNodeWithText("Компактно").performClick().assertIsSelected()
         compose.activityRule.scenario.recreate()
         compose.onNodeWithText("Компактно").assertIsSelected()
-        screenshot("compact-devices")
     }
 
     @Test fun compactSelectionOffersOnlyCompatibleCommandsAndWarnsAboutAvalonWakeup() {
@@ -65,6 +64,7 @@ class DeviceControlsTest {
         compose.onNodeWithText("Команды · 1").assertIsEnabled()
         compose.onNodeWithTag("device-list").performScrollToNode(hasContentDescription("Выбрать 192.0.2.2"))
         compose.onNodeWithContentDescription("Выбрать 192.0.2.2", useUnmergedTree = true).performClick()
+        screenshot("compact-devices")
         compose.onNodeWithText("Команды · 2").performClick()
         compose.onNodeWithText("Режим HEM · 1/2").assertIsDisplayed()
         compose.onNodeWithText("Режим Low Power", substring = true).assertDoesNotExist()
@@ -129,6 +129,8 @@ class DeviceControlsTest {
             compose.onNodeWithTag("device-list").performScrollToNode(hasContentDescription("Выбрать 192.0.2.1"))
             compose.onNodeWithContentDescription("Выбрать 192.0.2.1", useUnmergedTree = true).performClick()
             compose.onNodeWithText("Команды · 1").assertIsDisplayed().assertIsEnabled()
+            // Large text must retain an accessible select-all control without a narrow text column.
+            compose.onNodeWithContentDescription("Снять выбор", useUnmergedTree = true).assertIsDisplayed()
             screenshot("compact-${width}-${scale}")
         }
         } finally { compose.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
