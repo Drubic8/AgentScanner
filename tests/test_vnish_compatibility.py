@@ -13,6 +13,28 @@ from miner_scanner.service import ScannerService
 from tests.fakes import FakeFactory, FakeTransport
 
 
+def api_spec(api='find-miner', *, both=False, core=False):
+    """Minimal synthetic forms of the shipped 1.2.6 / 1.3.3 OpenAPI files."""
+    spec = {'openapi': '3.1.0', 'servers': [{'url': '/api/v1'}], 'paths': {},
+            'components': {'schemas': {}}}
+    for name in (('find-miner', 'locate-miner') if both else (api,)):
+        field = 'on' if name == 'find-miner' else 'is_enabled'
+        schema_name = 'FindMinerStatus' if name == 'find-miner' else 'LocateMinerStatus'
+        spec['components']['schemas'][schema_name] = {'type': 'object', 'required': [field],
+                                                     'properties': {field: {'type': 'boolean'}}}
+        response = {'$ref': '#/components/schemas/' + schema_name}
+        if name == 'find-miner':
+            response = {'oneOf': [{'type': 'null'}, response]}
+        spec['paths']['/' + name] = {'post': {'responses': {'200': {
+            'content': {'application/json': {'schema': response}}}}}}
+        if both and name == 'find-miner':
+            spec['paths']['/' + name]['post']['deprecated'] = True
+    if core:
+        for path in compat.CORE_PATHS.values():
+            spec['paths'][path] = {'post': {'responses': {'200': {'description': 'success'}}}}
+    return spec
+
+
 class VnishTransport(FakeTransport):
     def http(self, path, method='GET', *, payload=None, headers=None, **kwargs):
         if method == 'GET':
@@ -24,6 +46,14 @@ class VnishTransport(FakeTransport):
             return 200, b'{}'
         if path == '/api/v1/find-miner' and headers == {'Authorization': 'Bearer fixture-token'}:
             self.factory.data['/api/v1/status']['find_miner'] = payload['on']
+            return 200, b'{}'
+        if path in {'/api/v1' + p for p in compat.CORE_PATHS.values()} and headers == {'Authorization': 'Bearer fixture-token'}:
+            if payload is not None:
+                raise AssertionError('Unexpected core command body')
+            if path.endswith('/stop'):
+                self.factory.data['vnish_summary']['miner']['miner_status']['miner_state'] = 'stopped'
+            elif path.endswith('/start'):
+                self.factory.data['vnish_summary']['miner']['miner_status']['miner_state'] = 'mining'
             return 200, b'{}'
         raise AssertionError('Unexpected control write')
 
@@ -99,7 +129,8 @@ class VnishCompatibilityTests(unittest.TestCase):
         original = transport.http
         with patch.object(transport, 'http', wraps=original) as request:
             compat.probe(transport)
-        self.assertEqual(request.call_args_list[1].kwargs,
+        asset_call = next(call for call in request.call_args_list if call.args[0] == '/assets/index-audit.js')
+        self.assertEqual(asset_call.kwargs,
                          {'response_limit': transport.operation.options.max_asset_bytes})
         self.assertEqual(transport.operation.options.max_response_bytes, 1_048_576)
 
@@ -109,6 +140,73 @@ class VnishCompatibilityTests(unittest.TestCase):
                 self.factory.data['/api/v1/status']['find_miner'] = value
                 self.assertEqual(execute_command(self.service, '192.0.2.1', 'led_on').status, 'unsupported')
                 self.assertFalse(self.factory.writes)
+
+    def test_openapi_works_across_versions_without_reading_ui_scripts(self):
+        for api, version, field in [('find-miner', '1.2.6', 'on'), ('locate-miner', 'different build', 'is_enabled')]:
+            self.factory.data['/docs/api-doc.json'] = api_spec(api)
+            self.factory.data['vnish_info']['fw_version'] = version
+            self.factory.web['/assets/index-audit.js'] = b'/* unknown frontend */'
+            self.service.poll('192.0.2.1', force_identify=True)
+            self.factory.calls.clear()
+            for action, enabled in [('led_on', True), ('led_off', False)]:
+                self.assertEqual(execute_command(self.service, '192.0.2.1', action).status, 'succeeded')
+                self.assertEqual(self.factory.writes[-1], ('/api/v1/' + api, 'POST',
+                    {field: enabled}, {'Authorization': 'Bearer fixture-token'}))
+            self.assertNotIn(('192.0.2.1', '/index.html'), self.factory.calls)
+            self.assertNotIn(('192.0.2.1', '/assets/index-audit.js'), self.factory.calls)
+
+    def test_modern_openapi_prefers_locate_over_deprecated_find(self):
+        self.factory.data['/docs/api-doc.json'] = api_spec(both=True)
+        self.assertEqual(execute_command(self.service, '192.0.2.1', 'led_on').status, 'succeeded')
+        self.assertEqual(self.factory.writes[-1][0:3], ('/api/v1/locate-miner', 'POST', {'is_enabled': True}))
+
+    def test_changed_api_schema_overrides_previously_recognized_ui(self):
+        spec = api_spec()
+        self.factory.data['/docs/api-doc.json'] = spec
+        spec['components']['schemas']['FindMinerStatus']['properties']['on']['type'] = 'string'
+        self.assertEqual(execute_command(self.service, '192.0.2.1', 'led_on', allow_unverified=True).status, 'unsupported')
+        self.assertFalse(self.factory.writes)
+
+    def test_required_request_body_must_match_known_setter(self):
+        spec = api_spec()
+        self.factory.data['/docs/api-doc.json'] = spec
+        operation = spec['paths']['/find-miner']['post']
+        operation['requestBody'] = {'content': {'application/json': {'schema': {
+            'type': 'object', 'required': ['on', 'new-required-field'], 'properties': {'on': {'type': 'boolean'}}}}}}
+        self.assertEqual(execute_command(self.service, '192.0.2.1', 'led_on').status, 'unsupported')
+        self.assertFalse(self.factory.writes)
+
+    def test_only_declared_no_body_core_commands_are_granted(self):
+        spec = api_spec(core=True)
+        self.factory.data['/docs/api-doc.json'] = spec
+        for action, path in [('sleep', '/mining/stop'), ('wakeup', '/mining/start'), ('reboot', '/system/reboot')]:
+            result = execute_command(self.service, '192.0.2.1', action)
+            self.assertEqual(result.status, 'unconfirmed' if action == 'reboot' else 'succeeded')
+            self.assertEqual(self.factory.writes[-1], ('/api/v1' + path, 'POST', None,
+                                                      {'Authorization': 'Bearer fixture-token'}))
+        spec['paths']['/mining/stop']['post']['requestBody'] = {'required': True}
+        self.assertEqual(execute_command(self.service, '192.0.2.1', 'sleep').status, 'unsupported')
+        self.assertEqual(len(self.factory.writes), 3)
+
+    def test_malformed_or_external_schema_is_not_followed_or_executed(self):
+        variants = []
+        spec = api_spec()
+        spec['servers'] = [{'url': 'https://example.invalid/api/v1'}]
+        variants.append(spec)
+        spec = api_spec()
+        spec['components']['schemas']['FindMinerStatus'] = {'$ref': 'https://example.invalid/schema.json'}
+        variants.append(spec)
+        spec = api_spec()
+        spec['components']['schemas']['FindMinerStatus'] = {'$ref': '#/components/schemas/FindMinerStatus'}
+        variants.append(spec)
+        spec = api_spec()
+        spec['components'] = None
+        variants.append(spec)
+        for spec in variants:
+            self.factory.data['/docs/api-doc.json'] = spec
+            self.assertEqual(execute_command(self.service, '192.0.2.1', 'led_on').status, 'unsupported')
+        self.assertFalse(self.factory.writes)
+        self.assertFalse(any('example.invalid' in path for _, path in self.factory.calls))
 
     def test_duplicate_command_does_not_repeat_write(self):
         result = execute_command(self.service, '192.0.2.1', 'led_on', command_id='locate-once')

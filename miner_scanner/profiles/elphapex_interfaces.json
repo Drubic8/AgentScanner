@@ -1,8 +1,8 @@
 {
-  "schema_version": 1,
-  "luci_api": {
-    "1.0.0": {
-      "models": ["DG1"],
+  "schema_version": 2,
+  "protocols": {
+    "luci-ftm": {
+      "models": ["DG1", "DG1+"],
       "led_api": "luci-ftm",
       "hardware_reference": "docs/testing/elphapex-dg1-2026-09-28.md"
     }

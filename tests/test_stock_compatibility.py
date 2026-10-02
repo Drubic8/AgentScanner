@@ -165,8 +165,8 @@ class StockCompatibilityTests(unittest.TestCase):
                     self.assertEqual(factory.writes[-1], ('/cgi-bin/blink.cgi', 'POST', {'blink': enabled}))
                     self.assertIs(factory.data['/cgi-bin/get_blink_status.cgi']['blink'], enabled)
                 factory.web['/js/' + asset] += b'unknown change'
-                self.assertEqual(execute_command(service, '192.0.2.1', 'led_on').status, 'unsupported')
-                self.assertEqual(len(factory.writes), 2)
+                self.assertEqual(execute_command(service, '192.0.2.1', 'led_on').status, 'succeeded')
+                self.assertEqual(len(factory.writes), 3)
 
     def test_ks5_shared_header_does_not_require_model_in_power_contract(self):
         service, factory, record = self.service('Antminer KS5')
@@ -191,6 +191,29 @@ class StockCompatibilityTests(unittest.TestCase):
             self.assertFalse(compat.resolve(record, {}, {'index': next(iter(compat.interfaces()['index'])),
                                                        'blink_boolean': True})['rules'])
 
+    def test_ks5_led_uses_api_with_unknown_changed_or_missing_frontend(self):
+        for web in ({}, {'/index.html': b'<script src="/js/index.future.js"></script>',
+                         '/js/index.future.js': b'/* different firmware UI */'}):
+            service, factory, _ = self.service('Antminer KS5', version='another stock build')
+            factory.web = web
+            baseline = deepcopy(factory.data['config'])
+            for action, enabled in [('led_on', True), ('led_off', False)]:
+                self.assertEqual(execute_command(service, '192.0.2.1', action).status, 'succeeded')
+                self.assertEqual(factory.writes[-1], ('/cgi-bin/blink.cgi', 'POST', {'blink': enabled}))
+            self.assertEqual(factory.data['config'], baseline)
+            self.assertEqual(len(factory.writes), 2)
+
+    def test_pitbit_uses_cgi_led_without_inheriting_stock_power_modes(self):
+        service, factory, _ = self.service('Antminer S19')
+        factory.data['version']['VERSION'][0]['fw_name'] = 'PitBit'
+        factory.web = {}
+        record = service.poll('192.0.2.1', force_identify=True)
+        self.assertEqual(record.identity.profile_id, 'bitmain.pitbit')
+        self.assertEqual(record.capabilities['identify_on'], 'supported')
+        for action in ('led_on', 'led_off'):
+            self.assertEqual(execute_command(service, '192.0.2.1', action).status, 'succeeded')
+        self.assertNotIn('mining_stop', record.display['ControlCompatibility']['compatible_commands'])
+
     def test_z_series_modern_reboot_is_not_tied_to_build_date(self):
         service, factory, _ = self.service('Antminer Z15 Pro')
         factory.web['/index.html'] = b'<script src="/js/index.16ab47.js"></script>'
@@ -207,6 +230,7 @@ class StockCompatibilityTests(unittest.TestCase):
                     service, factory, _ = self.service(model)
                     factory.web = {'/index.html': b'<a href="/reboot.html">Reboot</a>',
                                    '/reboot.html': self.bodies[variant]}
+                    del factory.data['/cgi-bin/get_blink_status.cgi']
                     record = service.poll('192.0.2.1', force_identify=True)
                     self.assertEqual(record.capabilities['reboot'], 'supported')
                     self.assertEqual(record.display['ControlCompatibility']['compatible_commands'], ['reboot'])
@@ -217,6 +241,7 @@ class StockCompatibilityTests(unittest.TestCase):
     def test_changed_or_missing_legacy_page_blocks_reboot(self):
         for body in (self.bodies['legacy0'] + b'changed', b'<a href="/cgi-bin/reboot.cgi">Reboot</a>', None):
             service, factory, _ = self.service('Antminer Z11')
+            del factory.data['/cgi-bin/get_blink_status.cgi']
             factory.web = {'/index.html': b'old web interface'}
             if body is not None:
                 factory.web['/reboot.html'] = body
@@ -225,6 +250,7 @@ class StockCompatibilityTests(unittest.TestCase):
 
     def test_legacy_page_is_rechecked_before_reboot_and_never_replayed(self):
         service, factory, _ = self.service('Antminer Z15')
+        del factory.data['/cgi-bin/get_blink_status.cgi']
         factory.web = {'/index.html': b'old web interface', '/reboot.html': self.bodies['legacy0']}
         service.poll('192.0.2.1', force_identify=True)
         factory.web['/reboot.html'] += b'changed'
@@ -258,10 +284,38 @@ class StockCompatibilityTests(unittest.TestCase):
             self.assertEqual(execute_command(service, '192.0.2.1', 'sleep').status, 'failed')
         self.assertFalse(factory.writes)
 
-    def test_unknown_ui_overrides_previously_verified_profile(self):
+    def test_unknown_ui_keeps_basic_modes_when_config_contracts_agree(self):
         service, factory, record = self.service(version='Thu Jan 16 11:00:25 CST 2025')
         factory.web['/miner.html'] = b'<script src="/js/new-ui.js"></script>'
-        self.assertEqual(execute_command(service, '192.0.2.1', 'sleep').status, 'unsupported')
+        self.assertEqual(execute_command(service, '192.0.2.1', 'sleep').status, 'succeeded')
+        self.assertEqual(factory.writes[-1][2]['miner-mode'], 1)
+
+    def test_unknown_stock_ui_selects_basic_modes_from_config_without_optional_modes(self):
+        for model, asset in [('Antminer T21', 'miner.b91570.js'), ('Antminer L9', 'miner.0ef2dc.js'),
+                             ('Antminer S21+', 'miner.c8af43.js'), ('Antminer D9', 'miner.dc8dd8.js')]:
+            service, factory, _ = self.service(model, asset)
+            factory.web = {}
+            baseline = deepcopy(factory.data['config'])
+            record = service.poll('192.0.2.1', force_identify=True)
+            self.assertEqual(record.capabilities['mining_stop'], 'supported')
+            self.assertEqual(record.capabilities['mining_start'], 'supported')
+            self.assertEqual(record.display['ControlCompatibility']['interfaces']['mode_basis'], 'config_schema')
+            for action in ('sleep', 'wakeup'):
+                self.assertEqual(execute_command(service, '192.0.2.1', action).status, 'succeeded')
+                self.assertEqual(factory.writes[-1][2]['pools'], baseline['pools'])
+            for action in ('low', 'hem'):
+                self.assertEqual(execute_command(service, '192.0.2.1', action, allow_unverified=True).status, 'unsupported')
+            self.assertEqual(len(factory.writes), 2)
+
+    def test_conflicting_config_to_write_mappings_do_not_authorize_power_write(self):
+        service, factory, _ = self.service()
+        catalog = deepcopy(compat.interfaces())
+        conflicting = deepcopy(next(iter(catalog['miner'].values())))
+        conflicting['write_mode'] = 'different-mode-key'
+        catalog['miner']['unseen-conflicting-contract'] = conflicting
+        factory.web = {}
+        with patch.object(compat, 'interfaces', return_value=catalog):
+            self.assertEqual(execute_command(service, '192.0.2.1', 'sleep').status, 'unsupported')
         self.assertFalse(factory.writes)
 
     def test_led_requires_boolean_readback_contract(self):
@@ -316,7 +370,8 @@ class StockCompatibilityTests(unittest.TestCase):
             current = service.poll('192.0.2.1', force_identify=True)
         self.assertFalse(current.telemetry.stale)
         self.assertEqual(current.display['Status'], record.display['Status'])
-        self.assertEqual(current.display['ControlCompatibility']['compatible_commands'], [])
+        self.assertEqual(current.display['ControlCompatibility']['compatible_commands'],
+                         ['identify_off', 'identify_on', 'mining_start', 'mining_stop', 'reboot'])
 
     def test_idempotency_does_not_replay_write(self):
         service, factory, record = self.service()

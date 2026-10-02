@@ -260,7 +260,7 @@ class ScannerService:
                     else:
                         evidence = elphapex_compatibility.probe(transport)
                         self._interface_cache[ip] = (record.identity.fingerprint, time.monotonic(), evidence)
-                    compatibility = elphapex_compatibility.resolve(record, evidence)
+                    compatibility = elphapex_compatibility.resolve(record, evidence, data.get('elphapex_config'))
                     self._control_contracts[ip] = compatibility
                     stock_compatibility.apply_capabilities(record, profile, compatibility)
                 elif profile.control == 'avalon':

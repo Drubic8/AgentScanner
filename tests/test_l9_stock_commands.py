@@ -164,7 +164,7 @@ class L9StockCommands(unittest.TestCase):
                 result = execute_command(self.service, '192.0.2.9', 'led_off')
             self.assertEqual(result.status, 'unconfirmed')
 
-    def test_led_is_not_enabled_for_another_build(self):
+    def test_unknown_build_without_led_api_is_not_enabled(self):
         self.factory.data['system']['system_filesystem_version'] = 'other build'
         self.service.poll('192.0.2.9', force_identify=True)
         for action in ('led_on', 'led_off'):
