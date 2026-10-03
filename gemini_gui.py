@@ -13,7 +13,8 @@ from desktop_ui.preferences import COLUMNS, data_directory, normalize, load_json
 from desktop_ui.settings_dialog import SettingsDialog
 from desktop_ui.range_dialog import IPRangeDialog
 from desktop_ui.ranges_panel import RangesPanel
-from desktop_ui.network_groups import normalize_groups, selected_ranges
+from desktop_ui.network_groups import (normalize_groups, selected_ranges, node_at,
+    siblings_at, walk_networks)
 from copy import deepcopy
 from desktop_ui.theme import apply_theme as apply_desktop_theme
 from desktop_ui.updates import UpdateCheckWorker, version_tuple
@@ -440,6 +441,7 @@ class GeminiApp(QMainWindow):
         self.btn_edit_subnet = self.ranges_panel.edit_button
         self.ranges_panel.changed.connect(self.commit_ranges)
         self.ranges_panel.add_requested.connect(self.add_range_dialog)
+        self.ranges_panel.folder_requested.connect(self.add_folder_dialog)
         self.ranges_panel.edit_requested.connect(self.edit_subnet)
         self.ranges_panel.delete_requested.connect(self.delete_range)
         self.refresh_ranges_list()
@@ -599,10 +601,13 @@ class GeminiApp(QMainWindow):
         content_layout.addLayout(filters)
 
         # Device table
-        cols = ["IP", "Model", "Algo", "Status", "Error", "Uptime", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker"]
+        cols = list(COLUMNS)
         self.table = QTableWidget()
         self.table.setColumnCount(len(cols))
         self.table.setHorizontalHeaderLabels([COLUMNS[c] for c in cols])
+        from desktop_ui.led_indicator import LedDelegate
+        self.table.setItemDelegateForColumn(cols.index("LED"), LedDelegate(self.table))
+        self.table.horizontalHeader().moveSection(cols.index("LED"), 1)
         self.table.setSortingEnabled(True)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -729,14 +734,14 @@ class GeminiApp(QMainWindow):
 
     def apply_ui_settings(self):
         """Apply table layout; keep manual column sizes until density changes."""
-        all_cols = ["IP", "Model", "Algo", "Status", "Error", "Uptime", "Real HR", "Avg HR", "Temp", "Fan", "Pool", "Worker"]
+        all_cols = list(COLUMNS)
         ui_cols = self.app_settings.get("ui_cols", all_cols)
         density = self.app_settings.get("density", "comfortable")
         compact = density == "compact"
         self.table.verticalHeader().setDefaultSectionSize(32 if compact else 42)
         if getattr(self, '_applied_table_density', None) != density:
-            widths = ((118, 145, 90, 96, 115, 100, 112, 126, 100, 104, 170, 125) if compact else
-                      (145, 180, 110, 120, 145, 130, 135, 155, 130, 135, 240, 170))
+            widths = ((118, 145, 90, 96, 115, 100, 112, 126, 100, 104, 170, 125, 108) if compact else
+                      (145, 180, 110, 120, 145, 130, 135, 155, 130, 135, 240, 170, 124))
             for index, width in enumerate(widths):
                 self.table.setColumnWidth(index, width)
             self.table.setStyleSheet(
@@ -1009,46 +1014,77 @@ class GeminiApp(QMainWindow):
         self.ranges_panel.toggle_all(state == Qt.CheckState.Checked.value)
 
     def add_range_dialog(self):
-        dialog = IPRangeDialog(parent=self, existing_names=[group["name"] for group in self.ranges_config])
+        parent_path = self.ranges_panel.parent_path()
+        siblings = siblings_at(self.ranges_config, parent_path)
+        dialog = IPRangeDialog(parent=self, existing_names=[group["name"] for group in siblings])
         if dialog.exec():
             name, ranges = dialog.get_data()
             candidate = deepcopy(self.ranges_config)
-            candidate.append({"name": name, "ranges": ranges, "enabled": True})
-            if self.commit_ranges(candidate, len(candidate) - 1):
+            children = siblings_at(candidate, parent_path)
+            children.append({"name": name, "ranges": ranges, "enabled": True})
+            if self.commit_ranges(candidate, (*parent_path, len(children) - 1)):
                 self.ranges_panel.search.clear()
+
+    def add_folder_dialog(self):
+        self.edit_folder()
+
+    def edit_folder(self, path=None):
+        from desktop_ui.folder_dialog import FolderDialog
+        parent_path = path[:-1] if path else self.ranges_panel.parent_path()
+        dialog = FolderDialog(self.ranges_config, parent_path, path, self)
+        if not dialog.exec():
+            return
+        name, parent_path = dialog.get_data()
+        candidate = deepcopy(self.ranges_config)
+        if path:
+            node_at(candidate, path)["name"] = name
+        else:
+            children = siblings_at(candidate, parent_path)
+            path = (*parent_path, len(children))
+            children.append({"type": "folder", "name": name, "children": []})
+        if self.commit_ranges(candidate, path):
+            self.ranges_panel.search.clear()
 
     def delete_range(self, index=None):
         if index is None:
             index = self.ranges_panel.current_index()
-        if not 0 <= index < len(self.ranges_config):
+        path = (index,) if isinstance(index, int) else index
+        if not path:
             return
-        name = self.ranges_config[index]["name"]
-        answer = QMessageBox.question(self, "Удалить сохранённую сеть", f"Удалить «{name}» из списка сетей?\nОборудование и результаты сканирования останутся без изменений.", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        group = node_at(self.ranges_config, path)
+        name = group["name"]
+        contents = (f"\nВложенных сетей: {sum(1 for _ in walk_networks([group]))}. Они тоже будут удалены из списка."
+                    if group.get("type") == "folder" else "")
+        answer = QMessageBox.question(self, "Удалить сеть или папку", f"Удалить «{name}»?{contents}\nОборудование и результаты сканирования останутся без изменений.", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if answer != QMessageBox.StandardButton.Yes:
             return
         candidate = deepcopy(self.ranges_config)
-        del candidate[index]
-        self.commit_ranges(candidate, min(index, len(candidate) - 1))
+        del siblings_at(candidate, path[:-1])[path[-1]]
+        self.commit_ranges(candidate, path[:-1])
 
     def edit_subnet(self, index=None):
         if index is None:
             index = self.ranges_panel.current_index()
-        if not 0 <= index < len(self.ranges_config):
+        path = (index,) if isinstance(index, int) else index
+        if not path:
             return
-        group = self.ranges_config[index]
+        group = node_at(self.ranges_config, path)
+        if group.get("type") == "folder":
+            self.edit_folder(path)
+            return
         dialog = IPRangeDialog(name=group["name"], ranges=group["ranges"], parent=self,
-                               existing_names=[item["name"] for i, item in enumerate(self.ranges_config) if i != index])
+                               existing_names=[item["name"] for i, item in enumerate(siblings_at(self.ranges_config, path[:-1])) if i != path[-1]])
         if dialog.exec():
             name, ranges = dialog.get_data()
             candidate = deepcopy(self.ranges_config)
-            candidate[index].update(name=name, ranges=ranges)
-            self.commit_ranges(candidate, index)
+            node_at(candidate, path).update(name=name, ranges=ranges)
+            self.commit_ranges(candidate, path)
 
     def start_scan(self):
         if getattr(self, "worker", None) and self.worker.isRunning():
             return
         to_scan = selected_ranges(self.ranges_config)
-        scan_names = [group.get("name", "Сеть") for group in self.ranges_config if group.get("enabled", True)]
+        scan_names = [group.get("name", "Сеть") for _, group in walk_networks(self.ranges_config) if group.get("enabled", True)]
         self.last_scan_name = "_".join(scan_names) or "Scan"
         if not to_scan:
             QMessageBox.warning(self, "Сети для сканирования", "Добавьте сеть и отметьте галочками сети, которые нужно опросить.")
@@ -1118,6 +1154,12 @@ class GeminiApp(QMainWindow):
                       if self.table.item(r, 0) is not None}
         data_rows = {row.get('IP'): i for i, row in enumerate(self.scan_data)}
         for row in res_list:
+            row = dict(row)
+            state = row.get('IdentifyEnabled')
+            if row.get('Stale') or type(state) is not bool:
+                state = None
+            row.update(IdentifyEnabled=state,
+                       LED='Включена' if state is True else 'Выключена' if state is False else 'Неизвестно')
             ip = str(row.get('IP', ''))
             existing = table_rows.get(ip)
             if row.get('Stale') and existing is None:
@@ -1230,6 +1272,8 @@ class GeminiApp(QMainWindow):
             self.table.setItem(r, 9, QTableWidgetItem(str(row.get('Fan'))))
             self.table.setItem(r, 10, QTableWidgetItem(str(row.get('Pool'))))
             self.table.setItem(r, 11, QTableWidgetItem(str(row.get('Worker', '-'))))
+            from desktop_ui.led_indicator import led_item
+            self.table.setItem(r, list(COLUMNS).index("LED"), led_item(row))
             for column in range(1, self.table.columnCount()):
                 cell = self.table.item(r, column)
                 if cell is not None and not cell.toolTip():

@@ -19,7 +19,7 @@ class PreferenceTests(unittest.TestCase):
         self.assertEqual(result["timeout"], 2)
         self.assertEqual(result["workers"], 128)
         self.assertEqual(result["theme"], "system")
-        self.assertEqual(result["ui_cols"], ["IP", "Model"])
+        self.assertEqual(result["ui_cols"], ["IP", "Model", "LED"])
         self.assertTrue(result["pdf_cols"])
         self.assertFalse(result["copy_csv"])
 

@@ -121,8 +121,34 @@ class VnishCompatibilityTests(unittest.TestCase):
             self.assertEqual(self.factory.writes[-1], ('/api/v1/find-miner', 'POST',
                              {'on': enabled}, {'Authorization': 'Bearer fixture-token'}))
             self.assertIs(self.factory.data['/api/v1/status']['find_miner'], enabled)
-        self.assertEqual(len(self.factory.writes), 4)
+        self.assertEqual(len(self.factory.writes), 2)
         self.assertEqual(self.factory.data['vnish_summary']['miner']['miner_status']['miner_state'], 'mining')
+
+    def test_toggle_firmware_repeated_on_and_off_never_undo_target(self):
+        self.factory.data['/docs/api-doc.json'] = api_spec()
+        original = VnishTransport.http
+        def toggle(transport, path, method='GET', **kwargs):
+            if path == '/api/v1/find-miner' and method == 'POST':
+                self.factory.writes.append((path, method, kwargs.get('payload')))
+                self.factory.data['/api/v1/status']['find_miner'] = not self.factory.data['/api/v1/status']['find_miner']
+                return 200, b'null'
+            return original(transport, path, method, **kwargs)
+        with patch.object(VnishTransport, 'http', toggle):
+            for action, expected in [('led_on', True), ('led_on', True), ('led_off', False), ('led_off', False)]:
+                result = execute_command(self.service, '192.0.2.1', action)
+                self.assertEqual(result.status, 'succeeded')
+                self.assertIs(self.factory.data['/api/v1/status']['find_miner'], expected)
+        self.assertEqual(len(self.factory.writes), 2)
+
+    def test_unknown_authenticated_led_state_never_sends_toggle(self):
+        original = VnishTransport.http_json
+        def unavailable(transport, path, method='GET', **kwargs):
+            if path == '/api/v1/status' and kwargs.get('headers'):
+                return {'find_miner': 'false'}
+            return original(transport, path, method, **kwargs)
+        with patch.object(VnishTransport, 'http_json', unavailable):
+            self.assertEqual(execute_command(self.service, '192.0.2.1', 'led_on').status, 'failed')
+        self.assertFalse(self.factory.writes)
 
     def test_probe_requests_asset_budget_without_changing_json_budget(self):
         transport = VnishTransport(self.factory, '192.0.2.1', Operation())

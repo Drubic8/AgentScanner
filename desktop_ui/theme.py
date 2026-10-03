@@ -49,7 +49,7 @@ def apply_theme(app, dark=False):
         #RangeSummary { color: %(accent)s; font-size: 19px; font-weight: 600; }
         #ValidationError { color: %(danger)s; }
         #RangeEditor { font-family: 'Consolas'; font-size: 14px; }
-        #NetworkList::item { padding: 5px 7px; }
+        #NetworkList::item, #NetworkTree::item { padding: 5px 7px; }
         #DashDetails { color: %(muted)s; background: transparent; border: none; padding: 0; }
         QPushButton[primary="true"]:disabled { background: %(field)s; color: %(muted)s; border-color: %(line)s; }
         #RangeAction { padding: 8px 4px; }
@@ -60,10 +60,10 @@ def apply_theme(app, dark=False):
         #BtnStop { color: %(danger)s; }
         QCheckBox, QRadioButton { spacing: 8px; padding: 4px 0; }
         QCheckBox::indicator { width: 16px; height: 16px; }
-        QListWidget, QTableWidget { background: %(panel)s; alternate-background-color: %(field)s;
+        QListWidget, QTreeWidget, QTableWidget { background: %(panel)s; alternate-background-color: %(field)s;
             border: 1px solid %(line)s; border-radius: 8px; outline: none; }
         QListWidget::item { padding: 9px 7px; border-radius: 4px; }
-        QListWidget::item:selected, QTableWidget::item:selected { background: %(selected)s; color: %(text)s; }
+        QListWidget::item:selected, QTreeWidget::item:selected, QTableWidget::item:selected { background: %(selected)s; color: %(text)s; }
         QTableWidget::item { padding: 4px 8px; border-bottom: 1px solid %(line)s; }
         QHeaderView::section { background: %(field)s; color: %(muted)s; padding: 11px 8px;
             border: none; border-bottom: 1px solid %(line)s; font-weight: 600; }

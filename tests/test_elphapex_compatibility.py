@@ -126,12 +126,13 @@ class ElphapexCompatibilityTests(unittest.TestCase):
     def test_cache_and_idempotency_do_not_repeat_discovery_or_write(self):
         before = self.factory.calls.count(('192.0.2.1', '/cgi-bin/luci/get_blink_status.cgi'))
         self.service.poll('192.0.2.1')
-        self.assertEqual(self.factory.calls.count(('192.0.2.1', '/cgi-bin/luci/get_blink_status.cgi')), before)
+        # The contract is cached, but the visible LED state must stay fresh.
+        self.assertEqual(self.factory.calls.count(('192.0.2.1', '/cgi-bin/luci/get_blink_status.cgi')), before + 1)
         result = execute_command(self.service, '192.0.2.1', 'led_on', command_id='elphapex-once')
         self.assertEqual(execute_command(self.service, '192.0.2.1', 'led_on', command_id='elphapex-once'), result)
         self.assertEqual(len(self.factory.writes), 1)
-        # One fresh contract probe and one readback, with no repeated write.
-        self.assertEqual(self.factory.calls.count(('192.0.2.1', '/cgi-bin/luci/get_blink_status.cgi')), before + 2)
+        # One dynamic poll, one fresh contract/state probe, one command readback.
+        self.assertEqual(self.factory.calls.count(('192.0.2.1', '/cgi-bin/luci/get_blink_status.cgi')), before + 4)
 
     def test_probe_deadline_retains_telemetry(self):
         self.factory.data['/cgi-bin/luci/get_blink_status.cgi'] = DeadlineExceeded()

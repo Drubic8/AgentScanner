@@ -7,7 +7,7 @@ COLUMNS = {
     "IP": "IP-адрес", "Model": "Модель", "Algo": "Алгоритм", "Status": "Состояние",
     "Error": "Ошибки", "Uptime": "Время работы", "Real HR": "Хешрейт",
     "Avg HR": "Средний хешрейт", "Temp": "Температура", "Fan": "Вентиляторы",
-    "Pool": "Пул", "Worker": "Воркер",
+    "Pool": "Пул", "Worker": "Воркер", "LED": "Подсветка",
 }
 
 
@@ -21,7 +21,7 @@ def data_directory():
 def defaults():
     return dict(scan_bitmain=True, scan_whatsminer=True, scan_elphapex=True,
                 scan_other=True, timeout=2, workers=64, theme="system", density="comfortable",
-                check_updates=False, export_dir="", export_csv_dir="", copy_pdf=False,
+                check_updates=False, columns_version=2, export_dir="", export_csv_dir="", copy_pdf=False,
                 copy_csv=False, pdf_sort="IP", csv_sort="IP", ui_cols=list(COLUMNS),
                 pdf_cols=list(COLUMNS), csv_cols=list(COLUMNS))
 
@@ -47,6 +47,9 @@ def normalize(settings):
             result[key] = [c for c in COLUMNS if c in value] or list(COLUMNS)
     if "IP" not in result["ui_cols"]:
         result["ui_cols"].insert(0, "IP")
+    # Introduce the new indicator once; later explicit hiding remains respected.
+    if settings.get("columns_version") != 2 and "LED" not in result["ui_cols"]:
+        result["ui_cols"].append("LED")
     for key in ("pdf_sort", "csv_sort"):
         if result[key] not in COLUMNS:
             result[key] = "IP"

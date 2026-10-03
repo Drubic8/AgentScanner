@@ -131,15 +131,27 @@ def vnish(transport, record, action, credentials, *, credential_candidates=None,
         if control_rule['_vnish_interface'] == 'locate-miner':
             definitions[action] = ('/api/v1/locate-miner', {'is_enabled': action == 'identify_on'})
     path, payload = definitions[action]
-    accepted = _http_accept(transport, path, payload=payload, headers=headers)
     def verify():
         if action in ("identify_on", "identify_off"):
-            data = transport.http_json("/api/v1/status", headers=headers) or {}
-            return data.get("find_miner") is (action == "identify_on")
+            data = transport.http_json("/api/v1/status", headers={**headers, "Cache-Control": "no-cache"}) or {}
+            state = data.get("find_miner")
+            verify.observed_state = state if type(state) is bool else None
+            if record is not None:
+                record.telemetry.identify_enabled = verify.observed_state
+            return verify.observed_state is (action == "identify_on")
         data = transport.http_json("/api/v1/summary", headers=headers) or {}
         miner = data.get("miner", data)
         state = miner.get("miner_status", {}).get("miner_state")
         return state in ({"stopped", "paused", "sleep"} if action == "mining_stop" else {"mining"})
+    if action in ('identify_on', 'identify_off'):
+        # VNish 1.2.6/1.2.7 can toggle despite the JSON 'on' field. A repeated
+        # locate request must never undo the target state. Read before writing.
+        if verify():
+            verify.already_target = True
+            return True, verify
+        if verify.observed_state is None:
+            raise ProtocolError('VNish LED state is unavailable before write')
+    accepted = _http_accept(transport, path, payload=payload, headers=headers)
     return accepted, verify if action != "reboot" else None
 
 
@@ -356,6 +368,8 @@ def execute_command(service, ip, action, *, device_id=None, command_id=None, can
                 op.pause(1)
                 try:
                     if verify():
+                        if getattr(verify, 'already_target', False):
+                            return finish("succeeded", "Подсветка уже в нужном состоянии; команда не отправлялась")
                         message = ("Ожидаемое состояние подтверждено чтением API" if accepted else
                                    "Ответ на запись не получен; целевое состояние подтверждено чтением API")
                         return finish("succeeded", message, bool(accepted))
@@ -363,6 +377,12 @@ def execute_command(service, ip, action, *, device_id=None, command_id=None, can
                     continue
             message = ("API принял команду, но ожидаемое состояние не подтверждено" if accepted else
                        "Ответ на запись не получен, состояние не подтверждено; команда не повторяется")
+            if profile.control == 'vnish' and action in ('identify_on', 'identify_off'):
+                state = getattr(verify, 'observed_state', None)
+                observed = 'включена' if state is True else 'выключена' if state is False else 'неизвестно'
+                expected = 'включена' if action == 'identify_on' else 'выключена'
+                endpoint = (rule or {}).get('_vnish_interface', 'find-miner')
+                message += f"; подсветка по API: {observed}, ожидалось: {expected} (VNish {endpoint})"
             return finish("unconfirmed", message, bool(accepted))
     except Cancelled:
         return finish("unconfirmed" if service.repository.command_result(command_id) else "cancelled", "Операция остановлена; отправленная команда не повторяется")

@@ -271,6 +271,8 @@ class ScannerService:
                     compatibility = whatsminer_compatibility.resolve(data.get('rpc_info'))
                     self._control_contracts[ip] = compatibility
                     stock_compatibility.apply_capabilities(record, profile, compatibility)
+                from .identify import read_state
+                record.telemetry.identify_enabled = read_state(profile.control, transport, data)
                 if (profile.parser == "antminer" and record.display.get("Status") == "Unknown"
                         and record.display.get("Error") == "STATE UNCONFIRMED"
                         and "config:auth_required" in op.errors):

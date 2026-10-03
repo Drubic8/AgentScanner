@@ -26,7 +26,11 @@ def run_smoke(app, window_type, output):
         registry = ProfileRegistry()
         settings = defaults()
         settings.update(theme="light", export_dir=str(output), export_csv_dir=str(output))
-        window = window_type(settings=settings, ranges=[{"name": "Демонстрационная сеть", "ranges": ["192.0.2.1-24"]}])
+        window = window_type(settings=settings, ranges=[
+            {"type": "folder", "name": "Площадка 1", "children": [
+                {"name": "Контейнер А", "ranges": ["192.0.2.1-24"]},
+                {"type": "folder", "name": "Ночной сон", "children": [
+                    {"name": "Ряд 2", "ranges": ["198.51.100.0/30"], "enabled": False}]}]}])
         window.resize(1440, 900)
         window.show()
         app.processEvents()
@@ -53,7 +57,9 @@ def run_smoke(app, window_type, output):
                 Error="Пример ошибки" if status == "Error" else "", ErrorDetails="Демонстрационные данные",
                 Pool="stratum+tcp://example.invalid:3333", Worker=f"demo.worker-{i:02}",
                 Firmware=firmware, FirmwareVersion="demo", DeviceId=f"demo-{i}", ProfileId="demo",
-                Capabilities={}, Stale=status == "Unknown"))
+                Capabilities={}, Stale=status == "Unknown",
+                IdentifyEnabled=True if i in (1, 3) else False if i in (2, 4) else None,
+                LED="Включена" if i in (1, 3) else "Выключена" if i in (2, 4) else "Неизвестно"))
         window.on_result(rows)
         window.stats_timer.stop()
         window.update_stats()
