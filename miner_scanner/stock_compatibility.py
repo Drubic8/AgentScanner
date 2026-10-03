@@ -68,6 +68,10 @@ def probe(transport):
             if status != 200:
                 continue
             evidence[kind] = 'unrecognized'
+            if kind == 'miner':
+                # Some KS5 pages omit the selector while shipping JS with the
+                # same Normal/Sleep scaffolding. Review HTML and JS together.
+                evidence['miner_page'] = hashlib.sha256(body).hexdigest()
             parser = ScriptPaths(kind)
             parser.feed(body.decode('utf-8'))
             if len(parser.paths) != 1:
@@ -125,9 +129,13 @@ def mode_contract(model, config, evidence):
     if definition:
         if model not in definition['modes']:
             return None
+        if 'pages' in definition and evidence.get('miner_page') not in definition['pages']:
+            return definition, None, {}, 'unconfirmed_ui_page'
         return definition, config_mapping(config, definition), definition['modes'][model], 'reviewed_ui'
     candidates = []
     for definition in interfaces()['miner'].values():
+        if not definition.get('config_fallback', True):
+            continue  # The read schema alone cannot distinguish these builds.
         modes = definition['modes'].get(model, {})
         if not {'mining_stop', 'mining_start'} <= modes.keys():
             continue
@@ -177,7 +185,9 @@ def resolve(record, config, evidence):
                     '_stock_contract': deepcopy(definition),
                 }
                 result['blocked'].discard(action)
-    elif 'miner' in evidence and record.identity.firmware == 'Stock':
+    elif record.identity.firmware == 'Stock' and ('miner' in evidence or any(
+            not definition.get('config_fallback', True) and model in definition['modes']
+            for definition in interfaces()['miner'].values())):
         result['blocked'].update(MODE_ACTIONS)
     if evidence.get('index') in interfaces()['index']:
         result['rules']['reboot'] = None  # Existing GET executor, no blind retry.

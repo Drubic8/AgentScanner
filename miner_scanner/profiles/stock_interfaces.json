@@ -1,6 +1,46 @@
 {
   "schema_version": 1,
   "miner": {
+    "9382489c7bc6f79bab9bc534a4b9549632cacfcdc8e120856c20375b443fdb84": {
+      "source_asset": "miner.6b9cb7.js",
+      "pages": [
+        "3f1cdaf16ca7cbea03a454fd64f884d72791372e2caf75df8915d0d9ae016df3"
+      ],
+      "config_fallback": false,
+      "write_mode": "miner-mode",
+      "required": {
+        "pools": "pools",
+        "bitmain-fan-ctrl": "bitmain-fan-ctrl",
+        "bitmain-fan-pwm": "bitmain-fan-pwm",
+        "freq-level": "bitmain-freq-level"
+      },
+      "optional": {},
+      "read_only": ["algo", "bitmain-freq", "bitmain-voltage"],
+      "modes": {
+        "KS5": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0
+        }
+      }
+    },
+    "75c0c9898b5d175b40256e74f1b4c923eeea690f2ef89ff785211f6ff08273f2": {
+      "source_asset": "miner.0fb1b6.js",
+      "pages": [
+        "b970de555c942a9f1169992eed266a5ba612878d717c7073892178ed9858ad2a"
+      ],
+      "config_fallback": false,
+      "write_mode": "miner-mode",
+      "required": {
+        "pools": "pools",
+        "bitmain-fan-ctrl": "bitmain-fan-ctrl",
+        "bitmain-fan-pwm": "bitmain-fan-pwm",
+        "freq-level": "bitmain-freq-level"
+      },
+      "optional": {},
+      "read_only": ["algo", "bitmain-freq", "bitmain-voltage"],
+      "modes": {"KS5": {}}
+    },
     "eb4f91c3de8744a3d3130084c88c4ccd9350cae85b138452ac0e255d07161e4e": {
       "source_asset": "miner.b91570.js",
       "write_mode": "miner-mode",

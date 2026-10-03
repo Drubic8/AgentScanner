@@ -310,7 +310,8 @@ class StockCompatibilityTests(unittest.TestCase):
     def test_conflicting_config_to_write_mappings_do_not_authorize_power_write(self):
         service, factory, _ = self.service()
         catalog = deepcopy(compat.interfaces())
-        conflicting = deepcopy(next(iter(catalog['miner'].values())))
+        conflicting = deepcopy(next(definition for definition in catalog['miner'].values()
+                                    if 'T21' in definition['modes']))
         conflicting['write_mode'] = 'different-mode-key'
         catalog['miner']['unseen-conflicting-contract'] = conflicting
         factory.web = {}
