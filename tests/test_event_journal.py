@@ -3,6 +3,7 @@ import csv
 import io
 import json
 import os
+import importlib.util
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -60,6 +61,7 @@ class JournalDataTests(unittest.TestCase):
         self.assertTrue(matches_device(dict(record, IdentifyEnabled=None, Error="HW ERR"), led="unknown", errors=True))
 
 
+@unittest.skipUnless(all(importlib.util.find_spec(name) for name in ("PyQt6", "pandas", "fpdf")), "Desktop dependencies not installed")
 class JournalQtTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

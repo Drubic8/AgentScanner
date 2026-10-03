@@ -1,11 +1,13 @@
 """Offline checks for totals disclosure, settings navigation and nested access editing."""
 import os
+import importlib.util
 import unittest
 from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
+@unittest.skipUnless(all(importlib.util.find_spec(name) for name in ("PyQt6", "pandas", "fpdf")), "Desktop dependencies not installed")
 class CompactDashboardTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
