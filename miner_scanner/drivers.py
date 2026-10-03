@@ -14,7 +14,7 @@ from .normalization import (normalize, format_rate, block, antminer_fan_channels
 from .profiles import first_field
 from .protocol_compat import repair_antminer_stats
 from .runtime import AuthenticationError, ProtocolError
-from .parsers.antminer import parse_antminer_stock
+from .parsers.antminer import parse_antminer_stock, stock_model
 from .parsers.vnish import parse_antminer_vnish
 from .parsers.pitbit import parse_antminer_pitbit
 from .parsers.whatsminer import parse_whatsminer_data
@@ -133,6 +133,8 @@ def make_record(profile, ip, data, previous=None):
         row["Error"] = "PARTIAL DATA"
         row["ErrorDetails"] = "Ответ API не соответствует ожидаемой структуре"
     raw_model = first_field(data, {"model", "minertype", "product_type", "type", "g-model"})
+    if profile.parser == 'antminer':
+        raw_model = stock_model(data)
     model = raw_model or row.get("Model", "Unknown")
     version = first_field(data, {"fw_version", "fwversion", "firmware_version", "system_filesystem_version", "miner_version"})
     firmware_evidence = None
@@ -143,7 +145,19 @@ def make_record(profile, ip, data, previous=None):
     api_version = first_field(data, {"api", "api_ver", "api_version"})
     serial = first_field(data, {"serial", "serial_number", "sn"})
     mac = first_field(data, {"mac", "macaddr", "mac_address"})
-    fields = [profile.id, profile.version, model, version, api_version, serial, mac]
+    if profile.parser == 'jasminer':
+        from .parsers.jasminer import status_block
+        summary = status_block(data.get('jasminer_status', {}).get('summary'))
+        # Named Jasminer fields, not arbitrary nested pool or board metadata.
+        model = str(summary.get('miner') or model)
+        version = first_field(summary, {'version'}) or version
+        serial = first_field(summary, {'machine_sn'}) or serial
+    # Stock control uses HTTP, while CGMiner's API version disappears when its
+    # mining process restarts. With a current hardware ID and firmware build,
+    # this telemetry field must not prevent Sleep -> Wakeup or Low -> Normal.
+    # HTTP command compatibility is still re-probed before every write.
+    fingerprint_api = None if profile.parser == 'antminer' and version and (serial or mac) else api_version
+    fields = [profile.id, profile.version, model, version, fingerprint_api, serial, mac]
     if firmware_evidence is not None:
         fields.append(firmware_evidence)
     fingerprint = hashlib.sha256(json.dumps(fields, ensure_ascii=True).encode()).hexdigest()

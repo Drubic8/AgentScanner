@@ -27,7 +27,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
                      'Desktop dependencies not installed')
 class MixedMiningCommandsTests(unittest.TestCase):
     def test_sleep_then_wakeup_dispatches_per_device_and_continues_after_unsupported(self):
-        from gemini_gui import ActionWorker
+        from gemini_gui import ActionWorker, Qt
 
         capture = json.loads((Path(__file__).parent / 'fixtures/avalon_1346_fms.json').read_text())
         running = {'STATS': [{'MM Count': 1, 'MM ID0':
@@ -86,10 +86,10 @@ class MixedMiningCommandsTests(unittest.TestCase):
                     avalon.power_after = capture['after_sleep'] if action == 'sleep' else running
                     logs, refreshed = [], []
                     worker = ActionWorker(rows, action)
-                    worker.log_signal.connect(logs.append)
-                    worker.result_signal.connect(refreshed.extend)
+                    worker.log_signal.connect(logs.append, Qt.ConnectionType.DirectConnection)
+                    worker.result_signal.connect(refreshed.extend, Qt.ConnectionType.DirectConnection)
                     worker.run()
-                    self.assertEqual(len(logs), len(devices))
+                    self.assertEqual(len(logs), len(devices) + 1)  # Final batch summary.
                     self.assertEqual(len(refreshed), len(devices))
                     self.assertTrue(any('192.0.2.1: [unsupported]' in line for line in logs))
                     for ip in list(devices)[1:]:

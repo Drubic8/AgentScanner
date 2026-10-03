@@ -2,7 +2,10 @@
 import importlib.util
 import json
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from threading import Event
+from copy import deepcopy
+from unittest.mock import patch
 import unittest
 
 from miner_scanner.repository import DeviceRepository
@@ -77,3 +80,209 @@ class AndroidBridgeTests(unittest.TestCase):
     def test_range_preview_matches_actual_address_deduplication(self):
         result = json.loads(bridge.validate_ranges("192.0.2.1-3\n192.0.2.2/31"))
         self.assertEqual(result, {"count": 3, "error": ""})
+
+    def test_mobile_display_uses_algorithm_units_and_hides_stale_metrics(self):
+        record = self.service.poll("192.0.2.1")
+        record.telemetry.rate, record.telemetry.rate_unit, record.telemetry.algorithm = 16000000000, "H/s", "Scrypt"
+        self.assertEqual(bridge.device_row(record)["rate_display"], "16.00 GH/s")
+        record.telemetry.rate, record.telemetry.rate_unit, record.telemetry.algorithm = 140000, "Sol/s", "Equihash"
+        self.assertEqual(bridge.device_row(record)["rate_display"], "140.00 kSol/s")
+        record.telemetry.stale = True
+        row = bridge.device_row(record)
+        self.assertIsNone(row["telemetry"]["rate"])
+        self.assertEqual(row["rate_display"], "—")
+        self.assertEqual(row["telemetry"]["temperatures_c"], [])
+
+    def test_new_mobile_service_has_bounded_standard_access_profiles(self):
+        with TemporaryDirectory() as directory:
+            mobile = bridge.MobileScanner(directory)
+            try:
+                antminer = mobile.service.credential_candidates("192.0.2.1", "antminer")
+                vnish = mobile.service.credential_candidates("192.0.2.1", "vnish")
+                whatsminer = mobile.service.credential_candidates("192.0.2.1", "whatsminer")
+                self.assertEqual([(item.username, item.password) for item in antminer], [("root", "root")])
+                self.assertEqual([item.password for item in vnish], ["admin", "root"])
+                self.assertEqual([(item.username, item.password) for item in whatsminer], [("super", "super")])
+                self.assertNotIn('"password"', mobile.snapshot())
+            finally:
+                mobile.service.repository.close()
+
+
+class AndroidControlTests(unittest.TestCase):
+    def setUp(self):
+        # Exercise production API-contract discovery, not a mocked capability grant.
+        from tests.test_stock_compatibility import StockCompatibilityTests
+        fixtures = StockCompatibilityTests()
+        fixtures.setUp()
+        self.addCleanup(fixtures.doCleanups)
+        self.service, self.factory, self.record = fixtures.service()
+        self.mobile = bridge.MobileScanner("unused", self.service)
+        self.mobile.state["rows"] = [bridge.device_row(self.record)]
+
+    def finish(self):
+        self.mobile.thread.join(5)
+        self.assertFalse(self.mobile.thread.is_alive())
+        return json.loads(self.mobile.snapshot())
+
+    def test_compatible_unknown_build_can_sleep_wake_and_change_mode(self):
+        profile = self.service.registry.by_id[self.record.identity.profile_id]
+        self.assertFalse(profile.verified_commands)
+        self.assertEqual(self.record.capabilities["mining_start"], "supported")
+        for action, target in (("normal", "0"), ("sleep", "1"), ("hem", "2"), ("wakeup", "0")):
+            with self.subTest(action=action):
+                self.mobile.command(self.record.identity.ip, self.record.identity.device_id, action)
+                result = self.finish()
+                self.assertEqual(result["command"]["status"], "succeeded")
+                self.assertEqual(self.factory.data["config"]["bitmain-work-mode"], target)
+                self.assertEqual(len(result["commands"]), 1)
+                self.assertEqual(result["command_total"], 1)
+                self.assertEqual(result["rows"][0]["telemetry"]["mining_state"],
+                                 "stopped" if target == "1" else "unknown")
+        self.assertEqual(len(self.factory.writes), 4)
+
+    def test_session_credentials_are_applied_to_commands_without_export(self):
+        self.mobile.command(self.record.identity.ip, self.record.identity.device_id,
+                            "mining_start", "root", "session-only-password")
+        self.finish()
+        self.assertEqual(self.service._default_credentials.password, "session-only-password")
+        self.assertNotIn("session-only-password", self.mobile.snapshot() + self.mobile.export_csv())
+
+    def test_stale_identity_and_unsupported_mode_are_rejected_before_writes(self):
+        ip, identity = self.record.identity.ip, self.record.identity.device_id
+        with self.assertRaises(ValueError):
+            self.mobile.command(ip, "old-identity", "mining_start")
+        with self.assertRaises(ValueError):
+            self.mobile.command(ip, identity, "low")
+        self.record.telemetry.stale = True
+        with self.assertRaises(ValueError):
+            self.mobile.command(ip, identity, "mining_start")
+        self.assertFalse(self.factory.writes)
+
+    def test_batch_reports_unsupported_and_valid_targets_individually(self):
+        other = deepcopy(self.record)
+        other.identity.ip, other.identity.device_id = "192.0.2.2", "unsupported-device"
+        other.capabilities = {}
+        self.service._records[other.identity.ip] = other
+        self.mobile.state["rows"].append(bridge.device_row(other))
+        targets = [{"ip": record.identity.ip, "device_id": record.identity.device_id} for record in (other, self.record)]
+        self.mobile.command_many(json.dumps(targets), "mining_start")
+        result = self.finish()
+        self.assertEqual(result["command_total"], 2)
+        self.assertEqual({row["ip"]: row["status"] for row in result["commands"]},
+                         {"192.0.2.1": "succeeded", "192.0.2.2": "unsupported"})
+        self.assertEqual(len(self.factory.writes), 1)
+        self.assertFalse(any(ip == "192.0.2.2" for ip, _ in self.factory.calls))
+
+    def test_batch_validation_does_not_start_network(self):
+        target = {"ip": self.record.identity.ip, "device_id": self.record.identity.device_id}
+        for targets in ([], [target, target], [dict(target, ip="192.0.2.0/24")],
+                        [dict(target, device_id="old-identity")], [dict(target, password="secret")]):
+            with self.assertRaises(ValueError):
+                self.mobile.command_many(json.dumps(targets), "mining_start")
+        self.assertFalse(self.factory.writes)
+
+    def test_cancelled_batch_never_sends_queued_targets(self):
+        records = [deepcopy(self.record) for _ in range(6)]
+        for index, record in enumerate(records, 1):
+            record.identity.ip = f"192.0.2.{index}"
+            self.service._records[record.identity.ip] = record
+        self.mobile.state["rows"] = [bridge.device_row(record) for record in records]
+        started, release = Event(), Event()
+        called = []
+        from miner_scanner.models import CommandResult
+        def batch(_service, targets, _action, **kwargs):
+            self.assertEqual(kwargs['workers'], 8)
+            started.set()
+            release.wait(3)
+            for target in targets:
+                ip = target['IP']
+                if kwargs['cancel'].is_set():
+                    yield ip, CommandResult(ip, 'cancelled', 'Cancelled before dispatch')
+                else:
+                    called.append(ip)
+                    yield ip, CommandResult(ip, 'unconfirmed', 'Dispatched')
+        with patch.object(bridge, "execute_batch", side_effect=batch):
+            self.mobile.command_many(json.dumps([{"ip": record.identity.ip, "device_id": record.identity.device_id}
+                                                 for record in records]), "mining_start")
+            self.assertTrue(started.wait(2))
+            self.mobile.cancel()
+            release.set()
+            result = self.finish()
+        self.assertTrue(result["cancelled"])
+        self.assertLessEqual(len(called), 4)
+        self.assertEqual(len(result["commands"]), 6)
+        self.assertTrue(any(row["status"] == "cancelled" for row in result["commands"]))
+
+    def test_failed_readback_does_not_resend_or_lose_confirmed_outcome(self):
+        from miner_scanner.models import CommandResult
+        with patch.object(bridge, "execute_batch", return_value=iter([('192.0.2.1', CommandResult("once", "succeeded", "Confirmed", True))])) as execute:
+            with patch.object(self.service, "poll", side_effect=OSError("readback unavailable")):
+                self.mobile.command(self.record.identity.ip, self.record.identity.device_id, "mining_start")
+                result = self.finish()
+        execute.assert_called_once()
+        self.assertEqual(result["command"]["status"], "succeeded")
+
+    def test_preflight_identity_change_skips_write_and_refreshes_visible_record(self):
+        self.factory.data["system"]["system_filesystem_version"] = "different build"
+        self.mobile.command(self.record.identity.ip, self.record.identity.device_id, "mining_start")
+        result = self.finish()
+        self.assertEqual(result["command"]["status"], "skipped")
+        self.assertEqual(result["rows"][0]["identity"]["firmware_version"], "different build")
+        self.assertFalse(self.factory.writes)
+
+    def test_journal_survives_scanning_and_exports_all_retained_results(self):
+        for action in ('mining_start', 'mining_stop'):
+            self.mobile.command(self.record.identity.ip, self.record.identity.device_id, action)
+            self.finish()
+        history = json.loads(self.mobile.snapshot())['history']
+        self.assertEqual(len(history), 2)
+        self.assertEqual([r['action'] for r in history], ['mining_start', 'mining_stop'])
+        self.assertTrue(all(r['time'] for r in history))
+        self.mobile.start('192.0.2.1')
+        self.finish()
+        self.assertEqual(len(json.loads(self.mobile.snapshot())['history']), 2)
+        self.assertIn('mining_start', self.mobile.export_command_csv())
+        self.assertIn('mining_stop', self.mobile.export_command_csv())
+
+    def test_journal_retention_does_not_lose_current_command_results(self):
+        self.mobile.history = [{'ip': '192.0.2.9', 'message': '=unsafe'}] * 1000
+        self.mobile.command(self.record.identity.ip, self.record.identity.device_id, 'mining_start')
+        result = self.finish()
+        self.assertEqual(len(result['history']), 1000)
+        self.assertEqual(result['history_dropped'], 1)
+        self.assertEqual(result['command']['status'], 'succeeded')
+        self.assertIn("'=unsafe", self.mobile.export_command_csv())
+
+
+    def test_scan_and_command_overlap_are_rejected(self):
+        self.mobile.state["running"] = True
+        with self.assertRaises(ValueError):
+            self.mobile.command(self.record.identity.ip, self.record.identity.device_id, "mining_start")
+        with self.assertRaises(ValueError):
+            self.mobile.command_many(json.dumps([{"ip": self.record.identity.ip,
+                                                  "device_id": self.record.identity.device_id}]), "mining_start")
+        self.assertFalse(self.factory.writes)
+
+
+class AndroidPitbitTests(unittest.TestCase):
+    def test_pitbit_uses_verified_modes_and_keeps_zero_and_led_in_mobile_dto(self):
+        from tests.test_pitbit_commands import PitbitCommandTests
+        fixtures = PitbitCommandTests()
+        fixtures.setUp()
+        self.addCleanup(fixtures.doCleanups)
+        mobile = bridge.MobileScanner('unused', fixtures.service)
+        record = fixtures.record
+        mobile.state['rows'] = [bridge.device_row(record)]
+        for action in ('sleep', 'wakeup'):
+            mobile.command(record.identity.ip, record.identity.device_id, action)
+            mobile.thread.join(5)
+            self.assertFalse(mobile.thread.is_alive())
+            snapshot = json.loads(mobile.snapshot())
+            self.assertEqual(snapshot['command']['status'], 'succeeded')
+        row = bridge.device_row(record)
+        self.assertIn('average_display', row)
+        self.assertFalse(row['telemetry']['identify_enabled'])
+        record.telemetry.stale = True
+        row = bridge.device_row(record)
+        self.assertIsNone(row['telemetry']['identify_enabled'])
+        self.assertEqual(row['average_display'], '—')

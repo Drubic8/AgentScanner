@@ -184,12 +184,13 @@ def normalize(data, row, parser, metrics=None):
     elif parser == "ipollo":
         snapshot.rate, snapshot.rate_unit = explicit_rate(values.get("Hashrate"), values.get("Unit"))
     elif parser == "jasminer":
-        summary = data.get("jasminer_status", {}).get("summary", {})
-        if isinstance(summary, list):
-            summary = summary[0] if summary else {}
+        from .parsers.jasminer import sensor_readings, status_block
+        status = data.get("jasminer_status", {})
+        summary = status_block(status.get("summary"))
         snapshot.rate, snapshot.rate_unit = explicit_rate(summary.get("rt"))
         snapshot.average_rate = explicit_rate(summary.get("avg"))[0]
         snapshot.uptime_seconds = number(summary.get("uptime"))
+        snapshot.fan_rpm, snapshot.temperatures_c = sensor_readings(status)
     elif parser == "elphapex":
         stats = block(data.get("elphapex_stats"), "STATS")
         chains = stats.get("chain", [])

@@ -91,6 +91,23 @@ class AccessProfileTests(unittest.TestCase):
         self.assertEqual(len(profiles.candidates('192.0.2.1')), 3)
         self.assertFalse(AccessProfiles([AccessProfile('Disabled', 'antminer', 'root', 'root', enabled=False)]).candidates('192.0.2.1'))
 
+    def test_other_devices_reuse_http_discovery_profile_without_an_explicit_profile(self):
+        profiles = AccessProfiles(standard_profiles())
+        self.assertEqual(profiles.candidates('192.0.2.1', 'other'),
+                         profiles.candidates('192.0.2.1'))
+        self.assertEqual(AccessProfiles([]).candidates('192.0.2.1', 'other'), [])
+
+    def test_other_explicit_profile_and_disabled_profile_override_discovery_fallback(self):
+        from dataclasses import replace
+        custom = AccessProfile('Jasminer site', 'other', 'admin', 'custom', targets='192.0.2.14')
+        for enabled in (True, False):
+            with self.subTest(enabled=enabled):
+                profiles = AccessProfiles([*standard_profiles(), replace(custom, enabled=enabled)])
+                self.assertEqual(profiles.candidates('192.0.2.14', 'other'),
+                                 [custom.credentials] if enabled else [])
+                self.assertEqual(profiles.candidates('192.0.2.15', 'other'),
+                                 profiles.candidates('192.0.2.15'))
+
     def test_vnish_unlock_fallback_does_not_repeat_control_write(self):
         transport = Mock()
         transport.http_json.side_effect = [AuthenticationError('Wrong'), {'token': 'test-token'},

@@ -46,6 +46,7 @@ class TelemetrySnapshot:
     mining_state: str = "unknown"
     stale: bool = False
     diagnostics: list[str] = field(default_factory=list)
+    identify_enabled: bool | None = None
 
 
 @dataclass
@@ -58,6 +59,9 @@ class DeviceRecord:
 
     def to_legacy(self) -> dict:
         result = dict(self.display)
+        identify = self.telemetry.identify_enabled
+        if self.telemetry.stale or type(identify) is not bool:
+            identify = None
         result.update({
             "IP": self.identity.ip, "Make": self.identity.make,
             "Model": self.display.get("Model") or self.identity.model, "DeviceId": self.identity.device_id,
@@ -67,6 +71,8 @@ class DeviceRecord:
             "ApiVersion": self.identity.api_version,
             "Identity": asdict(self.identity), "Telemetry": asdict(self.telemetry),
             "Capabilities": dict(self.capabilities), "Stale": self.telemetry.stale,
+            "IdentifyEnabled": identify,
+            "LED": "Включена" if identify is True else "Выключена" if identify is False else "Неизвестно",
         })
         if self.telemetry.stale:
             # Retain the historical snapshot internally, never present its metrics

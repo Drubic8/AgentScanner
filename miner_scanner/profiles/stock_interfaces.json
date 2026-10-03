@@ -1,6 +1,134 @@
 {
   "schema_version": 1,
   "miner": {
+    "fe9d41d74a13816090afa29f5f23161447e6d70fc625a5c7a0c694f680d407d3": {
+      "source_asset": "miner.05438c.js",
+      "pages": ["0ed7ef26b4c368297331f5652c6e0bf96d568d74de656b50ef0b78152ac3bf2d"],
+      "config_fallback": false,
+      "write_mode": "bitmain-work-mode",
+      "required": {
+        "pools": "pools",
+        "bitmain-user-ip-cat": "bitmain-user-ip-cat",
+        "bitmain-fan-ctrl": "bitmain-fan-ctrl",
+        "bitmain-fan-pwm": "bitmain-fan-pwm",
+        "bitmain-freq": "bitmain-freq",
+        "bitmain-voltage": "bitmain-voltage",
+        "bitmain-freq-level": "bitmain-freq-level",
+        "bitmain-chip-temp-threshold": "bitmain-chip-temp-threshold",
+        "bitmain-drop-freq-scale": "bitmain-drop-freq-scale",
+        "bitmain-power-off-delay": "bitmain-power-off-delay"
+      },
+      "optional": {},
+      "mode_flags": {"hem": "hem_mode", "low": "lem_mode"},
+      "modes": {
+        "S21+": {"mining_start": 0, "mining_stop": 1, "normal_power": 0, "hem": 2, "low": 3}
+      }
+    },
+    "97cdfabb6fd2617a620213191a3bc56b34f9472a851658257e55568a2b16e497": {
+      "source_asset": "miner.09f75a.js",
+      "pages": ["5895060d1e136fc5b538f363d1335ad80279a7a6f85ffa5f10cb243bc7e73b75"],
+      "config_fallback": false,
+      "write_mode": "miner-mode",
+      "required": {
+        "pools": "pools",
+        "bitmain-fan-ctrl": "bitmain-fan-ctrl",
+        "bitmain-fan-pwm": "bitmain-fan-pwm",
+        "bitmain-freq": "bitmain-freq",
+        "bitmain-voltage": "bitmain-voltage",
+        "freq-level": "bitmain-freq-level"
+      },
+      "optional": {},
+      "read_only": ["algo"],
+      "modes": {"L7": {"mining_start": 0, "mining_stop": 1, "normal_power": 0, "low": 3}}
+    },
+    "744ae885af431867cdd9f7cd74fe237ff2343e1c5f08018516602ccbcc45be2e": {
+      "source_asset": "miner.815f99.js",
+      "pages": ["ba5faff8e0d924229e1b4008be6e4d1e2478494f1ce5b4a5d9f34dbf6a35ca89"],
+      "config_fallback": false,
+      "write_mode": "miner-mode",
+      "required": {
+        "pools": "pools",
+        "bitmain-fan-ctrl": "bitmain-fan-ctrl",
+        "bitmain-fan-pwm": "bitmain-fan-pwm",
+        "freq-level": "bitmain-freq-level"
+      },
+      "optional": {},
+      "read_only": ["algo", "bitmain-freq", "bitmain-voltage"],
+      "modes": {"Z15 Pro": {"mining_start": 0, "mining_stop": 1, "normal_power": 0}}
+    },
+    "9382489c7bc6f79bab9bc534a4b9549632cacfcdc8e120856c20375b443fdb84": {
+      "source_asset": "miner.6b9cb7.js",
+      "pages": [
+        "3f1cdaf16ca7cbea03a454fd64f884d72791372e2caf75df8915d0d9ae016df3"
+      ],
+      "config_fallback": false,
+      "write_mode": "miner-mode",
+      "required": {
+        "pools": "pools",
+        "bitmain-fan-ctrl": "bitmain-fan-ctrl",
+        "bitmain-fan-pwm": "bitmain-fan-pwm",
+        "freq-level": "bitmain-freq-level"
+      },
+      "optional": {},
+      "read_only": ["algo", "bitmain-freq", "bitmain-voltage"],
+      "modes": {
+        "KS5": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0
+        },
+        "L9": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0
+        }
+      }
+    },
+    "6a2c0807a16b427d9af8f4dd459591fd105598b1efa4759b2d4606ed8847084e": {
+      "source_asset": "miner.a737b4.js",
+      "pages": [
+        "a730e56cb3ab13353f3674462396e43ba0b6a78cffdb9bf8f21fdd884063025a"
+      ],
+      "config_fallback": false,
+      "write_mode": "miner-mode",
+      "required": {
+        "pools": "pools",
+        "bitmain-fan-ctrl": "bitmain-fan-ctrl",
+        "bitmain-fan-pwm": "bitmain-fan-pwm",
+        "freq-level": "bitmain-freq-level"
+      },
+      "optional": {},
+      "read_only": ["algo", "bitmain-freq", "bitmain-voltage"],
+      "modes": {
+        "KS5": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0
+        },
+        "KS5 Pro": {
+          "mining_start": 0,
+          "mining_stop": 1,
+          "normal_power": 0
+        }
+      }
+    },
+    "75c0c9898b5d175b40256e74f1b4c923eeea690f2ef89ff785211f6ff08273f2": {
+      "source_asset": "miner.0fb1b6.js",
+      "pages": [
+        "b970de555c942a9f1169992eed266a5ba612878d717c7073892178ed9858ad2a"
+      ],
+      "config_fallback": false,
+      "write_mode": "miner-mode",
+      "required": {
+        "pools": "pools",
+        "bitmain-fan-ctrl": "bitmain-fan-ctrl",
+        "bitmain-fan-pwm": "bitmain-fan-pwm",
+        "freq-level": "bitmain-freq-level"
+      },
+      "optional": {},
+      "read_only": ["algo", "bitmain-freq", "bitmain-voltage"],
+      "modes": {"KS5": {}}
+    },
     "eb4f91c3de8744a3d3130084c88c4ccd9350cae85b138452ac0e255d07161e4e": {
       "source_asset": "miner.b91570.js",
       "write_mode": "miner-mode",
@@ -223,7 +351,28 @@
       "source_asset": "index.acb1b2.js"
     }
   },
+  "legacy_blink": {
+    "529dd49e024ebf7b07c0cd19ccda0b94fcfd25d586a15092da90aa041a6aef9a": {
+      "source_asset": "blink.html", "duration_seconds": 300
+    },
+    "73440e6393aaaf7eb06ab4f731bec3959a7e1bfe5c6e08c1526ec679c257be71": {
+      "source_asset": "blink.html", "duration_seconds": 300
+    },
+    "8d018eaf94ea973b10fe6bb97d3471f030835abd755ef50a87fbb3bfb3ea79b7": {
+      "source_asset": "blink.html", "duration_seconds": 300
+    }
+  },
   "legacy_reboot": {
+    "3fea98738900eeec3eee90f9dcbce7be8fdcb442534687ae86b97f946cd94ec8": {
+      "source_asset": "reboot.html",
+      "method": "GET",
+      "path": "/cgi-bin/reboot.cgi"
+    },
+    "a3e28c07632f4602bb477494973bc636c169333345520c096dae12763016125d": {
+      "source_asset": "reboot.html",
+      "method": "GET",
+      "path": "/cgi-bin/reboot.cgi"
+    },
     "712fbee71caa8c94ccb51b148ea61ce4323530f400af61208048d66b867ff8cb": {
       "source_asset": "reboot.html",
       "method": "GET",

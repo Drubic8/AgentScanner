@@ -1,85 +1,67 @@
+"""Jasminer status parsing; units and populated sensor channels come from the API."""
 import ipaddress
 import re
-from ..utils import get_uptime_str, normalize_hashrate
+
+from ..normalization import explicit_rate, format_rate, number
+from ..utils import get_uptime_str
+
+
+def status_block(value):
+    """Firmware revisions return either an object or a list of objects."""
+    if isinstance(value, list):
+        value = next((item for item in value if isinstance(item, dict)), {})
+    return value if isinstance(value, dict) else {}
+
+
+def sensor_readings(resp):
+    boards = status_block(resp.get('boards'))
+    count = number(boards.get('fan_num'))
+    # Keep reported zero RPM. Do not invent channels missing from the response.
+    fans = [rpm for i in range(1, 9)
+            if (count is None or i <= count)
+            and (rpm := number(boards.get(f'fan{i}'))) is not None]
+    temps = []
+    items = boards.get('board', [])
+    if isinstance(items, list):
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            for key, value in item.items():
+                if re.fullmatch(r'asic\d+_temp', key):
+                    temp = number(value)
+                    if temp is not None:
+                        temps.append(temp)
+    if not temps:
+        summary = status_block(resp.get('summary'))
+        temps = [temp for key in ('temp_min', 'temp_max')
+                 if (temp := number(summary.get(key))) is not None]
+    return fans, sorted(temps)
+
 
 def parse_jasminer(ip, resp):
-    """Парсинг JSON данных, полученных от Jasminer"""
-    if not resp: return None
-    
-    # --- 1. ХЕШРЕЙТ и МОДЕЛЬ (из summary) ---
-    sum_data = resp.get('summary', {})
-    if isinstance(sum_data, list): sum_data = sum_data[0]
-
-    model = sum_data.get("miner", "JasMiner Unknown")
-    uptime = sum_data.get("uptime", 0)
-    
-    def parse_h(val):
-        if not val: return 0.0
-        try: return float(str(val).split()[0])
-        except: return 0.0
-
-    # Берем Real-time (rt) и Average (avg) хешрейт
-    r_val = parse_h(sum_data.get("rt"))
-    a_val = parse_h(sum_data.get("avg"))
-    
-    # --- 2. ВЕНТИЛЯТОРЫ и ТЕМПЕРАТУРЫ (из boards) ---
-    boards_root = resp.get('boards', {})
-    if isinstance(boards_root, list): boards_root = boards_root[0]
-    
-    fans = []
-    temps = []
-    
-    # Собираем обороты вентиляторов
-    for i in range(1, 9):
-        key = f"fan{i}"
-        if key in boards_root:
-            try:
-                v = int(float(str(boards_root[key])))
-                if v > 0: fans.append(str(v))
-            except: pass
-            
-    # Собираем температуры чипов
-    board_list = boards_root.get('board', [])
-    if isinstance(board_list, list):
-        for b in board_list:
-            for k, v in b.items():
-                if '_temp' in k and 'asic' in k:
-                    try: temps.append(int(float(v)))
-                    except: pass
-    
-    if not temps:
-        if sum_data.get("temp_min"): temps.append(int(sum_data["temp_min"]))
-        if sum_data.get("temp_max"): temps.append(int(sum_data["temp_max"]))
-        
-    temps.sort()
-
-    # --- 3. ПУЛ и ВОРКЕР (из pools) ---
-    pool_url = ""
-    worker = ""
-    
-    pools_root = resp.get('pools', {})
-    pools_list = pools_root.get('pool') if isinstance(pools_root, dict) else pools_root
-    
-    if isinstance(pools_list, list) and pools_list:
-        active_pool = next((p for p in pools_list if str(p.get('status', '')).lower() in ['in use', 'alive']), pools_list[0])
-        if active_pool:
-            pool_url = active_pool.get('url', '')
-            worker = active_pool.get('user', '')
-
-    pool_url = pool_url.replace("stratum+tcp://", "").replace("stratum+ssl://", "")
-
-    # --- ФИНАЛИЗАЦИЯ ---
-    final_real, u_r = normalize_hashrate(r_val, "ETCHASH")
-    final_avg, u_a = normalize_hashrate(a_val, "ETCHASH")
-
+    if not isinstance(resp, dict) or not resp:
+        return None
+    summary = status_block(resp.get('summary'))
+    fans, temps = sensor_readings(resp)
+    pool_root = resp.get('pools', {})
+    pools = pool_root.get('pool', []) if isinstance(pool_root, dict) else pool_root
+    pools = [pool for pool in pools if isinstance(pool, dict)] if isinstance(pools, list) else []
+    active = next((pool for pool in pools if str(pool.get('status', '')).lower()
+                   in ('in use', 'alive')), pools[0] if pools else {})
+    pool_url = str(active.get('url') or '')
+    pool_url = pool_url.replace('stratum+tcp://', '').replace('stratum+ssl://', '')
+    rate, unit = explicit_rate(summary.get('rt'))
+    average, average_unit = explicit_rate(summary.get('avg'))
+    uptime = number(summary.get('uptime'))
     return {
-        "IP": ip, "Make": "JasMiner", "Model": model, 
-        "Uptime": get_uptime_str(uptime),
-        "Real": f"{final_real} {u_r}", "Avg": f"{final_avg} {u_a}",
-        "Fan": " ".join(fans), 
-        "Temp": " ".join(str(t) for t in temps), 
-        "Pool": pool_url, "Worker": worker,
-        "SortIP": int(ipaddress.IPv4Address(ip)),
-        "Algo": "Etchash",
-        "RawHash": float(str(final_real).replace(',',''))
+        'IP': ip, 'Make': 'Jasminer',
+        'Model': str(summary.get('miner') or 'Jasminer Unknown'),
+        'Uptime': get_uptime_str(uptime) if uptime is not None else '—',
+        'Real': format_rate(rate, unit, 'Etchash'),
+        'Avg': format_rate(average, average_unit, 'Etchash'),
+        'Fan': ' '.join(f'{value:g}' for value in fans) or '—',
+        'Temp': ' '.join(f'{value:g}' for value in temps) or '—',
+        'Pool': pool_url, 'Worker': str(active.get('user') or ''),
+        'SortIP': int(ipaddress.IPv4Address(ip)),
+        'Algo': 'Etchash', 'RawHash': rate,
     }

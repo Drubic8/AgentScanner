@@ -102,7 +102,9 @@ class L9StockCommands(unittest.TestCase):
                 del self.factory.data['config']['bitmain-freq-level']
             else:
                 self.factory.data['config']['pools'][0]['pass'] = '*****'
-            self.assertEqual(self.start().status, 'failed')
+            # The capability probe rejects a missing configuration schema before
+            # dispatch; masked credentials are rejected by the payload builder.
+            self.assertEqual(self.start().status, 'unsupported' if invalid == 'missing' else 'failed')
             self.assertFalse(self.factory.writes)
 
     def test_accepted_without_mode_change_is_unconfirmed(self):
@@ -164,7 +166,7 @@ class L9StockCommands(unittest.TestCase):
                 result = execute_command(self.service, '192.0.2.9', 'led_off')
             self.assertEqual(result.status, 'unconfirmed')
 
-    def test_led_is_not_enabled_for_another_build(self):
+    def test_unknown_build_without_led_api_is_not_enabled(self):
         self.factory.data['system']['system_filesystem_version'] = 'other build'
         self.service.poll('192.0.2.9', force_identify=True)
         for action in ('led_on', 'led_off'):

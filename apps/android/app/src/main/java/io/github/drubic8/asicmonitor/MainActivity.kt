@@ -29,12 +29,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 
-private val Blue = Color(0xFF245EEA)
-private val Ink = Color(0xFF17243B)
-private val Muted = Color(0xFF526178)
-private val Positive = Color(0xFF12694F)
-private val Amber = Color(0xFF88520A)
-private val Palette = lightColorScheme(primary = Blue, onPrimary = Color.White,
+internal val Blue = Color(0xFF245EEA)
+internal val Ink = Color(0xFF17243B)
+internal val Muted = Color(0xFF526178)
+internal val Positive = Color(0xFF12694F)
+internal val Amber = Color(0xFF88520A)
+internal val Palette = lightColorScheme(primary = Blue, onPrimary = Color.White,
     background = Color(0xFFF3F6FA), surface = Color.White, onSurface = Ink,
     onSurfaceVariant = Muted, secondaryContainer = Color(0xFFE2EBFF), onSecondaryContainer = Blue)
 
@@ -52,9 +52,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private val commandNames = linkedMapOf("identify_on" to "Включить подсветку", "identify_off" to "Выключить подсветку",
-    "reboot" to "Перезагрузить", "mining_stop" to "Остановить майнинг", "mining_start" to "Возобновить майнинг")
-
 @Composable
 private fun MonitorApp(model: MonitorViewModel) {
     val state by model.state.collectAsStateWithLifecycle()
@@ -63,9 +60,14 @@ private fun MonitorApp(model: MonitorViewModel) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var detail by remember { mutableStateOf<Device?>(null) }
-    var confirmation by remember { mutableStateOf<Pair<Device, String>?>(null) }
+    var confirmation by remember { mutableStateOf<Pair<List<Device>, String>?>(null) }
+    var commandTargets by remember { mutableStateOf<List<Device>?>(null) }
+    var journalOpen by remember { mutableStateOf(false) }
     val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         if (uri != null) model.export(uri)
+    }
+    val journalExporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        if (uri != null) model.export(uri, journal = true)
     }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(state.notice) {
@@ -82,126 +84,42 @@ private fun MonitorApp(model: MonitorViewModel) {
     }) { padding ->
         Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
         Column(Modifier.widthIn(max = 840.dp).fillMaxSize()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Memory, null, tint = Blue, modifier = Modifier.size(30.dp))
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text("ASIC Monitor", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text("Локальная сеть", color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
-                Text("ALPHA", style = MaterialTheme.typography.labelSmall, color = Muted)
+                Text(BuildConfig.VERSION_NAME, style = MaterialTheme.typography.labelSmall, color = Muted)
             }
             when (tab) {
                 0 -> DevicesScreen(state, onScan = { model.scan(username, password) }, onCancel = model::cancel,
-                    onNetworks = { tab = 1 }, onExport = { exporter.launch("ASIC_Monitor.csv") }, onDevice = { detail = it })
+                    onNetworks = { tab = 1 }, onExport = { exporter.launch("ASIC_Monitor.csv") }, onDevice = { detail = it },
+                    onCompact = model::compact, onCommand = { commandTargets = it }, onJournal = { journalOpen = true })
                 1 -> NetworksScreen(model, state)
                 2 -> SettingsScreen(state, username, password, { username = it }, { password = it }, model::settings)
             }
         }
         }
     }
-    detail?.let { device ->
-        AlertDialog(onDismissRequest = { detail = null }, title = { Text(device.model) }, text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(device.ip, style = MaterialTheme.typography.titleMedium, color = Blue)
-                Text("ID: ${device.id}")
-                Text("${device.firmware} ${device.version}")
-                Text("Профиль: ${device.profile}")
-                Text("Обновлено (UTC): ${device.observed}")
-                Text("Хешрейт: ${device.rate}\nТемпература: ${device.temperature}")
-                if (device.stale) Text("Данные устарели. Повторите сканирование.", color = Amber)
-                HorizontalDivider()
-                Text("Управление", fontWeight = FontWeight.Bold)
-                commandNames.forEach { (action, label) ->
-                    OutlinedButton(onClick = { confirmation = device to action; detail = null },
-                        enabled = action in device.actions && !state.busy && !device.stale, modifier = Modifier.fillMaxWidth()) { Text(label) }
-                }
-                Text("Доступны только команды, проверенные для точной модели и версии прошивки.", style = MaterialTheme.typography.bodySmall)
-            }
-        }, confirmButton = { TextButton(onClick = { detail = null }) { Text("Закрыть") } })
+    detail?.let { original ->
+        val device = state.devices.firstOrNull { it.selectionKey() == original.selectionKey() } ?: original.copy(stale = true)
+        DeviceDetails(device, state.busy, onCommand = { action ->
+            confirmation = listOf(device) to action; detail = null
+        }, onDismiss = { detail = null })
     }
-    confirmation?.let { (device, action) ->
-        AlertDialog(onDismissRequest = { confirmation = null }, title = { Text(commandNames[action].orEmpty()) },
-            text = { Text("${device.model}\n${device.ip}\nКоманда будет отправлена один раз. После выполнения обновите сканирование.") },
-            confirmButton = { Button(onClick = { confirmation = null; model.command(device, action) }) { Text("Отправить") } },
-            dismissButton = { TextButton(onClick = { confirmation = null }) { Text("Отмена") } })
+    commandTargets?.let { devices -> CommandPicker(devices,
+        onCommand = { action -> confirmation = devices to action; commandTargets = null },
+        onDismiss = { commandTargets = null }) }
+    confirmation?.let { (devices, action) ->
+        CommandConfirmation(devices, action, enabled = !state.busy,
+            onConfirm = { confirmation = null; model.command(devices, action, username, password) },
+            onDismiss = { confirmation = null })
     }
-}
+    if (journalOpen) CommandJournal(state.history, state.busy && state.commanding, state.historyDropped,
+        onExport = { journalExporter.launch("ASIC_Monitor_commands.csv") }, onDismiss = { journalOpen = false })
 
-@Composable
-private fun DevicesScreen(state: MonitorState, onScan: () -> Unit, onCancel: () -> Unit,
-    onNetworks: () -> Unit, onExport: () -> Unit, onDevice: (Device) -> Unit) {
-    var query by rememberSaveable { mutableStateOf("") }
-    val filtered = remember(state.devices, query) { state.devices.filter {
-        "${it.ip} ${it.model} ${it.firmware} ${it.id}".contains(query.trim(), true)
-    } }
-    LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item {
-            Surface(color = Ink, shape = MaterialTheme.shapes.large) {
-                Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(state.status, color = Color.White, style = MaterialTheme.typography.titleMedium)
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text("${state.devices.size}", color = Color.White, style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.SemiBold)
-                        Text("  устройств найдено", color = Color(0xFFCFD9EB), modifier = Modifier.padding(bottom = 8.dp))
-                    }
-                    if (state.total > 0) {
-                        LinearProgressIndicator(progress = { state.processed.toFloat() / state.total },
-                            modifier = Modifier.fillMaxWidth(), color = Color(0xFF83ABFF), trackColor = Color(0xFF3C4B63))
-                        Text("Проверено ${state.processed} из ${state.total} IP · ошибок: ${state.errors}",
-                            color = Color(0xFFCFD9EB), style = MaterialTheme.typography.bodySmall)
-                    } else Text("Выберите сети и начните поиск ASIC", color = Color(0xFFCFD9EB))
-                    Button(onClick = if (state.busy) onCancel else onScan,
-                        enabled = state.ready && !(state.stopping && state.busy), modifier = Modifier.fillMaxWidth()) {
-                        Icon(if (state.busy) Icons.Outlined.Stop else Icons.Outlined.Search, null)
-                        Spacer(Modifier.width(8.dp)); Text(if (state.busy) "Остановить" else "Сканировать")
-                    }
-                }
-            }
-        }
-        item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onNetworks, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Outlined.Lan, null); Spacer(Modifier.width(6.dp))
-                    Text("Выбрано сетей: ${state.groups.count { it.selected }}")
-                }
-                IconButton(onClick = onExport, enabled = state.devices.isNotEmpty() && !state.busy) { Icon(Icons.Outlined.FileDownload, "Сохранить CSV") }
-            }
-        }
-        if (state.devices.isNotEmpty()) item {
-            OutlinedTextField(value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(),
-                label = { Text("IP, модель, прошивка") }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true)
-        }
-        if (state.devices.isEmpty()) item {
-            Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(if (state.total == 0) "Ваши ASIC — под рукой" else "Устройства пока не найдены", style = MaterialTheme.typography.titleLarge)
-                Text("Телефон должен быть в сети оборудования или подключён через VPN. Добавьте IP-адреса во вкладке «Сети».", color = Muted)
-                Text("Для закрытых API укажите логин и пароль в настройках.", color = Muted)
-            }
-        }
-        items(filtered, key = { it.ip }) { device ->
-            ElevatedCard(onClick = { onDevice(device) }, colors = CardDefaults.elevatedCardColors(containerColor = Color.White),
-                elevation = CardDefaults.elevatedCardElevation(1.dp)) {
-                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(device.ip, color = Blue, fontWeight = FontWeight.Medium)
-                        Text(if (device.stale) "Устарело" else when (device.state) {
-                            "running", "mining" -> "Майнинг"; "stopped", "sleep", "paused" -> "Остановлен"
-                            "stopping" -> "Засыпает"; "starting" -> "Запускается"; else -> "Обнаружен"
-                        }, color = if (device.stale || device.state in setOf("stopping", "starting")) Amber else Positive,
-                            style = MaterialTheme.typography.labelMedium)
-                    }
-                    Text(device.model, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                    Text("${device.firmware} ${device.version}", color = Muted, style = MaterialTheme.typography.bodySmall)
-                    HorizontalDivider(color = Color(0xFFEBEFF5))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(device.rate, fontWeight = FontWeight.SemiBold)
-                        Text(device.temperature, color = Muted)
-                    }
-                }
-            }
-        }
-        if (state.devices.isNotEmpty() && filtered.isEmpty()) item { Text("По этому запросу ничего не найдено") }
-    }
 }
 
 @Composable
@@ -209,13 +127,20 @@ private fun NetworksScreen(model: MonitorViewModel, state: MonitorState) {
     var editing by remember { mutableStateOf<NetworkGroup?>(null) }
     var editorOpen by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf<NetworkGroup?>(null) }
+    var collapsed by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    val entries = remember(state.groups, collapsed) { networkEntries(state.groups, collapsed.toSet()) }
     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Сети оборудования", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold) }
         item { Text("Сохраните площадки и выбирайте, где искать ASIC. Общий лимит одного сканирования — 4096 IP.", color = Muted) }
         item { Button(onClick = { editing = null; editorOpen = true }, enabled = state.ready && !state.busy) {
             Icon(Icons.Outlined.Add, null); Spacer(Modifier.width(8.dp)); Text("Добавить сеть")
         } }
-        items(state.groups, key = { it.id }) { group ->
+        items(entries, key = { it.key }) { entry ->
+            if (entry.group == null) FolderRow(entry, state.groups, entry.folder in collapsed, state.busy,
+                onToggle = { collapsed = if (entry.folder in collapsed) collapsed - entry.folder else collapsed + entry.folder },
+                onSelect = { model.selectFolder(entry.folder, it) })
+            else {
+            val group = entry.group
             Surface(shape = MaterialTheme.shapes.medium, color = Color.White) {
                 Column(Modifier.padding(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -230,6 +155,7 @@ private fun NetworksScreen(model: MonitorViewModel, state: MonitorState) {
                 }
             }
         }
+        }
         if (state.groups.isEmpty()) item { Text("Например: «Площадка 1» с диапазоном 192.168.1.1–192.168.1.254. Автоматическое сканирование чужих сетей не запускается.", color = Muted) }
     }
     if (editorOpen) NetworkEditor(editing, model) { editorOpen = false }
@@ -242,12 +168,15 @@ private fun NetworksScreen(model: MonitorViewModel, state: MonitorState) {
 private fun NetworkEditor(group: NetworkGroup?, model: MonitorViewModel, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf(group?.name.orEmpty()) }
     var ranges by remember { mutableStateOf(group?.ranges.orEmpty()) }
+    var folder by remember { mutableStateOf(group?.folder.orEmpty()) }
     var error by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     AlertDialog(onDismissRequest = { if (!saving) onDismiss() }, title = { Text(if (group == null) "Новая сеть" else "Изменить сеть") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(name, { name = it }, label = { Text("Название") }, singleLine = true)
+            OutlinedTextField(folder, { folder = it }, label = { Text("Папка (необязательно)") }, singleLine = true,
+                supportingText = { Text("Например: Площадка 1/Сон. Пустое поле — без папки.") })
             OutlinedTextField(ranges, { ranges = it }, label = { Text("IP-адреса и подсети") }, minLines = 3,
                 placeholder = { Text("192.168.1.0/24\n192.168.2.10-30") })
             Text("IPv4, CIDR или диапазон. Несколько записей — с новой строки.", style = MaterialTheme.typography.bodySmall)
@@ -257,7 +186,7 @@ private fun NetworkEditor(group: NetworkGroup?, model: MonitorViewModel, onDismi
         saving = true
         scope.launch {
             try {
-                val result = model.saveGroup(group?.id, name, ranges)
+                val result = model.saveGroup(group?.id, name, ranges, folder)
                 if (result == null) onDismiss() else error = result
             } catch (_: Exception) { error = "Не удалось сохранить сеть" }
             saving = false
@@ -272,6 +201,8 @@ private fun SettingsScreen(state: MonitorState, username: String, password: Stri
         Text("Настройки", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         Text("Доступ к ASIC", style = MaterialTheme.typography.titleMedium)
         Text("Логин и пароль действуют в текущем сеансе. На диск и в отчёты они не записываются.", color = Muted)
+        Text("Пустые поля: стандартные профили Antminer root/root, VNish admin или root, WhatsMiner super/super. Свой пароль укажите ниже.",
+            style = MaterialTheme.typography.bodySmall, color = Muted)
         OutlinedTextField(username, onUsername, enabled = !state.busy, label = { Text("Логин") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(password, onPassword, enabled = !state.busy, label = { Text("Пароль") }, singleLine = true,
             visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth())

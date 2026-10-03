@@ -15,6 +15,10 @@ def normalize_groups(data):
     for item in data if isinstance(data, list) else []:
         if not isinstance(item, dict):
             continue
+        if item.get("type") == "folder":
+            result.append({"type": "folder", "name": str(item.get("name", "Папка")),
+                           "children": normalize_groups(item.get("children", []))})
+            continue
         ranges = item.get("ranges", [item["range"]] if "range" in item else [])
         if isinstance(ranges, str):
             ranges = split_ranges(ranges)
@@ -67,4 +71,67 @@ def validate_name(name, existing_names=()):
 
 
 def selected_ranges(groups):
-    return [value for group in groups if group.get("enabled", True) for value in group.get("ranges", [])]
+    return [value for _, group in walk_networks(groups) if group.get("enabled", True)
+            for value in group.get("ranges", [])]
+
+
+def walk_nodes(groups, prefix=()):
+    """Stable tree paths for this snapshot; folders are never scan targets."""
+    for index, node in enumerate(groups):
+        path = (*prefix, index)
+        yield path, node
+        if node.get("type") == "folder":
+            yield from walk_nodes(node.get("children", []), path)
+
+
+def walk_networks(groups):
+    return ((path, node) for path, node in walk_nodes(groups) if node.get("type") != "folder")
+
+
+def node_at(groups, path):
+    if isinstance(path, int):
+        path = (path,)
+    node = None
+    for index in path:
+        node = groups[index]
+        groups = node.get("children", [])
+    return node
+
+
+def siblings_at(groups, parent_path):
+    return node_at(groups, parent_path)["children"] if parent_path else groups
+
+
+def set_enabled(node, enabled):
+    if node.get("type") == "folder":
+        for child in node.get("children", []):
+            set_enabled(child, enabled)
+    else:
+        node["enabled"] = enabled
+
+
+def folder_state(node):
+    networks = [n for _, n in walk_networks([node])]
+    enabled = sum(n.get("enabled", True) for n in networks)
+    return "on" if networks and enabled == len(networks) else "mixed" if enabled else "off"
+
+
+def move_nodes(groups, paths, destination):
+    """Move selected roots without losing selection flags or creating cycles."""
+    from copy import deepcopy
+    paths = sorted(set(tuple(p) for p in paths))
+    roots = [p for p in paths if not any(p[:len(q)] == q for q in paths if len(q) < len(p))]
+    destination = tuple(destination)
+    if any(destination[:len(p)] == p for p in roots):
+        raise ValueError("Нельзя переместить папку в неё саму или во вложенную папку.")
+    candidate = deepcopy(groups)
+    target = siblings_at(candidate, destination)
+    nodes = [node_at(candidate, p) for p in roots]
+    existing = [n["name"] for n in target if all(n is not moving for moving in nodes)]
+    for node in nodes:
+        validate_name(node["name"], existing)
+        existing.append(node["name"])
+    for path in sorted(roots, reverse=True):
+        del siblings_at(candidate, path[:-1])[path[-1]]
+    target.extend(nodes)
+    return candidate

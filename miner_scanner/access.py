@@ -34,8 +34,10 @@ class AccessProfile:
                 raise ValueError('Ожидаются IPv4-адреса или подсети, например 10.33.6.0/24.') from None
 
     def matches(self, ip):
-        if not self.enabled:
-            return False
+        return self.enabled and self.applies_to(ip)
+
+    def applies_to(self, ip):
+        """Address scope independently of enablement, including explicit opt-outs."""
         if self.targets.strip() == '*':
             return True
         parts = self.targets.replace(';', ',').replace('\n', ',').split(',')
@@ -74,6 +76,13 @@ class AccessProfiles:
         # Unknown devices use only Antminer discovery credentials. VNish passwords
         # are used only after its REST API has positively identified the firmware.
         family = family or 'antminer'
+        # Jasminer and other CGI devices can be discovered with the HTTP
+        # discovery profile. Retain that fallback after identification/restart,
+        # unless the user configured an Other profile for this address. A
+        # disabled Other profile is an explicit opt-out, not a fallback trigger.
+        if family == 'other' and not any(
+                p.family == 'other' and p.applies_to(ip) for p in self.profiles):
+            family = 'antminer'
         matches = [p for p in self.profiles if p.family == family and p.matches(ip)]
         matches.sort(key=lambda p: p.targets.strip() == '*')
         result = []

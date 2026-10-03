@@ -27,8 +27,23 @@ def algorithm_for(model, data):
     return hint or "Unknown"
 
 
+def stock_model(resp):
+    """Prefer the system model over CGMiner's generic family label.
+
+    KS5 Pro reports KS5 in CGMiner while system.minertype names the variant.
+    Probe completion order must not make it appear to be a different device.
+    """
+    system = resp.get("system")
+    if isinstance(system, dict):
+        for key in ("minertype", "model"):
+            value = system.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return first_field(resp, {"model", "minertype", "product_type", "type", "g-model"})
+
+
 def parse_antminer_stock(ip, resp, diagnostics=("", ""), work_mode=None):
-    raw_model = first_field(resp, {"model", "minertype", "product_type", "type", "g-model"})
+    raw_model = stock_model(resp)
     model = raw_model or "Antminer Unknown"
     if raw_model and not model.lower().startswith("antminer"):
         model = f"Antminer {model}"

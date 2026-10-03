@@ -39,7 +39,8 @@ class ScannerTests(unittest.TestCase):
         self.factory.calls.clear()
         warm = self.service.poll("192.0.2.1")
         self.assertEqual(warm.identity.device_id, cold.identity.device_id)
-        self.assertEqual([key for _, key in self.factory.calls], ["stats", "summary", "config"])
+        self.assertEqual([key for _, key in self.factory.calls],
+                         ["stats", "summary", "config", "/cgi-bin/get_blink_status.cgi"])
         self.assertLess(warm.display["RequestCount"], cold_count)
         self.assertEqual(warm.telemetry.rate, 200e12)
 

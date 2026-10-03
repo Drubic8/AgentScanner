@@ -98,7 +98,7 @@ class Profile:
         if self.signature not in signatures(data):
             return False
         match = self.match or {}
-        for key, fields in (("firmware_versions", {"fw_version", "fwversion", "firmware_version", "system_filesystem_version"}), ("api_versions", {"api", "api_ver", "api_version"}), ("compile_times", {"compiletime"})):
+        for key, fields in (("firmware_versions", {"fw_version", "fwversion", "firmware_version", "system_filesystem_version"}), ("api_versions", {"api", "api_ver", "api_version"}), ("compile_times", {"compiletime"}), ("miner_versions", {"miner_version"})):
             if key in match and first_field(data, fields) not in match[key]:
                 return False
         if "models" in match and first_field(data, {"model", "minertype", "type", "product_type"}) not in match["models"]:

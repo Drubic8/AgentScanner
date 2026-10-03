@@ -18,6 +18,7 @@ from . import stock_compatibility
 from . import whatsminer_compatibility
 from . import vnish_compatibility
 from . import avalon_compatibility
+from . import elphapex_compatibility
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class ScannerService:
         self.options = options or ScanOptions()
         self._guard = RLock()
         self._locks = {}
+        self._command_locks = {}
         self._records = {}
         self._metadata = {}
         self._credentials = {}
@@ -75,6 +77,11 @@ class ScannerService:
     def lock_for(self, ip):
         with self._guard:
             return self._locks.setdefault(ip, RLock())
+
+    def command_lock_for(self, ip):
+        """A command keeps ownership through dispatch and deferred verification."""
+        with self._guard:
+            return self._command_locks.setdefault(ip, Lock())
 
     def set_credentials(self, ip, credentials):
         """Explicit per-device credentials, held in memory for this session only."""
@@ -251,6 +258,17 @@ class ScannerService:
                     compatibility = vnish_compatibility.resolve(data.get('vnish_info'), evidence)
                     self._control_contracts[ip] = compatibility
                     stock_compatibility.apply_capabilities(record, profile, compatibility)
+                elif profile.control == 'elphapex':
+                    cached = self._interface_cache.get(ip)
+                    if (not force_identify and cached and cached[0] == record.identity.fingerprint
+                            and time.monotonic() - cached[1] < options.metadata_ttl):
+                        evidence = cached[2]
+                    else:
+                        evidence = elphapex_compatibility.probe(transport)
+                        self._interface_cache[ip] = (record.identity.fingerprint, time.monotonic(), evidence)
+                    compatibility = elphapex_compatibility.resolve(record, evidence, data.get('elphapex_config'))
+                    self._control_contracts[ip] = compatibility
+                    stock_compatibility.apply_capabilities(record, profile, compatibility)
                 elif profile.control == 'avalon':
                     compatibility = avalon_compatibility.resolve(transport, data)
                     self._control_contracts[ip] = compatibility
@@ -259,6 +277,9 @@ class ScannerService:
                     compatibility = whatsminer_compatibility.resolve(data.get('rpc_info'))
                     self._control_contracts[ip] = compatibility
                     stock_compatibility.apply_capabilities(record, profile, compatibility)
+                from .identify import read_state
+                record.telemetry.identify_enabled = read_state(profile.control, transport, data,
+                                                               compatibility=self._control_contracts.get(ip))
                 if (profile.parser == "antminer" and record.display.get("Status") == "Unknown"
                         and record.display.get("Error") == "STATE UNCONFIRMED"
                         and "config:auth_required" in op.errors):
