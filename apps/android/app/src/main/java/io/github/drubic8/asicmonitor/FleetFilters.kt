@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -62,7 +63,7 @@ internal fun FleetFilters(devices: List<Device>, state: String, led: String, mod
 @Composable
 internal fun LedIndicator(device: Device) {
     val enabled = if (device.stale) null else device.led
-    Icon(if (enabled == true) Icons.Outlined.Lightbulb else Icons.Outlined.LightbulbOutline,
+    Icon(if (enabled == true) Icons.Filled.Lightbulb else Icons.Outlined.Lightbulb,
         when (enabled) { true -> "LED включён"; false -> "LED выключен"; null -> "LED неизвестно" },
         tint = if (enabled == true) Amber else Muted, modifier = Modifier.size(18.dp))
 }
