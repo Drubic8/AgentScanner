@@ -32,7 +32,7 @@ data class Device(val id: String, val ip: String, val model: String, val firmwar
 
 data class MonitorState(val ready: Boolean = false, val busy: Boolean = false,
     val stopping: Boolean = false, val processed: Int = 0, val total: Int = 0,
-    val errors: Int = 0, val status: String = "Подготовка сканера…", val notice: String = "",
+    val errors: Int = 0, val status: String = tr("Подготовка сканера…"), val notice: String = "",
     val devices: List<Device> = emptyList(), val groups: List<NetworkGroup> = emptyList(),
     val workers: Int = 8, val auth: String = "digest", val compact: Boolean = true,
     val commanding: Boolean = false, val commandTotal: Int = 0, val results: List<DeviceCommandResult> = emptyList(),
@@ -57,7 +57,7 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
             viewModelScope.launch {
                 if (state.value.busy && operationNetwork == network) {
                     cancel()
-                    notice("Соединение изменилось. Проверьте сеть и запустите сканирование заново.")
+                    notice(tr("Соединение изменилось. Проверьте сеть и запустите сканирование заново."))
                 }
             }
         }
@@ -68,14 +68,14 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
             connectivity.registerNetworkCallback(NetworkRequest.Builder()
                 .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(), networkCallback)
             callbackRegistered = true
-        } catch (_: RuntimeException) { notice("Не удалось подключить наблюдение за сетью.") }
+        } catch (_: RuntimeException) { notice(tr("Не удалось подключить наблюдение за сетью.")) }
         viewModelScope.launch {
             try {
                 bridge = withContext(Dispatchers.IO) {
                     Python.getInstance().getModule("android_bridge").callAttr("MobileScanner", application.filesDir.absolutePath)
                 }
-                mutable.update { it.copy(ready = true, status = "Готов к сканированию") }
-            } catch (_: Exception) { mutable.update { it.copy(status = "Не удалось загрузить сканер. Перезапустите приложение.") } }
+                mutable.update { it.copy(ready = true, status = tr("Готов к сканированию")) }
+            } catch (_: Exception) { mutable.update { it.copy(status = tr("Не удалось загрузить сканер. Перезапустите приложение.")) } }
         }
     }
 
@@ -104,11 +104,11 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
         if (it.folder == folder || it.folder.startsWith("$folder/")) it.copy(selected = selected) else it
     })
     suspend fun saveGroup(id: String?, name: String, ranges: String, folder: String = ""): String? {
-        if (name.trim().isEmpty()) return "Укажите название сети"
-        if (name.length > 80 || ranges.length > 16000) return "Слишком длинное название или список адресов"
+        if (name.trim().isEmpty()) return tr("Укажите название сети")
+        if (name.length > 80 || ranges.length > 16000) return tr("Слишком длинное название или список адресов")
         val folderPath = folder.split('/').map { it.trim() }.filter { it.isNotEmpty() }.joinToString("/")
-        if (folderPath.length > 240 || folderPath.split('/').size > 4) return "Максимум 4 уровня папок и 240 символов"
-        if (state.value.groups.any { it.id != id && it.folder == folderPath && it.name.equals(name.trim(), true) }) return "Такая сеть уже существует в папке"
+        if (folderPath.length > 240 || folderPath.split('/').size > 4) return tr("Максимум 4 уровня папок и 240 символов")
+        if (state.value.groups.any { it.id != id && it.folder == folderPath && it.name.equals(name.trim(), true) }) return tr("Такая сеть уже существует в папке")
         val validation = withContext(Dispatchers.IO) {
             JSONObject(Python.getInstance().getModule("android_bridge").callAttr("validate_ranges", ranges).toString())
         }
@@ -121,6 +121,10 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
     fun settings(workers: Int, auth: String) {
         preferences.edit().putInt("workers", workers).putString("auth", auth).apply()
         mutable.update { it.copy(workers = workers, auth = auth) }
+    }
+    fun language(value: String) {
+        AppLanguage.set(value)
+        preferences.edit().putString("language", AppLanguage.language).apply()
     }
     fun compact(value: Boolean) {
         preferences.edit().putBoolean("compact", value).apply()
@@ -137,7 +141,7 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
         val network = connectivity.activeNetwork?.takeIf { suitable(it) }
             ?: connectivity.allNetworks.firstOrNull { suitable(it) }
         if (network == null || !connectivity.bindProcessToNetwork(network)) {
-            notice("Подключитесь к Wi-Fi ASIC, Ethernet или VPN. Доступ к интернету не обязателен.")
+            notice(tr("Подключитесь к Wi-Fi ASIC, Ethernet или VPN. Доступ к интернету не обязателен."))
             return false
         }
         operationNetwork = network
@@ -151,10 +155,10 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
         val current = state.value
         if (!current.ready || current.busy || !foreground) return
         val ranges = current.groups.filter { it.selected }.joinToString("\n") { it.ranges }
-        if (ranges.isBlank()) { notice("Добавьте и выберите сеть во вкладке «Сети»."); return }
+        if (ranges.isBlank()) { notice(tr("Добавьте и выберите сеть во вкладке «Сети».")); return }
         if (!networkReady()) return
         mutable.update { it.copy(busy = true, stopping = false, commanding = false, results = emptyList(),
-            notice = "", status = "Сканирование…") }
+            notice = "", status = tr("Сканирование…")) }
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { bridge.callAttr("start", ranges, username, password, current.auth, current.workers) }
@@ -165,8 +169,8 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
                 throw cancelled
             } catch (_: Exception) {
                 bridge.callAttr("cancel")
-                mutable.update { it.copy(busy = false, status = "Не удалось начать сканирование",
-                    notice = "Проверьте адреса и общий лимит: 4096 IP.") }
+                mutable.update { it.copy(busy = false, status = tr("Не удалось начать сканирование"),
+                    notice = tr("Проверьте адреса и общий лимит: 4096 IP.")) }
             } finally {
                 releaseNetwork()
             }
@@ -177,7 +181,7 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
         val targets = JSONArray()
         devices.forEach { targets.put(JSONObject().put("ip", it.ip).put("device_id", it.id)) }
         mutable.update { it.copy(busy = true, stopping = false, commanding = true, commandTotal = devices.size,
-            results = emptyList(), notice = "", status = "Отправка команды…") }
+            results = emptyList(), notice = "", status = tr("Отправка команды…")) }
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { bridge.callAttr("command_many", targets.toString(), action,
@@ -189,8 +193,8 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
                 throw cancelled
             } catch (_: Exception) {
                 bridge.callAttr("cancel")
-                mutable.update { it.copy(busy = false, status = "Команда не выполнена",
-                    notice = "Для этого устройства нет подтверждённой команды. Обновите сканирование.") }
+                mutable.update { it.copy(busy = false, status = tr("Команда не выполнена"),
+                    notice = tr("Для этого устройства нет подтверждённой команды. Обновите сканирование.")) }
             } finally {
                 releaseNetwork()
             }
@@ -216,16 +220,16 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
                 total = snapshot.getInt("total"), errors = snapshot.getInt("errors"),
                 commanding = commanding, commandTotal = snapshot.optInt("command_total"), results = results,
                 history = history, historyDropped = snapshot.optInt("history_dropped"),
-                status = if (running) it.status else if (snapshot.getBoolean("cancelled")) "Остановлено" else "Завершено",
+                status = if (running) it.status else if (snapshot.getBoolean("cancelled")) tr("Остановлено") else tr("Завершено"),
                 notice = if (running) it.notice else snapshot.getString("error").ifBlank {
-                    if (commanding) "Обработано устройств: ${results.size}. Результаты — в журнале команд." else it.notice
+                    if (commanding) tr("Обработано устройств: {p0}. Результаты — в журнале команд.", "p0" to (results.size)) else it.notice
                 }) }
             if (running) delay(500)
         } while (running)
     }
     fun cancel() {
         if (!state.value.ready || !state.value.busy) return
-        mutable.update { it.copy(stopping = true, status = "Останавливаем…") }
+        mutable.update { it.copy(stopping = true, status = tr("Останавливаем…")) }
         // Event.set is immediate; network calls finish within their existing timeout.
         bridge.callAttr("cancel")
     }
@@ -238,8 +242,8 @@ class MonitorViewModel(application: Application) : AndroidViewModel(application)
                         ?: error("No output stream")
                     stream.bufferedWriter(Charsets.UTF_8).use { it.write(csv) }
                 }
-                notice("CSV-отчёт сохранён")
-            } catch (_: Exception) { notice("Не удалось сохранить отчёт. Выберите другой файл.") }
+                notice(tr("CSV-отчёт сохранён"))
+            } catch (_: Exception) { notice(tr("Не удалось сохранить отчёт. Выберите другой файл.")) }
         }
     }
     override fun onCleared() {

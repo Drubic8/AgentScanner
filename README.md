@@ -8,7 +8,7 @@
 
 **[Скачать для Windows](https://github.com/Drubic8/AgentScanner/releases/latest)** · **[Руководство пользователя](docs/user_guide.md)** · **[Сообщить об ошибке](https://github.com/Drubic8/AgentScanner/issues/new/choose)** · **[Участие в разработке](CONTRIBUTING.md)**
 
-**Android:** [скачать тестовый APK 2.2.0](https://github.com/Drubic8/AgentScanner/releases/tag/v2.2.0)
+**Android:** [скачать тестовый APK 2.2.1](https://github.com/Drubic8/AgentScanner/releases/tag/v2.2.1)
 · [установка и сборка](apps/android/README.md). Первая тестовая версия с нативным интерфейсом
 и общим ядром сканера. APK собирается в
 [GitHub Actions](https://github.com/Drubic8/AgentScanner/actions/workflows/android.yml).
@@ -63,6 +63,14 @@ Get-FileHash .\ASIC_Monitor.exe -Algorithm SHA256
 Неподтверждённые команды по умолчанию заблокированы. Экспериментальное управление включается явно для выбранных устройств на текущий сеанс. Low/HEM доступны только при наличии соответствующего правила профиля. В Windows [профили доступа](docs/access_profiles.md) сохраняются с защитой DPAPI; стандартные профили Antminer и VNish доступны сразу. Токены остаются в памяти.
 
 Для проверки оборудования используйте [матрицу испытаний](docs/testing/asic_acceptance.xlsx) и [инструкцию по диагностике](docs/testing/README.md). Результаты отдельных аппаратных проверок записаны в документации; их нельзя переносить на все прошивки производителя.
+
+## Новое в 2.2.1
+
+Новая иконка Windows и Android. Русский и английский языки всего интерфейса:
+главное окно, настройки, сети, фильтры, меню и команды. Язык меняется в настройках
+без перезапуска; результаты и журнал сохраняются.
+
+[Изменения версии 2.2.1](docs/releases/2.2.1.md) · [История выпусков](CHANGELOG.md)
 
 ## Новое в 2.2.0
 
@@ -138,7 +146,7 @@ Android, аппаратное подтверждение совместимос�
 
 ## English summary
 
-ASIC Monitor is a local Windows desktop application for ASIC discovery, telemetry and reports. Download `ASIC_Monitor.exe` from [Releases](https://github.com/Drubic8/AgentScanner/releases/latest); Python is not required for the executable. The GUI is currently in Russian. The Python scanner core can be used without Qt. Device profiles exist for several firmware families, but hardware compatibility and control commands require validation on the exact device and firmware. Contributions and bug reports in Russian or English are welcome.
+ASIC Monitor is a local Windows desktop application for ASIC discovery, telemetry and reports. Download `ASIC_Monitor.exe` from [Releases](https://github.com/Drubic8/AgentScanner/releases/latest); Python is not required for the executable. The Windows and Android interfaces support Russian and English; choose Interface language in Settings. The Python scanner core can be used without Qt. Device profiles exist for several firmware families, but hardware compatibility and control commands require validation on the exact device and firmware. Contributions and bug reports in Russian or English are welcome.
 
 ## Лицензия
 

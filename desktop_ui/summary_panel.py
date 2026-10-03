@@ -1,4 +1,5 @@
 """Compact totals with keyboard-accessible, scrollable full details."""
+from .i18n import tr
 from html import escape
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QPlainTextEdit,
@@ -41,7 +42,7 @@ class SummaryPanel(QFrame):
         row = QHBoxLayout()
         row.setSpacing(18)
         self.metrics = []
-        for title, weight in (("Устройства", 2), ("Модели", 2), ("Хешрейт", 3)):
+        for title, weight in ((tr('Устройства'), 2), (tr('Модели'), 2), (tr('Хешрейт'), 3)):
             metric = QWidget()
             metric.setMinimumWidth(0)
             metric.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
@@ -72,11 +73,11 @@ class SummaryPanel(QFrame):
         self.details.setObjectName("SummaryDetails")
         self.details.setFixedHeight(150)
         self.detail_texts = []
-        for label in ("Состояния", "Модели", "Хешрейт"):
+        for label in (tr('Состояния'), tr('Модели'), tr('Хешрейт')):
             view = QPlainTextEdit()
             view.setReadOnly(True)
             view.setTabChangesFocus(True)
-            view.setAccessibleName("Итоги: " + label)
+            view.setAccessibleName(tr('Итоги: ') + label)
             self.details.addTab(view, label)
             self.detail_texts.append(view)
         self.details.setCurrentIndex(1)
@@ -87,15 +88,15 @@ class SummaryPanel(QFrame):
         self.toggle.blockSignals(True)
         self.toggle.setChecked(expanded)
         self.toggle.blockSignals(False)
-        self.toggle.setText("Скрыть итоги" if expanded else "Подробнее")
-        self.toggle.setAccessibleName("Свернуть подробные итоги" if expanded else "Раскрыть подробные итоги сканирования")
+        self.toggle.setText(tr('Скрыть итоги') if expanded else tr('Подробнее'))
+        self.toggle.setAccessibleName(tr('Свернуть подробные итоги') if expanded else tr('Раскрыть подробные итоги сканирования'))
         self.details.setVisible(expanded)
         self.updateGeometry()
         if emit:
             self.expanded_changed.emit(expanded)
 
     def update_totals(self, total, statuses, models, hashrates):
-        states = [f"{key}: {value['val']}" for key, value in statuses.items() if key != "Всего устройств"]
+        states = [f"{key}: {value['val']}" for key, value in statuses.items() if key != tr('Всего устройств')]
         model_lines = [f"{key}: {value['val']}" for key, value in models.items()]
         hash_lines = [f"{key}: {value['val']}" for key, value in hashrates.items()]
         rate_value = "—"
@@ -103,10 +104,10 @@ class SummaryPanel(QFrame):
             key, value = next(iter(hashrates.items()))
             rate_value = f"{value['val']} {key.partition(' · ')[2]}".strip()
         elif hashrates:
-            rate_value = f"{len(hashrates)} групп"
-        entries = ((str(total), states, "Ожидание результатов"),
-                   (str(len(models)), model_lines, "Появятся после сканирования"),
-                   (rate_value, hash_lines, "Нет актуальных измерений"))
+            rate_value = tr('{p0} групп', p0=len(hashrates))
+        entries = ((str(total), states, tr('Ожидание результатов')),
+                   (str(len(models)), model_lines, tr('Появятся после сканирования')),
+                   (rate_value, hash_lines, tr('Нет актуальных измерений')))
         for (value, hint), details, (number, lines, empty) in zip(self.metrics, self.detail_texts, entries):
             value.set_full_text(number)
             hint.set_full_text(" · ".join(lines) or empty)
@@ -116,8 +117,8 @@ class SummaryPanel(QFrame):
                 details.setPlainText(text)
                 details.verticalScrollBar().setValue(position)
         # Keep faults visible first when there is not enough room for every state.
-        critical = ("Ошибка", "Неизвестно", "Устаревшие данные")
+        critical = (tr('Ошибка'), tr('Неизвестно'), tr('Устаревшие данные'))
         state_summary = [f"{key}: {statuses[key]['val']}" for key in critical if key in statuses]
         state_summary.extend(f"{key}: {value['val']}" for key, value in statuses.items()
-                             if key not in (*critical, "Всего устройств"))
-        self.metrics[0][1].set_full_text(" · ".join(state_summary) or "Ожидание результатов")
+                             if key not in (*critical, tr('Всего устройств')))
+        self.metrics[0][1].set_full_text(" · ".join(state_summary) or tr('Ожидание результатов'))

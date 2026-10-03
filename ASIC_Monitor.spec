@@ -4,6 +4,7 @@ from PyInstaller.utils.hooks import collect_data_files
 
 root = Path(SPECPATH)
 resources = collect_data_files("miner_scanner.profiles")
+resources += collect_data_files("desktop_ui", includes=["locales/*.json"])
 resources += [(str(root / name), ".") for name in ("version.json", "app.ico", "LICENSE")]
 a = Analysis(
     [str(root / "gemini_gui.py")], pathex=[str(root)], binaries=[], datas=resources,

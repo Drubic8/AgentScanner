@@ -89,6 +89,17 @@ def run_smoke(app, window_type, output):
         app.processEvents()
         journal.grab().save(str(output / "journal-dark.png"))
         journal.language_box.setCurrentIndex(journal.language_box.findData("en"))
+        assert window.btn_scan.text() == "Start scan"
+        assert len(window.scan_data) == 6
+        assert window.table.rowCount() == 6
+        assert not window.windowIcon().isNull()
+        window.grab().save(str(output / "dashboard-en.png"))
+        english_settings = SettingsDialog(window.app_settings, window)
+        assert english_settings.navigation.item(0).text() == "General"
+        english_settings.show()
+        app.processEvents()
+        english_settings.grab().save(str(output / "settings-en.png"))
+        english_settings.close()
         journal.outcome.setCurrentIndex(journal.outcome.findData("unconfirmed"))
         assert journal.proxy.rowCount() == 6
         app.processEvents()

@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.viewModels
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,6 +23,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -42,6 +44,7 @@ class MainActivity : ComponentActivity() {
     private val model: MonitorViewModel by viewModels()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppLanguage.initialize(applicationContext)
         enableEdgeToEdge()
         setContent { MaterialTheme(colorScheme = Palette) { MonitorApp(model) } }
     }
@@ -71,11 +74,11 @@ private fun MonitorApp(model: MonitorViewModel) {
     }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(state.notice) {
-        if (state.notice.isNotBlank()) { snackbar.showSnackbar(state.notice); model.notice("") }
+        if (state.notice.isNotBlank()) { snackbar.showSnackbar(tr(state.notice)); model.notice("") }
     }
     Scaffold(snackbarHost = { SnackbarHost(snackbar) }, bottomBar = {
         NavigationBar(containerColor = Color.White) {
-            listOf("Устройства" to Icons.Outlined.Dns, "Сети" to Icons.Outlined.Lan, "Настройки" to Icons.Outlined.Tune)
+            listOf(tr("Устройства") to Icons.Outlined.Dns, tr("Сети") to Icons.Outlined.Lan, tr("Настройки") to Icons.Outlined.Tune)
                 .forEachIndexed { index, item ->
                     NavigationBarItem(selected = tab == index, onClick = { tab = index },
                         icon = { Icon(item.second, contentDescription = null) }, label = { Text(item.first) })
@@ -85,11 +88,11 @@ private fun MonitorApp(model: MonitorViewModel) {
         Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
         Column(Modifier.widthIn(max = 840.dp).fillMaxSize()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.Memory, null, tint = Blue, modifier = Modifier.size(30.dp))
+                Image(painterResource(R.drawable.ic_launcher), contentDescription = null, modifier = Modifier.size(30.dp))
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text("ASIC Monitor", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text("Локальная сеть", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    Text(tr("Локальная сеть"), color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
                 Text(BuildConfig.VERSION_NAME, style = MaterialTheme.typography.labelSmall, color = Muted)
             }
@@ -98,7 +101,7 @@ private fun MonitorApp(model: MonitorViewModel) {
                     onNetworks = { tab = 1 }, onExport = { exporter.launch("ASIC_Monitor.csv") }, onDevice = { detail = it },
                     onCompact = model::compact, onCommand = { commandTargets = it }, onJournal = { journalOpen = true })
                 1 -> NetworksScreen(model, state)
-                2 -> SettingsScreen(state, username, password, { username = it }, { password = it }, model::settings)
+                2 -> SettingsScreen(state, username, password, { username = it }, { password = it }, model::settings, model::language)
             }
         }
         }
@@ -130,10 +133,10 @@ private fun NetworksScreen(model: MonitorViewModel, state: MonitorState) {
     var collapsed by rememberSaveable { mutableStateOf(emptyList<String>()) }
     val entries = remember(state.groups, collapsed) { networkEntries(state.groups, collapsed.toSet()) }
     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { Text("Сети оборудования", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold) }
-        item { Text("Сохраните площадки и выбирайте, где искать ASIC. Общий лимит одного сканирования — 4096 IP.", color = Muted) }
+        item { Text(tr("Сети оборудования"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold) }
+        item { Text(tr("Сохраните площадки и выбирайте, где искать ASIC. Общий лимит одного сканирования — 4096 IP."), color = Muted) }
         item { Button(onClick = { editing = null; editorOpen = true }, enabled = state.ready && !state.busy) {
-            Icon(Icons.Outlined.Add, null); Spacer(Modifier.width(8.dp)); Text("Добавить сеть")
+            Icon(Icons.Outlined.Add, null); Spacer(Modifier.width(8.dp)); Text(tr("Добавить сеть"))
         } }
         items(entries, key = { it.key }) { entry ->
             if (entry.group == null) FolderRow(entry, state.groups, entry.folder in collapsed, state.busy,
@@ -149,19 +152,19 @@ private fun NetworksScreen(model: MonitorViewModel, state: MonitorState) {
                             Text(group.name, fontWeight = FontWeight.SemiBold)
                             Text(group.ranges, color = Muted, style = MaterialTheme.typography.bodySmall)
                         }
-                        IconButton(enabled = !state.busy, onClick = { editing = group; editorOpen = true }) { Icon(Icons.Outlined.Edit, "Изменить ${group.name}") }
-                        IconButton(enabled = !state.busy, onClick = { removing = group }) { Icon(Icons.Outlined.DeleteOutline, "Удалить ${group.name}") }
+                        IconButton(enabled = !state.busy, onClick = { editing = group; editorOpen = true }) { Icon(Icons.Outlined.Edit, tr("Изменить {p0}", "p0" to (group.name))) }
+                        IconButton(enabled = !state.busy, onClick = { removing = group }) { Icon(Icons.Outlined.DeleteOutline, tr("Удалить {p0}", "p0" to (group.name))) }
                     }
                 }
             }
         }
         }
-        if (state.groups.isEmpty()) item { Text("Например: «Площадка 1» с диапазоном 192.168.1.1–192.168.1.254. Автоматическое сканирование чужих сетей не запускается.", color = Muted) }
+        if (state.groups.isEmpty()) item { Text(tr("Например: «Площадка 1» с диапазоном 192.168.1.1–192.168.1.254. Автоматическое сканирование чужих сетей не запускается."), color = Muted) }
     }
     if (editorOpen) NetworkEditor(editing, model) { editorOpen = false }
-    removing?.let { group -> AlertDialog(onDismissRequest = { removing = null }, title = { Text("Удалить сеть?") },
-        text = { Text(group.name) }, confirmButton = { TextButton(onClick = { model.deleteGroup(group.id); removing = null }) { Text("Удалить") } },
-        dismissButton = { TextButton(onClick = { removing = null }) { Text("Отмена") } }) }
+    removing?.let { group -> AlertDialog(onDismissRequest = { removing = null }, title = { Text(tr("Удалить сеть?")) },
+        text = { Text(group.name) }, confirmButton = { TextButton(onClick = { model.deleteGroup(group.id); removing = null }) { Text(tr("Удалить")) } },
+        dismissButton = { TextButton(onClick = { removing = null }) { Text(tr("Отмена")) } }) }
 }
 
 @Composable
@@ -172,14 +175,14 @@ private fun NetworkEditor(group: NetworkGroup?, model: MonitorViewModel, onDismi
     var error by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    AlertDialog(onDismissRequest = { if (!saving) onDismiss() }, title = { Text(if (group == null) "Новая сеть" else "Изменить сеть") }, text = {
+    AlertDialog(onDismissRequest = { if (!saving) onDismiss() }, title = { Text(if (group == null) tr("Новая сеть") else tr("Изменить сеть")) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(name, { name = it }, label = { Text("Название") }, singleLine = true)
-            OutlinedTextField(folder, { folder = it }, label = { Text("Папка (необязательно)") }, singleLine = true,
-                supportingText = { Text("Например: Площадка 1/Сон. Пустое поле — без папки.") })
-            OutlinedTextField(ranges, { ranges = it }, label = { Text("IP-адреса и подсети") }, minLines = 3,
+            OutlinedTextField(name, { name = it }, label = { Text(tr("Название")) }, singleLine = true)
+            OutlinedTextField(folder, { folder = it }, label = { Text(tr("Папка (необязательно)")) }, singleLine = true,
+                supportingText = { Text(tr("Например: Площадка 1/Сон. Пустое поле — без папки.")) })
+            OutlinedTextField(ranges, { ranges = it }, label = { Text(tr("IP-адреса и подсети")) }, minLines = 3,
                 placeholder = { Text("192.168.1.0/24\n192.168.2.10-30") })
-            Text("IPv4, CIDR или диапазон. Несколько записей — с новой строки.", style = MaterialTheme.typography.bodySmall)
+            Text(tr("IPv4, CIDR или диапазон. Несколько записей — с новой строки."), style = MaterialTheme.typography.bodySmall)
             if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
         }
     }, confirmButton = { Button(enabled = !saving, onClick = {
@@ -188,39 +191,40 @@ private fun NetworkEditor(group: NetworkGroup?, model: MonitorViewModel, onDismi
             try {
                 val result = model.saveGroup(group?.id, name, ranges, folder)
                 if (result == null) onDismiss() else error = result
-            } catch (_: Exception) { error = "Не удалось сохранить сеть" }
+            } catch (_: Exception) { error = tr("Не удалось сохранить сеть") }
             saving = false
         }
-    }) { Text("Сохранить") } }, dismissButton = { TextButton(enabled = !saving, onClick = onDismiss) { Text("Отмена") } })
+    }) { Text(tr("Сохранить")) } }, dismissButton = { TextButton(enabled = !saving, onClick = onDismiss) { Text(tr("Отмена")) } })
 }
 
 @Composable
 private fun SettingsScreen(state: MonitorState, username: String, password: String,
-    onUsername: (String) -> Unit, onPassword: (String) -> Unit, onSettings: (Int, String) -> Unit) {
+    onUsername: (String) -> Unit, onPassword: (String) -> Unit, onSettings: (Int, String) -> Unit, onLanguage: (String) -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Настройки", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-        Text("Доступ к ASIC", style = MaterialTheme.typography.titleMedium)
-        Text("Логин и пароль действуют в текущем сеансе. На диск и в отчёты они не записываются.", color = Muted)
-        Text("Пустые поля: стандартные профили Antminer root/root, VNish admin или root, WhatsMiner super/super. Свой пароль укажите ниже.",
+        Text(tr("Настройки"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+        ChoiceField(tr("Язык интерфейса"), AppLanguage.language, linkedMapOf("ru" to "Русский", "en" to "English"), onLanguage)
+        Text(tr("Доступ к ASIC"), style = MaterialTheme.typography.titleMedium)
+        Text(tr("Логин и пароль действуют в текущем сеансе. На диск и в отчёты они не записываются."), color = Muted)
+        Text(tr("Пустые поля: стандартные профили Antminer root/root, VNish admin или root, WhatsMiner super/super. Свой пароль укажите ниже."),
             style = MaterialTheme.typography.bodySmall, color = Muted)
-        OutlinedTextField(username, onUsername, enabled = !state.busy, label = { Text("Логин") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(password, onPassword, enabled = !state.busy, label = { Text("Пароль") }, singleLine = true,
+        OutlinedTextField(username, onUsername, enabled = !state.busy, label = { Text(tr("Логин")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(password, onPassword, enabled = !state.busy, label = { Text(tr("Пароль")) }, singleLine = true,
             visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth())
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("digest", "basic").forEach { auth -> FilterChip(selected = state.auth == auth,
                 enabled = !state.busy, onClick = { onSettings(state.workers, auth) }, label = { Text(auth.replaceFirstChar { it.uppercase() }) }) }
         }
         HorizontalDivider()
-        Text("Скорость сканирования", style = MaterialTheme.typography.titleMedium)
-        Text("Число одновременных запросов к устройствам. Начните с 8; для слабой Wi-Fi сети выберите 4.", color = Muted)
+        Text(tr("Скорость сканирования"), style = MaterialTheme.typography.titleMedium)
+        Text(tr("Число одновременных запросов к устройствам. Начните с 8; для слабой Wi-Fi сети выберите 4."), color = Muted)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(4, 8, 16, 32).forEach { workers -> FilterChip(selected = state.workers == workers,
                 enabled = !state.busy, onClick = { onSettings(workers, state.auth) }, label = { Text("$workers") }) }
         }
         HorizontalDivider()
-        Text("О приложении", style = MaterialTheme.typography.titleMedium)
-        Text("Android ${BuildConfig.VERSION_NAME}\nОбщее ядро сканирования ASIC Monitor", color = Muted)
-        Text("При уходе из приложения сканирование останавливается. Уже найденные устройства остаются до закрытия процесса. Для круглосуточного мониторинга используйте агент на ПК.", color = Muted)
-        Text("Тестовая версия. Совместимость с конкретными ASIC нужно проверить в вашей сети. HTTP API оборудования может передавать данные без шифрования.", style = MaterialTheme.typography.bodySmall, color = Muted)
+        Text(tr("О приложении"), style = MaterialTheme.typography.titleMedium)
+        Text(tr("Android {p0}\nОбщее ядро сканирования ASIC Monitor", "p0" to (BuildConfig.VERSION_NAME)), color = Muted)
+        Text(tr("При уходе из приложения сканирование останавливается. Уже найденные устройства остаются до закрытия процесса. Для круглосуточного мониторинга используйте агент на ПК."), color = Muted)
+        Text(tr("Тестовая версия. Совместимость с конкретными ASIC нужно проверить в вашей сети. HTTP API оборудования может передавать данные без шифрования."), style = MaterialTheme.typography.bodySmall, color = Muted)
     }
 }

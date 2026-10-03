@@ -1,5 +1,6 @@
 {
-  "version": "2.2.0",
+  "version": "2.2.1",
   "url": "https://github.com/Drubic8/AgentScanner/releases/latest/download/ASIC_Monitor.exe",
-  "changelog": "Компактный интерфейс Windows, дерево подсетей, LED и фильтры устройств. Обновлённый журнал и быстрые групповые команды. Улучшена совместимость Antminer, VNish, Elphapex и PitBit. Android: компактный список, команды управления, папки сетей, LED, Real/Avg Hash и журнал с экспортом CSV."
+  "changelog": "Новая общая иконка Windows и Android. Русский и английский языки всего интерфейса: главное окно, настройки, сети, фильтры, команды и диалоги. Переключение языка сохраняется и применяется без перезапуска.",
+  "changelog_en": "New shared Windows and Android icon. Russian and English throughout the interface: overview, settings, networks, filters, commands and dialogs. Language changes are saved and applied without restarting."
 }

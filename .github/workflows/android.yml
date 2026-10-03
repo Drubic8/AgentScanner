@@ -1,7 +1,7 @@
 name: Android APK
 on:
   pull_request:
-    paths: ['apps/android/**', 'miner_scanner/**', 'tests/test_android_bridge.py', '.github/workflows/android.yml']
+    paths: ['apps/android/**', 'miner_scanner/**', 'desktop_ui/locales/**', 'tests/test_android_bridge.py', '.github/workflows/android.yml']
   workflow_dispatch:
   workflow_call:
 permissions:
