@@ -113,8 +113,12 @@ class SettingsDialog(QDialog):
         self.workers.setValue(self.settings["workers"])
         form.addRow("Ожидание ответа", self.timeout)
         form.addRow("Параллельные устройства", self.workers)
+        self.command_workers = QSpinBox()
+        self.command_workers.setRange(1, 32)
+        self.command_workers.setValue(self.settings['command_workers'])
+        form.addRow("Параллельная отправка команд", self.command_workers)
         layout.addLayout(form)
-        hint = QLabel("По умолчанию: 2 секунды и 64 устройства. Для медленной сети увеличьте ожидание и уменьшите параллельность.\n\nЛогин и пароль задаются отдельно через «Доступ к ASIC» и действуют до закрытия программы.")
+        hint = QLabel("Сканирование: по умолчанию 2 секунды и 64 устройства. Команды: до 32 устройств одновременно, проверка результата выполняется отдельно. Для медленной сети уменьшите параллельность.\n\nПрофили логинов и паролей настраиваются через «Доступ к ASIC».")
         hint.setWordWrap(True)
         hint.setObjectName("Muted")
         layout.addWidget(hint)
@@ -199,6 +203,7 @@ class SettingsDialog(QDialog):
             updated[key] = selected
         updated.update(theme=self.theme.currentData(), density=self.density.currentData(),
                        timeout=self.timeout.value(), workers=self.workers.value(),
+                       command_workers=self.command_workers.value(),
                        check_updates=self.check_updates.isChecked())
         for kind in ("pdf", "csv"):
             updated["export_dir" if kind == "pdf" else "export_csv_dir"] = getattr(self, f"{kind}_path").text().strip()

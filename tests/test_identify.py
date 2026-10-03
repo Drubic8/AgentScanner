@@ -84,6 +84,8 @@ class IdentifyUITests(unittest.TestCase):
         self.addCleanup(window.close)
         col = list(COLUMNS).index('LED')
         self.assertEqual(window.table.horizontalHeader().visualIndex(col), 1)
+        self.assertEqual(window.table.horizontalHeaderItem(col).text(), 'LED')
+        self.assertLessEqual(window.table.columnWidth(col), 46)
         rows = [{'IP': '192.0.2.2', 'SortIP': 2, 'IdentifyEnabled': False, 'LED': 'Выключена'},
                 {'IP': '192.0.2.1', 'SortIP': 1, 'IdentifyEnabled': True, 'LED': 'Включена'}]
         window.on_result(rows)

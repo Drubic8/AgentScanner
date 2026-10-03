@@ -7,7 +7,7 @@ COLUMNS = {
     "IP": "IP-адрес", "Model": "Модель", "Algo": "Алгоритм", "Status": "Состояние",
     "Error": "Ошибки", "Uptime": "Время работы", "Real HR": "Хешрейт",
     "Avg HR": "Средний хешрейт", "Temp": "Температура", "Fan": "Вентиляторы",
-    "Pool": "Пул", "Worker": "Воркер", "LED": "Подсветка",
+    "Pool": "Пул", "Worker": "Воркер", "LED": "LED",
 }
 
 
@@ -20,7 +20,7 @@ def data_directory():
 
 def defaults():
     return dict(scan_bitmain=True, scan_whatsminer=True, scan_elphapex=True,
-                scan_other=True, timeout=2, workers=64, theme="system", density="comfortable",
+                scan_other=True, timeout=2, workers=64, command_workers=32, theme="system", density="comfortable",
                 check_updates=False, columns_version=2, export_dir="", export_csv_dir="", copy_pdf=False,
                 copy_csv=False, pdf_sort="IP", csv_sort="IP", ui_cols=list(COLUMNS),
                 pdf_cols=list(COLUMNS), csv_cols=list(COLUMNS))
@@ -36,7 +36,7 @@ def normalize(settings):
             result[key] = value if isinstance(value, bool) else default
         elif isinstance(default, str):
             result[key] = value if isinstance(value, str) else default
-    for key, lo, hi in (("timeout", 1, 10), ("workers", 1, 128)):
+    for key, lo, hi in (("timeout", 1, 10), ("workers", 1, 128), ("command_workers", 1, 32)):
         try:
             result[key] = max(lo, min(hi, int(settings.get(key, result[key]))))
         except (TypeError, ValueError, OverflowError):

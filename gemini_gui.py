@@ -85,7 +85,7 @@ try:
     from miner_scanner.runtime import ScanOptions
     from miner_scanner.ranges import expand_ranges
     from miner_scanner.service import default_service
-    from miner_scanner.commands import execute_command
+    from miner_scanner.batch import execute_batch
     from miner_scanner.models import Credentials
     SCANNER_AVAIL = True
 except ImportError:
@@ -262,44 +262,58 @@ class ScanWorker(QThread):
 class ActionWorker(QThread):
     log_signal = pyqtSignal(str)
     result_signal = pyqtSignal(list)
+    progress_signal = pyqtSignal(int, int, int, int)
 
-    def __init__(self, targets, action_type, experimental_ids=()):
+    def __init__(self, targets, action_type, experimental_ids=(), *, command_workers=32):
         super().__init__()
         self.targets = targets
         self.action = action_type
         self.experimental_ids = frozenset(experimental_ids)
+        self.command_workers = command_workers
 
     def run(self):
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import ThreadPoolExecutor
         service = default_service()
-        def perform(row):
-            result = execute_command(service, row['IP'], self.action,
-                                     device_id=row.get('DeviceId'),
-                                     allow_unverified=row.get('DeviceId') in self.experimental_ids)
-            # Preflight may refresh identity even when the write was skipped.
-            # After an attempted write, read the state once. Never replay it.
-            current = service.get_record(row['IP'])
-            if result.status in ('succeeded', 'unconfirmed'):
-                try:
-                    current = service.poll(row['IP']) or current
-                except Exception:
-                    pass  # Preserve the command result when readback fails.
-            return result, current.to_legacy() if current is not None else None
+        total = len({row['IP'] for row in self.targets})
+        processed = accepted = confirmed = 0
 
-        with ThreadPoolExecutor(max_workers=8, thread_name_prefix="asic-control") as executor:
-            futures = {
-                executor.submit(perform, row): row["IP"]
-                for row in self.targets
-            }
-            for future in as_completed(futures):
-                ip = futures[future]
-                try:
-                    result, current = future.result()
-                    if current is not None:
-                        self.result_signal.emit([current])
+        def progress():
+            self.progress_signal.emit(processed, total, accepted, confirmed)
+
+        def dispatched(ip, api_accepted):
+            nonlocal processed, accepted
+            processed += 1
+            accepted += bool(api_accepted)
+            progress()
+
+        def refresh(ip):
+            # Telemetry refresh has its own workers and never holds a dispatch slot.
+            try:
+                current = service.poll(ip)
+                if current is not None:
+                    self.result_signal.emit([current.to_legacy()])
+            except Exception as exc:
+                self.log_signal.emit(f"{ip}: не удалось обновить таблицу ({type(exc).__name__})")
+
+        progress()
+        with ThreadPoolExecutor(max_workers=8, thread_name_prefix="asic-refresh") as refresh_pool:
+            try:
+                for ip, result in execute_batch(service, self.targets, self.action,
+                        workers=self.command_workers, experimental_ids=self.experimental_ids,
+                        on_dispatch=dispatched):
+                    confirmed += result.status == 'succeeded'
                     self.log_signal.emit(f"{ip}: [{result.status}] {result.message}")
-                except Exception as exc:
-                    self.log_signal.emit(f"{ip}: ошибка управления ({type(exc).__name__})")
+                    progress()
+                    if result.status in ('succeeded', 'unconfirmed'):
+                        refresh_pool.submit(refresh, ip)
+                    else:
+                        current = service.get_record(ip)
+                        if current is not None:
+                            self.result_signal.emit([current.to_legacy()])
+            except Exception as exc:
+                self.log_signal.emit(f"Ошибка очереди команд ({type(exc).__name__})")
+        self.log_signal.emit(f"Команда '{self.action}': обработано {processed}/{total}, "
+                             f"принято API {accepted}, состояние подтверждено {confirmed}.")
 
 
 class PDFReport(FPDF):
@@ -651,6 +665,14 @@ class GeminiApp(QMainWindow):
         content_layout.addWidget(self.table_stack, 1)
 
         # 4. Footer
+        self.command_progress = QLabel()
+        self.command_progress.setObjectName("Muted")
+        self.command_progress.setWordWrap(True)
+        self.command_progress.setToolTip("Очередь — устройства, прошедшие этап подготовки и отправки, включая отказы. "
+            "Принято API — положительный ответ на запись. Подтверждено — нужное состояние прочитано из API; "
+            "разгон майнинга может продолжаться.")
+        self.command_progress.hide()
+        content_layout.addWidget(self.command_progress)
         footer = QHBoxLayout()
         self.status_bar = QLabel("Готов к работе")
         self.progress = QProgressBar()
@@ -740,8 +762,8 @@ class GeminiApp(QMainWindow):
         compact = density == "compact"
         self.table.verticalHeader().setDefaultSectionSize(32 if compact else 42)
         if getattr(self, '_applied_table_density', None) != density:
-            widths = ((118, 145, 90, 96, 115, 100, 112, 126, 100, 104, 170, 125, 108) if compact else
-                      (145, 180, 110, 120, 145, 130, 135, 155, 130, 135, 240, 170, 124))
+            widths = ((118, 145, 90, 96, 115, 100, 112, 126, 100, 104, 170, 125, 46) if compact else
+                      (145, 180, 110, 120, 145, 130, 135, 155, 130, 135, 240, 170, 46))
             for index, width in enumerate(widths):
                 self.table.setColumnWidth(index, width)
             self.table.setStyleSheet(
@@ -953,9 +975,15 @@ class GeminiApp(QMainWindow):
 
         self.add_log(f"🛠 Отправка команды '{action_type}' на {len(rows)} устройств...") 
         
-        worker = ActionWorker(targets, action_type, getattr(self, "experimental_device_ids", set()))
+        worker = ActionWorker(targets, action_type, getattr(self, "experimental_device_ids", set()),
+                              command_workers=self.app_settings.get("command_workers", 32))
         worker.log_signal.connect(self.handle_worker_log)
         worker.result_signal.connect(self.on_result)
+        def show_progress(processed, total, accepted, confirmed):
+            self.command_progress.setText(f"{nice_names.get(action_type, action_type)} · очередь {processed}/{total}"
+                                          f" · принято API {accepted} · подтверждено {confirmed}")
+            self.command_progress.show()
+        worker.progress_signal.connect(show_progress)
         if not hasattr(self, 'workers'):
             self.workers = []
         self.workers.append(worker)

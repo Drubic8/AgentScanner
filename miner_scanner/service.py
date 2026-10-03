@@ -31,6 +31,7 @@ class ScannerService:
         self.options = options or ScanOptions()
         self._guard = RLock()
         self._locks = {}
+        self._command_locks = {}
         self._records = {}
         self._metadata = {}
         self._credentials = {}
@@ -76,6 +77,11 @@ class ScannerService:
     def lock_for(self, ip):
         with self._guard:
             return self._locks.setdefault(ip, RLock())
+
+    def command_lock_for(self, ip):
+        """A command keeps ownership through dispatch and deferred verification."""
+        with self._guard:
+            return self._command_locks.setdefault(ip, Lock())
 
     def set_credentials(self, ip, credentials):
         """Explicit per-device credentials, held in memory for this session only."""

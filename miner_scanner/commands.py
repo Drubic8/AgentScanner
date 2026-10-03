@@ -4,7 +4,9 @@ import hashlib
 import json
 import re
 import time
-from threading import BoundedSemaphore, Event
+from contextlib import ExitStack
+from dataclasses import replace
+from threading import BoundedSemaphore, Event, Lock
 from uuid import uuid4
 
 import requests
@@ -18,7 +20,9 @@ from .whatsminer_compatibility import WhatsminerAccessError
 # Keep `normal` for existing callers; drivers receive only `mining_start`.
 ALIASES = {"led_on": "identify_on", "led_off": "identify_off",
            "sleep": "mining_stop", "wakeup": "mining_start", "normal": "mining_start"}
-_slots = BoundedSemaphore(8)
+MAX_COMMAND_WORKERS = 32
+_slots = BoundedSemaphore(MAX_COMMAND_WORKERS)
+_verification_slots = BoundedSemaphore(16)
 
 
 def mode_payload(config, target, model, *, pitbit=False):
@@ -291,37 +295,145 @@ def declarative_command(transport, rule):
     return accepted, verify
 
 
-def execute_command(service, ip, action, *, device_id=None, command_id=None, cancel=None, allow_unverified=False):
-    """No write retry. Experimental compatibility must be explicitly requested."""
+def _acquire(lock, cancel):
+    """Queue time is not network time; cancellation still interrupts waiting."""
+    while True:
+        if cancel.is_set():
+            raise Cancelled("Operation cancelled")
+        if lock.acquire(timeout=0.05):
+            return
+
+
+class PendingCommand:
+    """One write, then read-only verification on a separate worker.
+
+    The plain command lock can cross threads. Device RLocks are acquired and
+    released within each phase; the HTTP session is never used concurrently.
+    """
+    def __init__(self, service, ip, action, command_id, device_id, cancel):
+        self.service, self.ip, self.action = service, ip, action
+        self.command_id, self.device_id, self.cancel = command_id, device_id, cancel
+        self.record = None
+        self.op = Operation(ScanOptions(read_timeout=10, device_timeout=30), cancel)
+        self.resources = ExitStack()
+        self.guard = None
+        self.closed = False
+        self.intent = False
+        self.accepted = None
+        self.verify = None
+        self.rule = None
+        self.control = None
+        self.completion_lock = Lock()
+
+    def finish(self, status, message, accepted=False):
+        record = self.record
+        result = CommandResult(self.command_id, status, message, accepted,
+            record.identity.device_id if record else self.device_id,
+            record.identity.profile_id if record else None)
+        self.service.repository.journal(result)
+        return result
+
+    def failure(self, exc):
+        if isinstance(exc, Cancelled):
+            return self.finish("unconfirmed" if self.intent else "cancelled",
+                               "Операция остановлена; отправленная команда не повторяется", bool(self.accepted))
+        if isinstance(exc, WhatsminerAccessError):
+            return self.finish("failed", str(exc))
+        if isinstance(exc, AuthenticationError):
+            return self.finish("failed", "Требуются корректные учётные данные и разрешение записи API", bool(self.accepted))
+        if isinstance(exc, (OSError, requests.RequestException, DeadlineExceeded)):
+            return self.finish("unconfirmed", "Связь прервана или истёк срок ожидания; команда не повторяется", bool(self.accepted))
+        if isinstance(exc, (ProtocolError, KeyError, ValueError)):
+            return self.finish("failed", "Профиль или ответ не соответствует требуемому формату", bool(self.accepted))
+        return self.finish("unconfirmed" if self.intent else "failed",
+                           f"Ошибка управления ({type(exc).__name__}); команда не повторяется", bool(self.accepted))
+
+    def close(self):
+        if self.closed:
+            return
+        self.closed = True
+        try:
+            self.resources.close()
+        finally:
+            if self.guard is not None:
+                self.guard.release()
+                self.guard = None
+
+    def complete(self):
+        with self.completion_lock:
+            if self.closed:
+                return self.service.repository.command_result(self.command_id)
+            slot = locked = False
+            lock = self.service.lock_for(self.ip)
+            try:
+                _acquire(_verification_slots, self.cancel)
+                slot = True
+                _acquire(lock, self.cancel)
+                locked = True
+                # Verification receives its own budget, after leaving the queue.
+                self.op.started = time.monotonic()
+                for attempt in range(3):
+                    if attempt:
+                        # Fast first read, retaining the previous 3-second observation window.
+                        self.op.pause(attempt)
+                    try:
+                        self.op.remaining()
+                        if self.verify():
+                            message = ("Ожидаемое состояние подтверждено чтением API" if self.accepted else
+                                       "Ответ на запись не получен; целевое состояние подтверждено чтением API")
+                            return self.finish("succeeded", message, bool(self.accepted))
+                    except (OSError, requests.RequestException, ProtocolError):
+                        continue
+                message = ("API принял команду, но ожидаемое состояние не подтверждено" if self.accepted else
+                           "Ответ на запись не получен, состояние не подтверждено; команда не повторяется")
+                if self.control == 'vnish' and self.action in ('identify_on', 'identify_off'):
+                    state = getattr(self.verify, 'observed_state', None)
+                    observed = 'включена' if state is True else 'выключена' if state is False else 'неизвестно'
+                    expected = 'включена' if self.action == 'identify_on' else 'выключена'
+                    endpoint = (self.rule or {}).get('_vnish_interface', 'find-miner')
+                    message += f"; подсветка по API: {observed}, ожидалось: {expected} (VNish {endpoint})"
+                return self.finish("unconfirmed", message, bool(self.accepted))
+            except Exception as exc:
+                return self.failure(exc)
+            finally:
+                if locked:
+                    lock.release()
+                if slot:
+                    _verification_slots.release()
+                self.close()
+
+
+def dispatch_command(service, ip, action, *, device_id=None, command_id=None, cancel=None, allow_unverified=False):
+    """Identify and write once. Return a result or owned read-only verification."""
     command_id = command_id or str(uuid4())
     existing = service.repository.command_result(command_id)
     if existing is not None:
         return existing
     action = ALIASES.get(action, action)
     cancel = cancel if cancel is not None else Event()
-    op = Operation(ScanOptions(read_timeout=10, device_timeout=30), cancel)
-    record = None
-    def finish(status, message, accepted=False):
-        result = CommandResult(command_id, status, message, accepted, record.identity.device_id if record else device_id, record.identity.profile_id if record else None)
-        service.repository.journal(result)
-        return result
-    slot = False
-    locked = False
+    task = PendingCommand(service, ip, action, command_id, device_id, cancel)
+    slot = locked = transferred = False
     lock = service.lock_for(ip)
+    finish = task.finish
     try:
-        while not _slots.acquire(timeout=0.05):
-            op.remaining()
+        guard = service.command_lock_for(ip)
+        _acquire(guard, cancel)
+        task.guard = guard
+        _acquire(_slots, cancel)
         slot = True
-        while not lock.acquire(timeout=0.05):
-            op.remaining()
+        _acquire(lock, cancel)
         locked = True
+        task.op.started = time.monotonic()
         existing = service.repository.command_result(command_id)
         if existing is not None:
             return existing
         previous = service.get_record(ip)
         if previous is None:
             return finish("skipped", "Сначала выполните идентификацию устройства")
-        record = service.poll(ip, force_identify=True, cancel=cancel)
+        record = service.poll(ip, force_identify=True, cancel=cancel,
+                              options=replace(service.options,
+                                  device_timeout=min(service.options.device_timeout, task.op.remaining())))
+        task.record = record
         if record is None or record.telemetry.stale:
             return finish("skipped", "Не удалось подтвердить актуальность профиля")
         if record.identity.fingerprint != previous.identity.fingerprint or (device_id and record.identity.device_id != device_id):
@@ -347,55 +459,43 @@ def execute_command(service, ip, action, *, device_id=None, command_id=None, can
             return finish("unsupported", "Для этого профиля действие не реализовано")
         if not compatible and action not in profile.verified_commands and not allow_unverified:
             return finish("unsupported", "Не подтверждена совместимость API для этой команды; нужен поддерживаемый интерфейс или проверенный профиль")
-        op.remaining()
+        task.op.remaining()
         # Persist uncertain intent before any write. A crash must never cause replay.
         finish("unconfirmed", "Выполнение начато; конечный результат пока неизвестен")
-        with service.transport_factory(ip, op, service.credentials_for(ip)) as transport:
-            if profile.control == 'vnish':
-                accepted, verify = vnish(transport, record, action, service.credentials_for(ip),
-                                         credential_candidates=service.credential_candidates(ip, 'vnish'),
-                                         on_authenticated=lambda credentials: service.remember_credentials(ip, credentials),
-                                         control_rule=rule)
-            elif rule is not None:
-                accepted, verify = declarative_command(transport, rule)
-            else:
-                accepted, verify = EXECUTORS[profile.control](transport, record, action, service.credentials_for(ip))
-            if accepted is False:
-                return finish("failed", "API отклонил команду")
-            if verify is None:
-                return finish("unconfirmed", "API принял команду; состояние не подтверждено", True)
-            for _ in range(3):
-                op.pause(1)
-                try:
-                    if verify():
-                        if getattr(verify, 'already_target', False):
-                            return finish("succeeded", "Подсветка уже в нужном состоянии; команда не отправлялась")
-                        message = ("Ожидаемое состояние подтверждено чтением API" if accepted else
-                                   "Ответ на запись не получен; целевое состояние подтверждено чтением API")
-                        return finish("succeeded", message, bool(accepted))
-                except (OSError, requests.RequestException, ProtocolError):
-                    continue
-            message = ("API принял команду, но ожидаемое состояние не подтверждено" if accepted else
-                       "Ответ на запись не получен, состояние не подтверждено; команда не повторяется")
-            if profile.control == 'vnish' and action in ('identify_on', 'identify_off'):
-                state = getattr(verify, 'observed_state', None)
-                observed = 'включена' if state is True else 'выключена' if state is False else 'неизвестно'
-                expected = 'включена' if action == 'identify_on' else 'выключена'
-                endpoint = (rule or {}).get('_vnish_interface', 'find-miner')
-                message += f"; подсветка по API: {observed}, ожидалось: {expected} (VNish {endpoint})"
-            return finish("unconfirmed", message, bool(accepted))
-    except Cancelled:
-        return finish("unconfirmed" if service.repository.command_result(command_id) else "cancelled", "Операция остановлена; отправленная команда не повторяется")
-    except WhatsminerAccessError as exc:
-        return finish("failed", str(exc))
-    except AuthenticationError:
-        return finish("failed", "Требуются корректные учётные данные и разрешение записи API")
-    except (OSError, requests.RequestException, DeadlineExceeded):
-        return finish("unconfirmed", "Связь прервана или истёк срок ожидания; команда не повторяется")
-    except (ProtocolError, KeyError, ValueError):
-        return finish("failed", "Профиль или ответ не соответствует требуемому формату")
+        task.intent = True
+        transport = task.resources.enter_context(service.transport_factory(ip, task.op, service.credentials_for(ip)))
+        if profile.control == 'vnish':
+            accepted, verify = vnish(transport, record, action, service.credentials_for(ip),
+                                     credential_candidates=service.credential_candidates(ip, 'vnish'),
+                                     on_authenticated=lambda credentials: service.remember_credentials(ip, credentials),
+                                     control_rule=rule)
+        elif rule is not None:
+            accepted, verify = declarative_command(transport, rule)
+        else:
+            accepted, verify = EXECUTORS[profile.control](transport, record, action, service.credentials_for(ip))
+        if accepted is False:
+            return finish("failed", "API отклонил команду")
+        if getattr(verify, 'already_target', False):
+            return finish("succeeded", "Устройство уже в нужном состоянии; команда не отправлялась")
+        if verify is None:
+            return finish("unconfirmed", "API принял команду; состояние не подтверждено", bool(accepted))
+        task.accepted, task.verify = accepted, verify
+        task.rule, task.control = rule, profile.control
+        transferred = True
+        return task
+    except Exception as exc:
+        return task.failure(exc)
     finally:
         if locked:
             lock.release()
         if slot:
             _slots.release()
+        if not transferred:
+            task.close()
+
+
+def execute_command(service, ip, action, *, device_id=None, command_id=None, cancel=None, allow_unverified=False):
+    """Synchronous compatibility API; batch callers split the two phases."""
+    pending = dispatch_command(service, ip, action, device_id=device_id, command_id=command_id,
+                               cancel=cancel, allow_unverified=allow_unverified)
+    return pending.complete() if isinstance(pending, PendingCommand) else pending
