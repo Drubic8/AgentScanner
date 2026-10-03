@@ -31,13 +31,13 @@ class DeviceControlsTest {
     @Test fun compactPreferencePersistsAcrossActivityRecreation() {
         compose.waitUntil(15000) { compose.onAllNodes(hasText("Готов к сканированию")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription("Компактный список").performClick()
-        compose.onNodeWithContentDescription("Карточки устройств").assertIsNotSelected()
+        compose.onNodeWithContentDescription("Карточки устройств").assertIsOff()
         compose.activityRule.scenario.recreate()
-        compose.onNodeWithContentDescription("Карточки устройств").assertIsNotSelected()
+        compose.onNodeWithContentDescription("Карточки устройств").assertIsOff()
         compose.onNodeWithContentDescription("Карточки устройств").performClick()
-        compose.onNodeWithContentDescription("Компактный список").assertIsSelected()
+        compose.onNodeWithContentDescription("Компактный список").assertIsOn()
         compose.activityRule.scenario.recreate()
-        compose.onNodeWithContentDescription("Компактный список").assertIsSelected()
+        compose.onNodeWithContentDescription("Компактный список").assertIsOn()
     }
 
     @Test fun compactSelectionOffersOnlyCompatibleCommandsAndWarnsAboutAvalonWakeup() {
@@ -60,7 +60,7 @@ class DeviceControlsTest {
                     onConfirm = { submitted = selected to action; confirmation = null }, onDismiss = { confirmation = null }) }
             } }
         }
-        compose.onNodeWithContentDescription("Компактный список").assertIsSelected()
+        compose.onNodeWithContentDescription("Компактный список").assertIsOn()
         compose.onNodeWithTag("device-list").performScrollToNode(hasContentDescription("Выбрать 192.0.2.1"))
         compose.onNodeWithContentDescription("Выбрать 192.0.2.1", useUnmergedTree = true).performClick()
         compose.onNodeWithText("Команды · 1").assertIsEnabled()
@@ -81,7 +81,7 @@ class DeviceControlsTest {
         }
         compose.onNodeWithTag("device-list").performScrollToNode(hasContentDescription("Компактный список"))
         compose.onNodeWithContentDescription("Компактный список").performClick()
-        compose.onNodeWithContentDescription("Карточки устройств").assertIsNotSelected()
+        compose.onNodeWithContentDescription("Карточки устройств").assertIsOff()
     }
 
     @Test fun staleDetailsDisableWritesAndJournalShowsIndividualOutcomes() {
