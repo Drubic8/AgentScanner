@@ -87,9 +87,7 @@ def main() -> None:
     resources = ET.Element("resources")
     ET.SubElement(resources, "color", {"name": "ic_launcher_background"}).text = background.attrib["fill"]
     write_xml(RES / "values" / "ic_launcher_colors.xml", resources)
-    legacy = ET.Element("resources")
-    ET.SubElement(legacy, "item", {"type": "mipmap", "name": "ic_launcher"}).text = "@drawable/ic_launcher"
-    write_xml(RES / "values" / "ic_launcher_alias.xml", legacy)
+    write_xml(RES / "mipmap-anydpi" / "ic_launcher.xml", vector([background, *paths]))
     for version in (26, 33):
         adaptive = ET.Element("adaptive-icon")
         for name, drawable in (("background", "@color/ic_launcher_background"),

@@ -7,6 +7,12 @@ from pathlib import Path
 SUPPORTED_LANGUAGES = ("ru", "en")
 _language = "ru"
 CATALOG = json.loads((Path(__file__).parent / "locales" / "en.json").read_text(encoding="utf-8"))
+ACTION_LABELS = {
+    "reboot": "Перезагрузить", "led_on": "Подсветить", "led_off": "Отключить подсветку",
+    "sleep": "Сон (остановить майнинг)", "wakeup": "Пробуждение (возобновить майнинг)",
+    "normal": "Пробуждение (возобновить майнинг)", "identify_toggle": "Переключить индикацию",
+    "low": "Режим Low", "normal_power": "Обычный режим мощности", "hem": "Режим HEM",
+}
 
 
 def set_language(language):
@@ -16,6 +22,10 @@ def set_language(language):
 
 def get_language():
     return _language
+
+
+def action_label(code):
+    return tr(ACTION_LABELS.get(code, code))
 
 
 def tr(source, **values):

@@ -1,4 +1,4 @@
-from desktop_ui.i18n import tr, get_language, set_language, install_qt_translator
+from desktop_ui.i18n import tr, get_language, set_language, install_qt_translator, action_label
 import sys
 from html import escape
 import re
@@ -942,7 +942,7 @@ class GeminiApp(QMainWindow):
         if version_tuple(latest_version) > version_tuple(CURRENT_VERSION):
             self.status_bar.setText(tr('Доступна версия {p0}', p0=latest_version))
             reply = QMessageBox.question(self, tr('Доступно обновление'),
-                tr('Новая версия: {p0}. Установлена: {p1}.\n\n{p2}\n\nОткрыть скачивание в браузере?', p0=latest_version, p1=CURRENT_VERSION, p2=data.get('changelog', '')),
+                tr('Новая версия: {p0}. Установлена: {p1}.\n\n{p2}\n\nОткрыть скачивание в браузере?', p0=latest_version, p1=CURRENT_VERSION, p2=data.get('changelog_en' if get_language() == 'en' else 'changelog', '')),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             if reply == QMessageBox.StandardButton.Yes:
                 self.apply_update(data["url"])
@@ -1078,8 +1078,6 @@ class GeminiApp(QMainWindow):
             QMessageBox.warning(self, tr('Внимание'), tr('Сначала отметьте галочками устройства в таблице!'))
             return
 
-        nice_names = {"reboot": tr('Перезагрузить'), "led_on": tr('Подсветить'), "led_off": tr('Отключить подсветку'), "sleep": tr('Сон (остановить майнинг)'), "wakeup": tr('Пробуждение (возобновить майнинг)'), "normal": tr('Пробуждение (возобновить майнинг)'), "identify_toggle": tr('Переключить индикацию'), "low": tr('Режим Low'), "normal_power": tr('Обычный режим мощности'), "hem": tr('Режим HEM')}
-
         targets = [self.table.item(r, 0).data(Qt.ItemDataRole.UserRole + 1) for r in rows]
         targets = [row for row in targets if row]
         if not targets:
@@ -1092,7 +1090,7 @@ class GeminiApp(QMainWindow):
         if confirm_needed:
             confirm = QMessageBox.question(
                 self, tr('Подтверждение'),
-                tr("Выполнить '{p0}' для {p1} устройств?{p2}", p0=nice_names.get(action_type, action_type), p1=len(rows), p2=consequences),
+                tr("Выполнить '{p0}' для {p1} устройств?{p2}", p0=action_label(action_type), p1=len(rows), p2=consequences),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
             if confirm != QMessageBox.StandardButton.Yes: return
@@ -1104,7 +1102,7 @@ class GeminiApp(QMainWindow):
         worker.log_signal.connect(lambda message, action=action_type: self.handle_worker_log(message, action=action))
         worker.result_signal.connect(self.on_result)
         def show_progress(processed, total, accepted, confirmed):
-            self.command_progress.setText(tr('{p0} · очередь {p1}/{p2} · принято API {p3} · подтверждено {p4}', p0=nice_names.get(action_type, action_type), p1=processed, p2=total, p3=accepted, p4=confirmed))
+            self.command_progress.setText(tr('{p0} · очередь {p1}/{p2} · принято API {p3} · подтверждено {p4}', p0=action_label(action_type), p1=processed, p2=total, p3=accepted, p4=confirmed))
             self.command_progress.show()
         worker.progress_signal.connect(show_progress)
         if not hasattr(self, 'workers'):

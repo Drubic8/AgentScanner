@@ -1,5 +1,5 @@
 """Saved subnet tree: folders organize targets; leaf checkboxes select scans."""
-from .i18n import tr
+from .i18n import tr, tr_error
 from copy import deepcopy
 
 from PyQt6.QtCore import Qt, pyqtSignal, QItemSelectionModel
@@ -265,7 +265,7 @@ class RangesPanel(QWidget):
             try:
                 candidate = move_nodes(self.groups, paths, combo.currentData())
             except ValueError as exc:
-                QMessageBox.warning(self, tr('Перемещение'), str(exc))
+                QMessageBox.warning(self, tr('Перемещение'), tr_error(str(exc)))
                 return
             self.changed.emit(candidate)
             if self.groups == candidate:

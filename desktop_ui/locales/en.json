@@ -403,5 +403,9 @@
   "В одной группе допускается не более {p0} IP-адресов.": "Each group supports up to {p0} IP addresses.",
   "Укажите название сети, например «Площадка 1 · контейнер А».": "Enter a network name, for example Site 1 · Container A.",
   "Сеть с таким названием уже есть. Используйте другое название.": "A network with this name already exists. Choose another name.",
-  "Нельзя переместить папку в неё саму или во вложенную папку.": "You cannot move a folder into itself or one of its subfolders."
+  "Нельзя переместить папку в неё саму или во вложенную папку.": "You cannot move a folder into itself or one of its subfolders.",
+  "Изменить папку": "Edit folder",
+  "Площадка 1 или Перевод в сон": "Site 1 or Sleep schedule",
+  "Расположение": "Location",
+  "Сохранить папку": "Save folder"
 }
