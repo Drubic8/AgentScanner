@@ -32,7 +32,7 @@ def data_directory():
 def defaults():
     return dict(scan_bitmain=True, scan_whatsminer=True, scan_elphapex=True,
                 scan_other=True, timeout=2, workers=64, command_workers=32, theme="system", density="comfortable",
-                check_updates=False, summary_expanded=False, columns_version=2, journal_language="ru", table_preset="overview",
+                check_updates=False, summary_expanded=False, columns_version=2, language="ru", journal_language="ru", table_preset="overview",
                 column_order=["IP", "LED"] + [c for c in COLUMNS if c not in ("IP", "LED")],
                 column_widths={}, export_dir="", export_csv_dir="", copy_pdf=False,
                 copy_csv=False, pdf_sort="IP", csv_sort="IP", ui_cols=list(BASE_COLUMNS),
@@ -70,8 +70,9 @@ def normalize(settings):
         result["theme"] = "system"
     if result["density"] not in ("comfortable", "compact"):
         result["density"] = "comfortable"
-    if result["journal_language"] not in ("ru", "en"):
-        result["journal_language"] = "ru"
+    language = settings.get("language", settings.get("journal_language", "ru"))
+    result["language"] = language if language in ("ru", "en") else "ru"
+    result["journal_language"] = result["language"]  # Compatibility with older settings files.
     if result["table_preset"] not in (*TABLE_PRESETS, "custom"):
         result["table_preset"] = "custom"
     order = settings.get("column_order")

@@ -55,11 +55,11 @@ internal fun DevicesScreen(state: MonitorState, onScan: () -> Unit, onCancel: ()
                 }, onClick = {
                     selectedKeys = if (selected.size == filtered.size) emptyList() else filtered.map { it.selectionKey() }
                 }, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics {
-                    contentDescription = if (allSelected) "Снять выбор" else "Выбрать найденные"
+                    contentDescription = if (allSelected) tr("Снять выбор") else tr("Выбрать найденные")
                 })
                 FilledTonalButton(onClick = { onCommand(selected) }, enabled = selected.isNotEmpty() && !state.busy,
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
-                    Icon(Icons.Outlined.Tune, null); Spacer(Modifier.width(6.dp)); Text("Команды · ${selected.size}")
+                    Icon(Icons.Outlined.Tune, null); Spacer(Modifier.width(6.dp)); Text(tr("Команды · {p0}", "p0" to (selected.size)))
                 }
             }
         }
@@ -71,32 +71,32 @@ internal fun DevicesScreen(state: MonitorState, onScan: () -> Unit, onCancel: ()
                         if (largeText) {
                             Text("${state.devices.size} ASIC", color = Color.White,
                                 style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                            Text(state.status, color = Color(0xFFCFD9EB), style = MaterialTheme.typography.bodySmall)
+                            Text(tr(state.status), color = Color(0xFFCFD9EB), style = MaterialTheme.typography.bodySmall)
                             Button(onClick = { if (state.busy) onCancel() else { selectedKeys = emptyList(); onScan() } },
                                 enabled = state.ready && !(state.stopping && state.busy), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                                 Icon(if (state.busy) Icons.Outlined.Stop else Icons.Outlined.Search, null)
-                                Spacer(Modifier.width(6.dp)); Text(if (state.busy) "Стоп" else "Сканировать")
+                                Spacer(Modifier.width(6.dp)); Text(if (state.busy) tr("Стоп") else tr("Сканировать"))
                             }
                         } else Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text("${state.devices.size} ASIC", color = Color.White,
                                     style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                                Text(state.status, color = Color(0xFFCFD9EB), style = MaterialTheme.typography.bodySmall)
+                                Text(tr(state.status), color = Color(0xFFCFD9EB), style = MaterialTheme.typography.bodySmall)
                             }
                             Button(onClick = { if (state.busy) onCancel() else { selectedKeys = emptyList(); onScan() } },
                                 enabled = state.ready && !(state.stopping && state.busy), modifier = Modifier.heightIn(min = 48.dp)) {
                                 Icon(if (state.busy) Icons.Outlined.Stop else Icons.Outlined.Search, null)
-                                Spacer(Modifier.width(6.dp)); Text(if (state.busy) "Стоп" else "Сканировать")
+                                Spacer(Modifier.width(6.dp)); Text(if (state.busy) tr("Стоп") else tr("Сканировать"))
                             }
                         }
-                        Text("Майнинг: ${state.devices.count { !it.stale && it.state == "running" }} · Сон: ${state.devices.count { !it.stale && it.state == "stopped" }} · LED: ${state.devices.count { !it.stale && it.led == true }}",
+                        Text(tr("Майнинг: {p0} · Сон: {p1} · LED: {p2}", "p0" to (state.devices.count { !it.stale && it.state == "running" }), "p1" to (state.devices.count { !it.stale && it.state == "stopped" }), "p2" to (state.devices.count { !it.stale && it.led == true })),
                             color = Color(0xFFCFD9EB), style = MaterialTheme.typography.bodySmall)
                         val done = if (state.commanding) state.results.size else state.processed
                         val total = if (state.commanding) state.commandTotal else state.total
                         if (total > 0 && state.busy) {
                             LinearProgressIndicator(progress = { (done.toFloat() / total).coerceIn(0f, 1f) },
                                 modifier = Modifier.fillMaxWidth(), color = Color(0xFF83ABFF), trackColor = Color(0xFF3C4B63))
-                            Text(if (state.commanding) "Команды: $done из $total" else "Проверено $done из $total IP · ошибок: ${state.errors}",
+                            Text(if (state.commanding) tr("Команды: {p0} из {p1}", "p0" to (done), "p1" to (total)) else tr("Проверено {p0} из {p1} IP · ошибок: {p2}", "p0" to (done), "p1" to (total), "p2" to (state.errors)),
                                 color = Color(0xFFCFD9EB), style = MaterialTheme.typography.bodySmall)
                         }
                     }
@@ -105,29 +105,29 @@ internal fun DevicesScreen(state: MonitorState, onScan: () -> Unit, onCancel: ()
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = onNetworks, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Outlined.Lan, null); Spacer(Modifier.width(6.dp)); Text("Сети: ${state.groups.count { it.selected }}")
+                        Icon(Icons.Outlined.Lan, null); Spacer(Modifier.width(6.dp)); Text(tr("Сети: {p0}", "p0" to (state.groups.count { it.selected })))
                     }
                     IconToggleButton(checked = state.compact, onCheckedChange = onCompact) {
                         Icon(if (state.compact) Icons.Outlined.ViewList else Icons.Outlined.ViewAgenda,
-                            if (state.compact) "Компактный список" else "Карточки устройств")
+                            if (state.compact) tr("Компактный список") else tr("Карточки устройств"))
                     }
-                    IconButton(onClick = onJournal) { Icon(Icons.Outlined.History, "Журнал команд") }
+                    IconButton(onClick = onJournal) { Icon(Icons.Outlined.History, tr("Журнал команд")) }
                     IconButton(onClick = onExport, enabled = state.devices.isNotEmpty() && !state.busy) {
-                        Icon(Icons.Outlined.FileDownload, "Сохранить CSV")
+                        Icon(Icons.Outlined.FileDownload, tr("Сохранить CSV"))
                     }
                 }
             }
             if (state.devices.isNotEmpty()) item {
                 OutlinedTextField(value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(),
                     label = { Text("IP, Model, Firmware") }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true,
-                    trailingIcon = { IconButton(onClick = { filtersOpen = true }) { Icon(Icons.Outlined.FilterList, "Фильтры устройств") } })
-                Text("Показано ${filtered.size} из ${state.devices.size}", style = MaterialTheme.typography.bodySmall, color = Muted)
+                    trailingIcon = { IconButton(onClick = { filtersOpen = true }) { Icon(Icons.Outlined.FilterList, tr("Фильтры устройств")) } })
+                Text(tr("Показано {p0} из {p1}", "p0" to (filtered.size), "p1" to (state.devices.size)), style = MaterialTheme.typography.bodySmall, color = Muted)
             }
             if (state.devices.isEmpty()) item {
                 Column(Modifier.fillMaxWidth().padding(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(if (state.total == 0) "Ваши ASIC — под рукой" else "Устройства пока не найдены", style = MaterialTheme.typography.titleLarge)
-                    Text("Подключитесь к Wi-Fi, Ethernet или VPN площадки. Добавьте IP-адреса во вкладке «Сети».", color = Muted)
-                    Text("Нажмите на устройство для просмотра подробностей и управления. Для группы отметьте устройства галочками.", color = Muted)
+                    Text(if (state.total == 0) tr("Ваши ASIC — под рукой") else tr("Устройства пока не найдены"), style = MaterialTheme.typography.titleLarge)
+                    Text(tr("Подключитесь к Wi-Fi, Ethernet или VPN площадки. Добавьте IP-адреса во вкладке «Сети»."), color = Muted)
+                    Text(tr("Нажмите на устройство для просмотра подробностей и управления. Для группы отметьте устройства галочками."), color = Muted)
                 }
             }
             items(filtered, key = { it.selectionKey() }, contentType = { if (state.compact) "compact" else "card" }) { device ->
@@ -135,7 +135,7 @@ internal fun DevicesScreen(state: MonitorState, onScan: () -> Unit, onCancel: ()
                     onSelect = { checked -> selectedKeys = if (checked) selectedKeys + device.selectionKey() else selectedKeys - device.selectionKey() },
                     onClick = { onDevice(device) })
             }
-            if (state.devices.isNotEmpty() && filtered.isEmpty()) item { Text("Нет устройств по выбранным фильтрам. Измените или сбросьте фильтры.") }
+            if (state.devices.isNotEmpty() && filtered.isEmpty()) item { Text(tr("Нет устройств по выбранным фильтрам. Измените или сбросьте фильтры.")) }
         }
     }
     if (filtersOpen) FleetFilters(state.devices, stateFilter, ledFilter, modelFilter, firmwareFilter, errorsOnly,
@@ -144,12 +144,12 @@ internal fun DevicesScreen(state: MonitorState, onScan: () -> Unit, onCancel: ()
         onDismiss = { filtersOpen = false })
 }
 
-internal fun deviceStateLabel(device: Device) = if (device.stale) "Устарело" else when (device.state) {
-    "running", "mining" -> "Майнинг"
-    "stopped", "sleep", "paused" -> "Сон"
-    "stopping" -> "Засыпает"
-    "starting" -> "Запускается"
-    else -> "Неизвестно"
+internal fun deviceStateLabel(device: Device) = if (device.stale) tr("Устарело") else when (device.state) {
+    "running", "mining" -> tr("Майнинг")
+    "stopped", "sleep", "paused" -> tr("Сон")
+    "stopping" -> tr("Засыпает")
+    "starting" -> tr("Запускается")
+    else -> tr("Неизвестно")
 }
 
 @Composable
@@ -168,7 +168,7 @@ internal fun DeviceItem(device: Device, compact: Boolean, selected: Boolean, ena
             bottom = if (compact) 8.dp else 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = selected, onCheckedChange = onSelect, enabled = enabled,
                 modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                    .semantics { contentDescription = "Выбрать ${device.ip}" })
+                    .semantics { contentDescription = tr("Выбрать {p0}", "p0" to (device.ip)) })
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (compact) 3.dp else 8.dp)) {
                 FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
