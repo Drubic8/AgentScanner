@@ -1091,7 +1091,7 @@ class GeminiApp(QMainWindow):
         
         if confirm_needed:
             confirm = QMessageBox.question(
-                self, tr('Подтверждение'), 
+                self, tr('Подтверждение'),
                 tr("Выполнить '{p0}' для {p1} устройств?{p2}", p0=nice_names.get(action_type, action_type), p1=len(rows), p2=consequences),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
@@ -1484,7 +1484,7 @@ class GeminiApp(QMainWindow):
                 grouped = df.groupby('Make')['ScanTime'].agg(['mean', 'count'])
                 
                 # Формируем красивую строку: "Bitmain: 4.454s (10 шт.)"
-                log_text = " | ".join([tr('{p0}: {p1:.3f}s ({p2} шт.)', p0=make, p1=row['mean'], p2=int(row['count'])) 
+                log_text = " | ".join([tr('{p0}: {p1:.3f}s ({p2} шт.)', p0=make, p1=row['mean'], p2=int(row['count']))
                                       for make, row in grouped.iterrows()])
                 self.add_log(tr('📊 Аналитика отклика: {p0}', p0=log_text))
                 
