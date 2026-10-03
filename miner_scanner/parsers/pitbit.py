@@ -24,8 +24,12 @@ def parse_antminer_pitbit(ip, resp, diagnostics=("", ""), work_mode=None):
         sort_ip = int(ipaddress.IPv4Address(ip))
 
         # --- 2. Хешрейт ---
-        ghs_5s = float(s_data.get('GHS 5s') or s_data.get('rate_30m') or 0)
-        ghs_av = float(s_data.get('GHS av') or ghs_5s or 0)
+        # Zero is a measured rate. The historical 30-minute window can remain
+        # positive after sleep and must not replace the current zero reading.
+        current_rate = s_data.get('GHS 5s')
+        ghs_5s = float((s_data.get('rate_30m') if current_rate is None else current_rate) or 0)
+        average_rate = s_data.get('GHS av')
+        ghs_av = float((ghs_5s if average_rate is None else average_rate) or 0)
         
         real_hr = f"{round(ghs_5s / 1000.0, 2)} TH/s" if ghs_5s > 1000 else f"{round(ghs_5s, 2)} GH/s"
         avg_hr = f"{round(ghs_av / 1000.0, 2)} TH/s" if ghs_av > 1000 else f"{round(ghs_av, 2)} GH/s"
@@ -120,7 +124,7 @@ def parse_antminer_pitbit(ip, resp, diagnostics=("", ""), work_mode=None):
             pools_disabled = all(str(p.get('Status', '')).lower() in ["disabled", "dead", "deed"] for p in pools_data)
 
         is_sleeping = False
-        exact_sleep = None
+        exact_sleep = work_mode
 
         if ghs_5s == 0:
             # 1. Если хеш 0, спрашиваем статус напрямую у веб-конфига (то, что вы проверили)
@@ -139,6 +143,10 @@ def parse_antminer_pitbit(ip, resp, diagnostics=("", ""), work_mode=None):
             status = "Sleep"
             errors_list = []  # В спячке кулеры и хэш на нуле легально, скрываем эти "ошибки"
             details_list = []
+        elif exact_sleep is True:
+            # Fresh configuration requests sleep, but the rate window has not
+            # drained yet. Do not present this transition as active mining.
+            status = "Stopping"
         elif ghs_5s == 0:
             if uptime_sec < 240:
                 status = "Init"

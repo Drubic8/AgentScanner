@@ -202,14 +202,15 @@ class DesktopTests(unittest.TestCase):
             window.show()
             models = {f"Antminer Model {i}": {"val": "12"} for i in range(30)}
             window.refresh_dashboard({}, models, {})
+            window.summary_panel.toggle.click()
             self.application.processEvents()
-            detail = window.layout_models.itemAt(2).widget()
+            detail = window.summary_panel.detail_texts[1]
             bar = detail.verticalScrollBar()
             self.assertGreater(bar.maximum(), 0)
             bar.setValue(bar.maximum())
             position = bar.value()
             window.refresh_dashboard({}, models, {})
-            self.assertIs(window.layout_models.itemAt(2).widget(), detail)
+            self.assertIs(window.summary_panel.detail_texts[1], detail)
             self.assertEqual(bar.value(), position)
             self.assertIn("Antminer Model 29", detail.toPlainText())
         finally:

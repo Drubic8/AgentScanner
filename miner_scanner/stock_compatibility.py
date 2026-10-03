@@ -1,7 +1,7 @@
 """Read-only recognition of audited Bitmain web/API contracts, independent of dates.
 
-Never execute device JavaScript. A content digest selects a locally reviewed
-contract; the current configuration supplies values, never executable rules.
+The shared CGI API is recognized by its readback schema. Reviewed configuration
+schemas select basic modes; UI digests establish model-specific power options.
 """
 from copy import deepcopy
 from functools import lru_cache
@@ -17,7 +17,6 @@ from .runtime import AuthenticationError, DeadlineExceeded, ProtocolError
 
 MODE_ACTIONS = {'mining_stop', 'mining_start', 'normal_power', 'low', 'hem'}
 HEAD_ACTIONS = {'identify_on', 'identify_off', 'reboot'}
-TARGET_MODELS = {'L9', 'T21', 'S21', 'S21+', 'S21 Pro', 'S21 XP', 'Z11', 'Z15', 'Z15 Pro', 'D9'}
 ASSET_PATH = re.compile(r'/js/(?:miner|index)\.[a-zA-Z0-9_-]{1,64}\.js')
 
 
@@ -27,8 +26,9 @@ def interfaces():
 
 
 def eligible(record):
-    return (record.identity.make == 'Bitmain' and record.identity.firmware == 'Stock'
-            and model_name(record.identity.model) in TARGET_MODELS)
+    # The CGI header API is shared by Stock/PitBit models, including KS5.
+    # Power modes still require an explicit model entry in the miner contract.
+    return record.identity.make == 'Bitmain' and record.identity.firmware in {'Stock', 'PitBit'}
 
 
 def model_name(value):
@@ -50,18 +50,28 @@ class ScriptPaths(HTMLParser):
 
 
 def probe(transport):
-    """At most five GETs, using the caller's deadline/response size limits.
+    """Bounded read-only API/asset GETs, using the caller's deadline.
 
     Legacy pages embed reboot code in static HTML instead of an index bundle.
     Only fixed read-only paths are requested; never follow device action links.
     """
     evidence = {}
+    # Read this first: a changed/slow UI must not discard a working LED API.
+    try:
+        blink = transport.http_json('/cgi-bin/get_blink_status.cgi')
+        evidence['blink_boolean'] = isinstance(blink, dict) and type(blink.get('blink')) is bool
+    except (OSError, requests.RequestException, AuthenticationError, ProtocolError, ValueError, DeadlineExceeded):
+        pass
     for kind in ('miner', 'index'):
         try:
             status, body = transport.http('/' + kind + '.html')
             if status != 200:
                 continue
             evidence[kind] = 'unrecognized'
+            if kind == 'miner':
+                # Some KS5 pages omit the selector while shipping JS with the
+                # same Normal/Sleep scaffolding. Review HTML and JS together.
+                evidence['miner_page'] = hashlib.sha256(body).hexdigest()
             parser = ScriptPaths(kind)
             parser.feed(body.decode('utf-8'))
             if len(parser.paths) != 1:
@@ -77,10 +87,29 @@ def probe(transport):
             continue
         except DeadlineExceeded:
             break  # Optional discovery must not discard collected telemetry.
-    if evidence.get('index') in interfaces()['index']:
+    definition = interfaces()['miner'].get(evidence.get('miner'), {})
+    if definition.get('mode_flags'):
         try:
-            blink = transport.http_json('/cgi-bin/get_blink_status.cgi')
-            evidence['blink_boolean'] = isinstance(blink, dict) and type(blink.get('blink')) is bool
+            params = transport.http_json('/cgi-bin/get_adjustment_params.cgi')
+            if isinstance(params, dict):
+                evidence['mode_flags'] = {
+                    field: params[field] for field in definition['mode_flags'].values()
+                    if type(params.get(field)) is bool
+                }
+        except (OSError, requests.RequestException, AuthenticationError, ProtocolError,
+                ValueError, DeadlineExceeded):
+            pass
+    if not evidence.get('blink_boolean'):
+        try:
+            status, body = transport.http('/blink.html')
+            if status == 200:
+                digest = hashlib.sha256(body).hexdigest()
+                evidence['blink_page'] = digest
+                if digest in interfaces().get('legacy_blink', {}):
+                    # Audited page uses this form POST only to read current state.
+                    state = transport.http_json('/cgi-bin/blink.cgi', 'POST',
+                                                form={'action': 'onPageLoaded'})
+                    evidence['legacy_blink_boolean'] = isinstance(state, dict) and type(state.get('isBlinking')) is bool
         except (OSError, requests.RequestException, AuthenticationError, ProtocolError, ValueError, DeadlineExceeded):
             pass
     return evidence
@@ -115,20 +144,66 @@ def config_mapping(config, contract):
                           if source in config and config[source] is not None}}
 
 
+def mode_contract(model, config, evidence):
+    """Prefer the reviewed UI; otherwise require unanimous config-to-write maps.
+
+    Matching a read schema can establish the common Sleep/Wakeup ABI, but does
+    not establish which optional power modes the current build exposes.
+    """
+    definition = interfaces()['miner'].get(evidence.get('miner'))
+    if definition:
+        if model not in definition['modes']:
+            return None
+        if 'pages' in definition and evidence.get('miner_page') not in definition['pages']:
+            return definition, None, {}, 'unconfirmed_ui_page'
+        actions = dict(definition['modes'][model])
+        # Audited newer UI conditionally exposes HEM/LEM using API booleans.
+        # Missing/string flags must not enable an optional power mode.
+        for action, field in definition.get('mode_flags', {}).items():
+            if evidence.get('mode_flags', {}).get(field) is not True:
+                actions.pop(action, None)
+        return definition, config_mapping(config, definition), actions, 'reviewed_ui'
+    candidates = []
+    for definition in interfaces()['miner'].values():
+        if not definition.get('config_fallback', True):
+            continue  # The read schema alone cannot distinguish these builds.
+        modes = definition['modes'].get(model, {})
+        if not {'mining_stop', 'mining_start'} <= modes.keys():
+            continue
+        mapping = config_mapping(config, definition)
+        if mapping:
+            basic = {action: modes[action] for action in ('mining_stop', 'mining_start')}
+            candidates.append((definition, mapping, basic))
+    if not candidates:
+        return None
+    first = candidates[0]
+    signature = (first[0]['write_mode'], first[1], first[2])
+    if any((definition['write_mode'], mapping, basic) != signature for definition, mapping, basic in candidates[1:]):
+        return None  # Never choose one of several conflicting payloads by trial.
+    return *first, 'config_schema'
+
+
 def resolve(record, config, evidence):
     """Return only local rules. Evidence contains no config, pools or passwords."""
     result = {'rules': {}, 'blocked': set(), 'evidence': dict(evidence)}
     if not eligible(record):
         return result
     model = model_name(record.identity.model)
-    definition = interfaces()['miner'].get(evidence.get('miner'))
-    if definition and model in definition['modes']:
+    selected = mode_contract(model, config, evidence) if record.identity.firmware == 'Stock' else None
+    if selected:
+        definition, mapping, actions, basis = selected
         # A recognized UI is authoritative about absent modes, even if an old
         # exact-build profile had them. A missing schema disables all its modes.
         result['blocked'].update(MODE_ACTIONS)
-        mapping = config_mapping(config, definition)
+        if basis == 'config_schema':
+            # Preserve documented profile modes, including explicitly opted-in
+            # experimental ones. Generic profiles expose no such extra actions.
+            # A recognized UI remains authoritative about an absent mode.
+            result['blocked'].difference_update(action for action in MODE_ACTIONS
+                                                if record.capabilities.get(action) in {'supported', 'unverified'})
+        result['evidence']['mode_basis'] = basis
         if mapping:
-            for action, target in definition['modes'][model].items():
+            for action, target in actions.items():
                 current = config['bitmain-work-mode']
                 result['rules'][action] = {
                     'path': '/cgi-bin/set_miner_conf.cgi', 'method': 'POST',
@@ -141,24 +216,51 @@ def resolve(record, config, evidence):
                     '_stock_contract': deepcopy(definition),
                 }
                 result['blocked'].discard(action)
-    elif 'miner' in evidence:
+    elif record.identity.firmware == 'Stock' and ('miner' in evidence or any(
+            not definition.get('config_fallback', True) and model in definition['modes']
+            for definition in interfaces()['miner'].values())):
         result['blocked'].update(MODE_ACTIONS)
     if evidence.get('index') in interfaces()['index']:
         result['rules']['reboot'] = None  # Existing GET executor, no blind retry.
-        result['blocked'].update({'identify_on', 'identify_off'})
-        if evidence.get('blink_boolean'):
-            for action, enabled in (('identify_on', True), ('identify_off', False)):
-                result['rules'][action] = {
-                    'path': '/cgi-bin/blink.cgi', 'method': 'POST', 'payload': {'blink': enabled},
-                    'success_codes': [0, '0', 'B000'] if enabled else [0, '0', 'B000', 'B100'],
-                    'verify': {'path': '/cgi-bin/get_blink_status.cgi', 'field': ['blink'], 'equals': enabled},
-                }
-                result['blocked'].discard(action)
     elif 'index' in evidence:
         result['blocked'].update(HEAD_ACTIONS)
+    # Stock/PitBit's CGI LED setter is independent of the frontend build and
+    # model's power modes. Never infer it from HTML strings or firmware dates.
+    for action in ('identify_on', 'identify_off'):
+        if record.capabilities.get(action) == 'supported':
+            # Exact hardware-tested rules still verify the final state if a
+            # status read is temporarily absent. This is not a new permission.
+            result['blocked'].discard(action)
+        else:
+            result['blocked'].add(action)
+    if evidence.get('blink_boolean') is True:
+        result['evidence']['led_api'] = 'bitmain.cgi.blink'
+        # The CGI family also defines the standard GET reboot endpoint.
+        result['rules']['reboot'] = None
+        result['blocked'].discard('reboot')
+        for action, enabled in (('identify_on', True), ('identify_off', False)):
+            result['rules'][action] = {
+                'path': '/cgi-bin/blink.cgi', 'method': 'POST', 'payload': {'blink': enabled},
+                'success_codes': [0, '0', 'B000'] if enabled else [0, '0', 'B000', 'B100'],
+                'verify': {'path': '/cgi-bin/get_blink_status.cgi', 'field': ['blink'], 'equals': enabled},
+            }
+            result['blocked'].discard(action)
     if evidence.get('reboot_page') in interfaces().get('legacy_reboot', {}):
         result['rules']['reboot'] = None
         result['blocked'].discard('reboot')
+    legacy = interfaces().get('legacy_blink', {}).get(evidence.get('blink_page'))
+    if not evidence.get('blink_boolean') and legacy and evidence.get('legacy_blink_boolean') is True:
+        result['evidence']['led_api'] = 'bitmain.cgi.legacy_blink'
+        result['evidence']['led_duration_seconds'] = legacy['duration_seconds']
+        for action, enabled in (('identify_on', True), ('identify_off', False)):
+            result['rules'][action] = {
+                'path': '/cgi-bin/blink.cgi', 'method': 'POST',
+                'form': {'action': 'startBlink' if enabled else 'stopBlink'},
+                '_legacy_blink': True,
+                'verify': {'path': '/cgi-bin/blink.cgi', 'method': 'POST',
+                           'form': {'action': 'onPageLoaded'}, 'field': ['isBlinking'], 'equals': enabled},
+            }
+            result['blocked'].discard(action)
     return result
 
 

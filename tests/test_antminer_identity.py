@@ -51,3 +51,44 @@ class AntminerIdentityTests(unittest.TestCase):
         after = self.record(previous=before)
         self.assertNotEqual(after.identity.fingerprint, before.identity.fingerprint)
         self.assertNotEqual(after.identity.device_id, before.identity.device_id)
+
+    def test_system_variant_is_stable_when_cgminer_reports_generic_family(self):
+        self.data['version']['VERSION'][0]['Type'] = 'Antminer KS5'
+        self.data['stats']['STATS'][0]['Type'] = 'Antminer KS5'
+        self.data['system']['minertype'] = 'Antminer KS5 Pro'
+        before = self.record()
+        self.assertEqual(before.identity.model, 'Antminer KS5 Pro')
+        self.assertEqual(before.display['Model'], 'Antminer KS5 Pro')
+        reordered = {key: self.data[key] for key in reversed(self.data)}
+        after = self.record(reordered, before)
+        self.assertEqual(after.identity.fingerprint, before.identity.fingerprint)
+        self.assertEqual(after.identity.device_id, before.identity.device_id)
+        self.data['stats']['STATS'][0]['Type'] = 'Antminer KS5 Pro'
+        self.assertEqual(self.record(previous=before).identity.fingerprint, before.identity.fingerprint)
+
+    def test_real_system_model_change_is_not_hidden_by_generic_cgminer_model(self):
+        before = self.record()
+        self.data['system']['minertype'] = 'Antminer L7'
+        after = self.record(previous=before)
+        self.assertEqual(after.identity.model, 'Antminer L7')
+        self.assertNotEqual(after.identity.fingerprint, before.identity.fingerprint)
+        self.assertNotEqual(after.identity.device_id, before.identity.device_id)
+
+    def test_cgminer_api_loss_during_restart_does_not_replace_known_http_device(self):
+        before=self.record()
+        for api in (None,'another CGMiner API'):
+            with self.subTest(api=api):
+                self.data['version']['VERSION'][0]['API']=api
+                after=self.record(previous=before)
+                self.assertEqual(after.identity.fingerprint,before.identity.fingerprint)
+                self.assertEqual(after.identity.device_id,before.identity.device_id)
+                self.assertEqual(after.identity.api_version,api)
+
+    def test_api_change_is_not_ignored_without_current_hardware_id_or_build(self):
+        for field in ('macaddr','system_filesystem_version'):
+            with self.subTest(missing=field):
+                data=deepcopy(self.data)
+                del data['system'][field]
+                before=self.record(data)
+                data['version']['VERSION'][0]['API']=None
+                self.assertNotEqual(self.record(data,before).identity.fingerprint,before.identity.fingerprint)

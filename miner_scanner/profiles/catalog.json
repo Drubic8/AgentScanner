@@ -363,6 +363,32 @@
       "verified_commands": []
     },
     {
+      "id": "bitmain.pitbit.s21.c074.20240202",
+      "version": 1,
+      "make": "Bitmain",
+      "firmware": "PitBit",
+      "signature": "pitbit",
+      "priority": 40,
+      "parser": "pitbit",
+      "control": "pitbit",
+      "match": {
+        "models": ["Antminer S21_i"],
+        "firmware_versions": ["Fri Feb 2 17:03:40 CST 2024"],
+        "miner_versions": ["incm.C074"],
+        "api_versions": ["3.1"]
+      },
+      "queries": [
+        ["version", "cgminer", "version", true],
+        ["stats", "cgminer", "stats", false],
+        ["summary", "cgminer", "summary", false],
+        ["pools", "cgminer", "pools", true],
+        ["system", "http", "/cgi-bin/get_system_info.cgi", true],
+        ["config", "http", "/cgi-bin/get_miner_conf.cgi", false],
+        ["warnings", "text", "/warning", true, {"port": 6060}]
+      ],
+      "verified_commands": ["identify_on", "identify_off", "mining_stop", "mining_start", "reboot"]
+    },
+    {
       "id": "bitmain.pitbit",
       "version": 1,
       "make": "Bitmain",

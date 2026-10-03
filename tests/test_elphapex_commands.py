@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import Mock
+import requests
 
 from miner_scanner.commands import _http_accept, elphapex
 
@@ -47,3 +48,23 @@ class ElphapexCommandTests(unittest.TestCase):
         self.assertIsNone(verify)
         self.assertEqual(transport.http.call_args.args, ('/cgi-bin/luci/reboot.cgi', 'GET'))
         self.assertIsNone(transport.http.call_args.kwargs['payload'])
+
+    def test_mode_timeout_keeps_readback_without_repeating_write(self):
+        for action, target in (('mining_stop', -1000), ('mining_start', 0)):
+            with self.subTest(action=action):
+                transport = self.transport()
+                transport.http.side_effect = requests.ReadTimeout()
+                accepted, verify = elphapex(transport, None, action, None)
+                self.assertIsNone(accepted)
+                transport.http_json.return_value = {'fc-work-mode': target}
+                self.assertTrue(verify())
+                transport.http_json.return_value = {'fc-work-mode': 0 if target else -1000}
+                self.assertFalse(verify())
+                self.assertEqual(transport.http.call_count, 1)
+
+    def test_reboot_timeout_does_not_invent_a_readback(self):
+        transport = self.transport()
+        transport.http.side_effect = requests.ReadTimeout()
+        with self.assertRaises(requests.ReadTimeout):
+            elphapex(transport, None, 'reboot', None)
+        self.assertEqual(transport.http.call_count, 1)

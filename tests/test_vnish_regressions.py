@@ -89,7 +89,8 @@ class VnishRegressionTests(unittest.TestCase):
         for action, expected in [('identify_on', True), ('identify_off', False)]:
             for state in (expected, not expected, None, str(expected)):
                 transport = Mock()
-                transport.http_json.side_effect = [{'token': 'test-token'}, {'find_miner': state}]
+                transport.http_json.side_effect = [{'token': 'test-token'},
+                                                  {'find_miner': not expected}, {'find_miner': state}]
                 transport.http.return_value = (200, b'null')
                 accepted, verify = vnish(transport, None, action, Credentials('', 'test-password'))
                 self.assertTrue(accepted)

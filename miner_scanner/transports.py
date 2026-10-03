@@ -61,15 +61,22 @@ class Transport:
         finally:
             sock.close()
 
-    def http(self, path: str, method: str = "GET", *, payload=None, headers=None, port=80, read_timeout=None):
+    def http(self, path: str, method: str = "GET", *, payload=None, form=None, headers=None, port=80, read_timeout=None,
+             response_limit=None):
         if not path.startswith("/") or path.startswith("//"):
             raise ValueError("Expected a local absolute API path")
+        if payload is not None and form is not None:
+            raise ValueError("Choose JSON or form encoding, not both")
         op = self.operation
+        limit = op.options.max_response_bytes if response_limit is None else response_limit
+        if type(limit) is not int or limit < 1:
+            raise ValueError("HTTP response limit must be a positive integer")
         op.request_count += 1
         scheme = "https" if port == 443 else "http"
         explicit_auth = headers and any(key.lower() in {"authorization", "x-api-key"} for key in headers)
         with self.session.request(
-            method, f"{scheme}://{self.ip}:{port}{path}", json=payload,
+            method, f"{scheme}://{self.ip}:{port}{path}",
+            **({'data': form} if form is not None else {'json': payload}),
             headers=headers, timeout=(op.timeout(op.options.connect_timeout), op.timeout(read_timeout)),
             stream=True, allow_redirects=False,
             auth=ExplicitHeaderAuth() if explicit_auth else None,
@@ -90,7 +97,7 @@ class Transport:
                 if not chunk:
                     break
                 content.extend(chunk)
-                if len(content) > op.options.max_response_bytes:
+                if len(content) > limit:
                     raise ProtocolError("HTTP response too large")
             op.remaining()
             return response.status_code, bytes(content)

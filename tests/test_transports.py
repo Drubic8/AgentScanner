@@ -30,6 +30,59 @@ class FragmentSocket:
 
 
 class TransportTests(unittest.TestCase):
+    def test_legacy_form_has_form_encoding_and_cannot_mix_with_json(self):
+        response=MagicMock()
+        response.__enter__.return_value=response
+        response.status_code=200
+        response.raw.read1.side_effect=[b'{"isBlinking":false}',b'']
+        with Transport('127.0.0.1',Operation()) as transport:
+            with patch.object(transport.session,'request',return_value=response) as request:
+                self.assertEqual(transport.http_json('/cgi-bin/blink.cgi','POST',
+                    form={'action':'onPageLoaded'}),{'isBlinking':False})
+                kwargs=request.call_args.kwargs
+                self.assertEqual(kwargs['data'],{'action':'onPageLoaded'})
+                self.assertNotIn('json',kwargs)
+                prepared=requests.Request('POST','http://localhost',data=kwargs['data']).prepare()
+                self.assertEqual(prepared.body,'action=onPageLoaded')
+                self.assertEqual(prepared.headers['Content-Type'],'application/x-www-form-urlencoded')
+                with self.assertRaises(ValueError):
+                    transport.http('/cgi-bin/blink.cgi','POST',payload={},form={})
+                self.assertEqual(request.call_count,1)
+
+    def test_asset_limit_does_not_raise_json_or_tcp_limit(self):
+        # A real 1.4 MiB VNish UI fits the asset budget, not the JSON budget.
+        body = b'x' * 1_420_958
+        with Transport('192.0.2.27', Operation()) as transport:
+            response = MagicMock(status_code=200)
+            response.__enter__.return_value = response
+            with patch.object(transport.session, 'request', return_value=response):
+                response.raw.read1.side_effect = [body, b'']
+                with self.assertRaises(ProtocolError):
+                    transport.http('/api/v1/summary')
+                response.raw.read1.side_effect = [body, b'']
+                self.assertEqual(transport.http('/assets/index-test.js',
+                    response_limit=transport.operation.options.max_asset_bytes), (200, body))
+                response.raw.read1.side_effect = [body, b'']
+                with self.assertRaises(ProtocolError):
+                    transport.http('/api/v1/summary')
+                response.raw.read1.side_effect = [b'x' * 2_097_153, b'']
+                with self.assertRaises(ProtocolError):
+                    transport.http('/assets/index-test.js',
+                        response_limit=transport.operation.options.max_asset_bytes)
+            with self.assertRaises(ProtocolError):
+                recv_exact(FragmentSocket([]), len(body), transport.operation)
+
+    def test_invalid_asset_and_response_limits_fail_before_network(self):
+        for value in (0, -1, True, 1.5, '2097152'):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    ScanOptions(max_asset_bytes=value)
+                with Transport('192.0.2.27', Operation()) as transport:
+                    with patch.object(transport.session, 'request') as request:
+                        with self.assertRaises(ValueError):
+                            transport.http('/assets/index-test.js', response_limit=value)
+                        request.assert_not_called()
+
     def test_interrupted_stream_is_a_normal_transport_error(self):
         for raw_error, expected in ((RawProtocolError('truncated response'), requests.ConnectionError),
                                     (ReadTimeoutError(None, '/config', 'slow body'), requests.ReadTimeout)):

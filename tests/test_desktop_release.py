@@ -15,11 +15,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 class PreferenceTests(unittest.TestCase):
     def test_partial_legacy_settings_get_defaults_and_safe_limits(self):
-        result = normalize({"timeout": "bad", "workers": 99999, "theme": None, "ui_cols": ["Model"], "pdf_cols": [], "copy_csv": "false"})
+        result = normalize({"timeout": "bad", "workers": 99999, "command_workers": 999,
+                            "theme": None, "ui_cols": ["Model"], "pdf_cols": [], "copy_csv": "false"})
         self.assertEqual(result["timeout"], 2)
         self.assertEqual(result["workers"], 128)
+        self.assertEqual(result["command_workers"], 32)
         self.assertEqual(result["theme"], "system")
-        self.assertEqual(result["ui_cols"], ["IP", "Model"])
+        self.assertEqual(result["ui_cols"], ["IP", "Model", "LED"])
         self.assertTrue(result["pdf_cols"])
         self.assertFalse(result["copy_csv"])
 
@@ -38,8 +40,7 @@ class PreferenceTests(unittest.TestCase):
 
     def test_release_versions_match(self):
         version, parts = release_version()
-        self.assertEqual(version, "2.1.0")
-        self.assertEqual(parts, (2, 1, 0))
+        self.assertEqual(parts, tuple(map(int, version.split("."))))
         import re
         android = (Path(__file__).resolve().parents[1] / 'apps/android/app/build.gradle.kts').read_text(encoding='utf-8')
         self.assertEqual(re.search(r'versionName\s*=\s*"([^"]+)"', android).group(1), version)
@@ -68,11 +69,13 @@ class DesktopReleaseTests(unittest.TestCase):
         dialog = self.gui.SettingsDialog(original)
         dialog.theme.setCurrentIndex(dialog.theme.findData("dark"))
         dialog.workers.setValue(16)
+        dialog.command_workers.setValue(12)
         dialog.list_pdf_cols.item(1).setCheckState(self.gui.Qt.CheckState.Unchecked)
         dialog.save_and_close()
         self.assertEqual(dialog.result(), dialog.DialogCode.Accepted)
         self.assertEqual(dialog.settings["theme"], "dark")
         self.assertEqual(dialog.settings["workers"], 16)
+        self.assertEqual(dialog.settings["command_workers"], 12)
         self.assertNotIn("Model", dialog.settings["pdf_cols"])
         self.assertIn("Real HR", dialog.settings["pdf_cols"])
         self.assertEqual(original, defaults())
@@ -142,6 +145,45 @@ class DesktopReleaseTests(unittest.TestCase):
         rows = [{"IP": "192.0.2.10", "Model": "ten", "RawHash": 2}, {"IP": "192.0.2.2", "Model": "two", "RawHash": 100}]
         self.assertEqual(export_frame(rows, ["Model"], "IP")["Model"].tolist(), ["two", "ten"])
         self.assertEqual(export_frame(rows, ["IP"], "Real HR")["IP"].tolist(), ["192.0.2.10", "192.0.2.2"])
+
+    def test_slow_table_refresh_does_not_hold_command_dispatch_or_result_logging(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Event
+        from unittest.mock import Mock
+        from miner_scanner.models import CommandResult
+        rows = [{'IP': '192.0.2.1'}, {'IP': '192.0.2.2'}]
+        refreshing, release_refresh, completed = Event(), Event(), Event()
+        service = Mock()
+        def poll(ip):
+            refreshing.set()
+            release_refresh.wait(5)
+            record = Mock()
+            record.to_legacy.return_value = {'IP': ip}
+            return record
+        service.poll.side_effect = poll
+        def batch(service, targets, action, **kwargs):
+            self.assertEqual(kwargs['workers'], 12)
+            kwargs['on_dispatch'](rows[0]['IP'], True)
+            yield rows[0]['IP'], CommandResult('one', 'succeeded', 'Verified', True)
+            self.assertTrue(refreshing.wait(2))
+            kwargs['on_dispatch'](rows[1]['IP'], True)
+            yield rows[1]['IP'], CommandResult('two', 'unconfirmed', 'Accepted only', True)
+            completed.set()
+        worker = self.gui.ActionWorker(rows, 'sleep', command_workers=12)
+        progress, logs = [], []
+        worker.progress_signal.connect(lambda *args: progress.append(args), self.gui.Qt.ConnectionType.DirectConnection)
+        worker.log_signal.connect(logs.append, self.gui.Qt.ConnectionType.DirectConnection)
+        with patch('gemini_gui.default_service', return_value=service), \
+             patch('gemini_gui.execute_batch', side_effect=batch), ThreadPoolExecutor(max_workers=1) as runner:
+            future = runner.submit(worker.run)
+            try:
+                self.assertTrue(completed.wait(3), 'Telemetry held up the command queue')
+                self.assertEqual(progress[-1], (2, 2, 2, 1))
+                self.assertTrue(any('[unconfirmed]' in line for line in logs))
+                self.assertFalse(future.done())
+            finally:
+                release_refresh.set()
+            future.result(timeout=3)
 
     def test_update_versions_are_numeric_and_sources_validated(self):
         from desktop_ui.updates import version_tuple, validate_manifest

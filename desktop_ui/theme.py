@@ -35,6 +35,12 @@ def apply_theme(app, dark=False):
         #SectionHeader { font-size: 11px; font-weight: 600; }
         #DashValue { font-size: 18px; font-weight: 600; }
         #CardValue { font-size: 27px; font-weight: 600; }
+        #SummaryPanel { background: %(panel)s; border: 1px solid %(line)s; border-radius: 8px; }
+        #SummaryValue { font-size: 19px; font-weight: 600; }
+        #BtnTheme { padding: 0; }
+        #SummaryDetails::pane { border: none; }
+        QTabBar::tab { background: %(field)s; padding: 6px 12px; border-radius: 4px; }
+        QTabBar::tab:selected { background: %(selected)s; color: %(accent)s; }
         #SelectionCount { color: %(accent)s; font-weight: 600; }
         QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox { background: %(panel)s; border: 1px solid %(line)s;
             border-radius: 6px; padding: 7px; selection-background-color: %(selected)s; }
@@ -49,7 +55,7 @@ def apply_theme(app, dark=False):
         #RangeSummary { color: %(accent)s; font-size: 19px; font-weight: 600; }
         #ValidationError { color: %(danger)s; }
         #RangeEditor { font-family: 'Consolas'; font-size: 14px; }
-        #NetworkList::item { padding: 5px 7px; }
+        #NetworkList::item, #NetworkTree::item { padding: 5px 7px; }
         #DashDetails { color: %(muted)s; background: transparent; border: none; padding: 0; }
         QPushButton[primary="true"]:disabled { background: %(field)s; color: %(muted)s; border-color: %(line)s; }
         #RangeAction { padding: 8px 4px; }
@@ -60,11 +66,11 @@ def apply_theme(app, dark=False):
         #BtnStop { color: %(danger)s; }
         QCheckBox, QRadioButton { spacing: 8px; padding: 4px 0; }
         QCheckBox::indicator { width: 16px; height: 16px; }
-        QListWidget, QTableWidget { background: %(panel)s; alternate-background-color: %(field)s;
+        QListWidget, QTreeWidget, QTableWidget, QTableView { background: %(panel)s; alternate-background-color: %(field)s;
             border: 1px solid %(line)s; border-radius: 8px; outline: none; }
         QListWidget::item { padding: 9px 7px; border-radius: 4px; }
-        QListWidget::item:selected, QTableWidget::item:selected { background: %(selected)s; color: %(text)s; }
-        QTableWidget::item { padding: 4px 8px; border-bottom: 1px solid %(line)s; }
+        QListWidget::item:selected, QTreeWidget::item:selected, QTableWidget::item:selected, QTableView::item:selected { background: %(selected)s; color: %(text)s; }
+        QTableWidget::item, QTableView::item { padding: 4px 8px; border-bottom: 1px solid %(line)s; }
         QHeaderView::section { background: %(field)s; color: %(muted)s; padding: 11px 8px;
             border: none; border-bottom: 1px solid %(line)s; font-weight: 600; }
         QScrollArea, QStackedWidget { border: none; background: transparent; }

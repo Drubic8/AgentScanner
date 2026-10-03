@@ -2,6 +2,8 @@
 
 ## Аппаратные прогоны
 
+- [Antminer S21 / PitBit.78: LED, Sleep/Wakeup и перезагрузка](pitbit-s21-2026-10-03.md).
+
 - [Avalon 1346-110: подсветка, Sleep/Wakeup и определение состояния](avalon-1346-2026-10-02.md).
 - [Antminer L9: исправление ложной смены устройства после Sleep](antminer-l9-identity-2026-10-02.md).
 - [Stock: сканирование Z-серии, S21/T21 и других моделей, 28.09.2026](stock-regressions-2026-09-28.md).

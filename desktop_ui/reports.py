@@ -2,6 +2,7 @@
 import ipaddress
 import re
 import pandas as pd
+from .preferences import COLUMNS
 
 
 def _number(value):
@@ -39,4 +40,4 @@ def sorted_frame(records, column):
 
 def export_frame(records, columns, sort_column):
     frame = sorted_frame(records, sort_column).rename(columns={"Real": "Real HR", "Avg": "Avg HR"})
-    return frame.reindex(columns=columns, fill_value="")
+    return frame.reindex(columns=columns, fill_value="").rename(columns=COLUMNS)
