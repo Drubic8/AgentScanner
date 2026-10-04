@@ -407,5 +407,22 @@
   "Изменить папку": "Edit folder",
   "Площадка 1 или Перевод в сон": "Site 1 or Sleep schedule",
   "Расположение": "Location",
-  "Сохранить папку": "Save folder"
+  "Сохранить папку": "Save folder",
+  "Установить загруженное обновление": "Install downloaded update",
+  "Обновление уже скачивается…": "Update download is already in progress…",
+  "Новая версия: {p0}. Установлена: {p1}.\n\n{p2}\n\nСкачать обновление? Перед установкой программа запросит перезапуск.": "New version: {p0}. Installed: {p1}.\n\n{p2}\n\nDownload the update? You will be asked to restart before installation.",
+  "Автоустановка доступна в Windows EXE. При запуске из исходников обновите код через Git.": "Automatic installation is available in the Windows EXE. When running from source, update the code using Git.",
+  "Скачиваем и проверяем обновление…": "Downloading and verifying the update…",
+  "Обновление ASIC Monitor": "ASIC Monitor update",
+  "Скачивание обновления отменено": "Update download cancelled",
+  "Не удалось скачать или проверить обновление: {p0}": "Could not download or verify the update: {p0}",
+  "Обновление не установлено. Текущий EXE сохранён.\n{p0}": "The update was not installed. Your current EXE is unchanged.\n{p0}",
+  "Обновление {p0} проверено и готово к установке": "Update {p0} is verified and ready to install",
+  "Обновление готово": "Update ready",
+  "Завершите сканирование и команды, затем выберите «Справка → Установить загруженное обновление».": "Finish scanning and device commands, then choose Help → Install downloaded update.",
+  "Установка обновления": "Install update",
+  "Установить версию {p0} и перезапустить программу?\nСети и настройки сохранятся. Прежний EXE останется в резервной копии.": "Install version {p0} and restart the application?\nYour networks and settings will be kept. The previous EXE will be backed up.",
+  "Не удалось запустить установку. Текущая программа продолжает работать.\n{p0}": "Could not start installation. The current application is still running.\n{p0}",
+  "Новая версия не запустилась. Прежний EXE восстановлен; сети и настройки сохранены.": "The new version did not start. The previous EXE was restored; your networks and settings are preserved.",
+  "Настройки не удалось сохранить. Установка отложена; программа остаётся открытой.": "Could not save settings. Installation is deferred; the application remains open."
 }

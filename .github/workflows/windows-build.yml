@@ -24,6 +24,8 @@ jobs:
           if ($env:GITHUB_REF_NAME -ne "v$releaseVersion") { throw "Tag must match version.json" }
       - name: Test, build and smoke-test EXE
         run: python scripts/build_windows.py
+      - name: Check published release discovery
+        run: python -c "from desktop_ui.update_package import discover_release; r = discover_release(); print('Published update metadata verified:', r['version'], r['size'])"
       - uses: actions/upload-artifact@v4
         with:
           name: ASIC-Monitor-Windows
@@ -35,4 +37,6 @@ jobs:
         if: always()
         with:
           name: Desktop-checks
-          path: artifacts/exe-smoke
+          path: |
+            artifacts/exe-smoke
+            artifacts/exe-update

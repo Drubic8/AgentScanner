@@ -1,26 +1,10 @@
-"""Background check of the existing GitHub version manifest."""
-import json
-import re
-import time
-from urllib.parse import urlsplit
-import requests
+"""Qt background workers; update verification and installation live outside the UI."""
+from threading import Event
 from PyQt6.QtCore import QThread, pyqtSignal
 
-
-def version_tuple(value):
-    if not isinstance(value, str) or not re.fullmatch(r"\d+\.\d+\.\d+", value):
-        raise ValueError("Неверный формат версии")
-    return tuple(int(part) for part in value.split("."))
-
-
-def validate_manifest(data):
-    if not isinstance(data, dict):
-        raise ValueError("Неверный формат манифеста")
-    version_tuple(data.get("version"))
-    url = urlsplit(data.get("url", ""))
-    if url.scheme != "https" or url.netloc != "github.com" or not url.path.startswith("/Drubic8/AgentScanner/releases/"):
-        raise ValueError("Неизвестный источник обновления")
-    return data
+from .update_package import (UpdateCancelled, discover_release, download_package,
+                             validate_manifest, version_tuple)
+from .update_installer import prepare_update
 
 
 class UpdateCheckWorker(QThread):
@@ -32,18 +16,53 @@ class UpdateCheckWorker(QThread):
 
     def run(self):
         try:
-            with requests.get(self.url, timeout=(3, 5), stream=True) as response:
-                response.raise_for_status()
-                content = bytearray()
-                started = time.monotonic()
-                while True:
-                    chunk = response.raw.read1(4096, decode_content=True)
-                    if not chunk:
-                        break
-                    content.extend(chunk)
-                    if len(content) > 65536 or time.monotonic() - started > 10:
-                        raise ValueError("Ответ сервера обновлений слишком большой или медленный")
-                data = validate_manifest(json.loads(content))
-            self.result.emit(data, "")
+            self.result.emit(discover_release(self.url), "")
         except Exception as exc:
             self.result.emit(None, str(exc))
+
+
+class UpdateDownloadWorker(QThread):
+    progress = pyqtSignal(int, int)
+    ready = pyqtSignal(object)
+    failed = pyqtSignal(str)
+    cancelled = pyqtSignal()
+
+    def __init__(self, release, cache, target, parent=None):
+        super().__init__(parent)
+        self.release, self.cache, self.target = dict(release), cache, target
+        self.cancel_event = Event()
+
+    def cancel(self):
+        self.cancel_event.set()
+
+    def run(self):
+        candidate = None
+        try:
+            candidate = download_package(self.release, self.cache, cancelled=self.cancel_event,
+                                         progress=self.progress.emit)
+            if self.cancel_event.is_set():
+                raise UpdateCancelled()
+            plan = prepare_update(candidate, self.target, self.release["version"], self.release["sha256"])
+            if self.cancel_event.is_set():
+                raise UpdateCancelled()
+            self.ready.emit(plan)
+        except UpdateCancelled:
+            self.clean_staging(candidate)
+            self.cancelled.emit()
+        except Exception as exc:
+            self.clean_staging(candidate)
+            self.failed.emit(str(exc))
+
+    @staticmethod
+    def clean_staging(candidate):
+        if candidate is None:
+            return
+        for name in ("package.exe", "updater.exe", "plan.json"):
+            try:
+                (candidate.parent / name).unlink(missing_ok=True)
+            except OSError:
+                pass
+        try:
+            candidate.parent.rmdir()
+        except OSError:
+            pass

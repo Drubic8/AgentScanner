@@ -1,5 +1,10 @@
-from desktop_ui.i18n import tr, get_language, set_language, install_qt_translator, action_label
 import sys
+if __name__ == "__main__" and "--apply-update" in sys.argv:
+    from desktop_ui.update_installer import run_helper
+    position = sys.argv.index("--apply-update") + 1
+    sys.exit(run_helper(sys.argv[position]) if position < len(sys.argv) else 2)
+
+from desktop_ui.i18n import tr, get_language, set_language, install_qt_translator, action_label
 from html import escape
 import re
 import os
@@ -22,7 +27,8 @@ from desktop_ui.network_groups import (normalize_groups, selected_ranges, node_a
     siblings_at, walk_networks)
 from copy import deepcopy
 from desktop_ui.theme import apply_theme as apply_desktop_theme
-from desktop_ui.updates import UpdateCheckWorker, version_tuple
+from desktop_ui.updates import UpdateCheckWorker, UpdateDownloadWorker, version_tuple
+from desktop_ui.update_installer import launch_updater, acknowledge_startup
 from desktop_ui.reports import export_frame, sorted_frame
 from desktop_ui.access_dialog import AccessProfilesDialog
 from desktop_ui.access_store import AccessStore
@@ -51,7 +57,7 @@ def is_system_dark_mode():
     return True # По умолчанию темная
 
 # Константы автообновления
-CURRENT_VERSION = "2.2.1"
+CURRENT_VERSION = "2.2.2"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
@@ -72,7 +78,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QListWidget, QAbstractItemView, QInputDialog, QFrame,
                              QScrollArea, QSizePolicy, QMenu, QDialog, QRadioButton, 
                              QButtonGroup, QTextEdit, QTabWidget, QListWidgetItem,
-                             QComboBox, QStackedWidget)
+                             QComboBox, QStackedWidget, QProgressDialog)
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QUrl, QMimeData, QTimer, QItemSelectionModel
 from PyQt6.QtGui import QFont, QColor, QIcon, QAction
@@ -708,6 +714,8 @@ class GeminiApp(QMainWindow):
         tools_menu.addAction(theme_act)
         help_menu = menubar.addMenu(tr('Справка'))
         help_menu.addAction(tr('Проверить обновления'), lambda: self.check_for_updates(auto=False))
+        self.install_update_action = help_menu.addAction(tr('Установить загруженное обновление'), self.install_downloaded_update)
+        self.install_update_action.setEnabled(bool(getattr(self, "staged_update", None)))
         help_menu.addAction(tr('Что нового в {p0}', p0=CURRENT_VERSION), self.show_changelog)
         search = QAction(tr('Поиск устройств'), self)
         search.setShortcut("Ctrl+F")
@@ -789,6 +797,8 @@ class GeminiApp(QMainWindow):
                 self._preferences_dirty = False
             except OSError:
                 self.add_log(tr('Не удалось сохранить компоновку. Проверьте доступ к папке настроек.'), level="warning")
+                return False
+        return True
 
     def change_application_language(self, language, *, preserve_layout=True):
         language = language if language in ("ru", "en") else "ru"
@@ -924,6 +934,9 @@ class GeminiApp(QMainWindow):
     # ЛОГИКА АВТООБНОВЛЕНИЯ
     # ==========================================
     def check_for_updates(self, auto=False):
+        if getattr(self, "download_worker", None) and self.download_worker.isRunning():
+            self.status_bar.setText(tr('Обновление уже скачивается…'))
+            return
         if getattr(self, "update_worker", None) and self.update_worker.isRunning():
             return
         self.status_bar.setText(tr('Проверяем обновления…'))
@@ -942,17 +955,66 @@ class GeminiApp(QMainWindow):
         if version_tuple(latest_version) > version_tuple(CURRENT_VERSION):
             self.status_bar.setText(tr('Доступна версия {p0}', p0=latest_version))
             reply = QMessageBox.question(self, tr('Доступно обновление'),
-                tr('Новая версия: {p0}. Установлена: {p1}.\n\n{p2}\n\nОткрыть скачивание в браузере?', p0=latest_version, p1=CURRENT_VERSION, p2=data.get('changelog_en' if get_language() == 'en' else 'changelog', '')),
+                tr('Новая версия: {p0}. Установлена: {p1}.\n\n{p2}\n\nСкачать обновление? Перед установкой программа запросит перезапуск.', p0=latest_version, p1=CURRENT_VERSION, p2=data.get('changelog_en' if get_language() == 'en' else 'changelog', '')),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             if reply == QMessageBox.StandardButton.Yes:
-                self.apply_update(data["url"])
+                self.apply_update(data)
         else:
             self.status_bar.setText(tr('Установлена актуальная версия {p0}', p0=CURRENT_VERSION))
             if not auto:
                 QMessageBox.information(self, tr('Обновление'), tr('Установлена актуальная версия {p0}.', p0=CURRENT_VERSION))
 
-    def apply_update(self, download_url):
-        webbrowser.open(download_url)
+    def apply_update(self, release):
+        if not getattr(sys, "frozen", False) or sys.platform != "win32":
+            QMessageBox.information(self, tr('Обновление'), tr('Автоустановка доступна в Windows EXE. При запуске из исходников обновите код через Git.'))
+            return
+        if getattr(self, "download_worker", None) and self.download_worker.isRunning():
+            return
+        self.update_progress = QProgressDialog(tr('Скачиваем и проверяем обновление…'), tr('Отмена'), 0, 1000, self)
+        self.update_progress.setWindowTitle(tr('Обновление ASIC Monitor'))
+        self.update_progress.setAutoClose(False)
+        self.update_progress.setAutoReset(False)
+        self.update_progress.setMinimumDuration(0)
+        worker = UpdateDownloadWorker(release, APP_DATA_DIR / "updates", Path(sys.executable).resolve(), self)
+        self.download_worker = worker
+        self.update_progress.canceled.connect(worker.cancel)
+        worker.progress.connect(lambda received, total: self.update_progress.setValue(received * 1000 // total))
+        worker.ready.connect(lambda plan: self.on_update_downloaded(plan, release["version"]))
+        worker.failed.connect(self.on_update_download_failed)
+        worker.cancelled.connect(lambda: self.status_bar.setText(tr('Скачивание обновления отменено')))
+        def finished():
+            self.update_progress.close()
+            self.download_worker = None
+            worker.deleteLater()
+        worker.finished.connect(finished)
+        worker.start()
+
+    def on_update_download_failed(self, error):
+        self.update_progress.hide()
+        self.add_log(tr('Не удалось скачать или проверить обновление: {p0}', p0=error))
+        QMessageBox.warning(self, tr('Обновление'), tr('Обновление не установлено. Текущий EXE сохранён.\n{p0}', p0=error))
+
+    def on_update_downloaded(self, plan, version):
+        self.update_progress.hide()
+        self.staged_update = (plan, version)
+        self.install_update_action.setEnabled(True)
+        self.status_bar.setText(tr('Обновление {p0} проверено и готово к установке', p0=version))
+        self.install_downloaded_update()
+
+    def install_downloaded_update(self):
+        staged = getattr(self, "staged_update", None)
+        if not staged:
+            return
+        workers = list(getattr(self, "workers", [])) + [getattr(self, "worker", None)]
+        if any(worker is not None and worker.isRunning() for worker in workers):
+            QMessageBox.information(self, tr('Обновление готово'), tr('Завершите сканирование и команды, затем выберите «Справка → Установить загруженное обновление».'))
+            return
+        answer = QMessageBox.question(self, tr('Установка обновления'),
+            tr('Установить версию {p0} и перезапустить программу?\nСети и настройки сохранятся. Прежний EXE останется в резервной копии.', p0=staged[1]),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if answer == QMessageBox.StandardButton.Yes:
+            self.install_on_close = True
+            self.close()
 
     def show_changelog(self):
         manifest = load_json(Path(current_dir) / "version.json", default={})
@@ -1788,14 +1850,31 @@ class GeminiApp(QMainWindow):
 
     def closeEvent(self, event):
         workers = list(getattr(self, "workers", []))
-        workers += [getattr(self, "worker", None), getattr(self, "update_worker", None)]
+        workers += [getattr(self, "worker", None), getattr(self, "update_worker", None), getattr(self, "download_worker", None)]
         if any(worker is not None and worker.isRunning() for worker in workers):
+            download = getattr(self, "download_worker", None)
+            if download is not None:
+                download.cancel()
             self.stop_scan()
             self.status_bar.setText(tr('Завершаем текущие операции перед закрытием…'))
             event.ignore()
             QTimer.singleShot(250, self.close)
             return
-        self.persist_ui_preferences()
+        saved = self.persist_ui_preferences()
+        if getattr(self, "install_on_close", False):
+            if not saved:
+                self.install_on_close = False
+                QMessageBox.warning(self, tr('Обновление'), tr('Настройки не удалось сохранить. Установка отложена; программа остаётся открытой.'))
+                event.ignore()
+                return
+            try:
+                launch_updater(self.staged_update[0])
+                self.install_on_close = False
+            except OSError as exc:
+                self.install_on_close = False
+                QMessageBox.warning(self, tr('Обновление'), tr('Не удалось запустить установку. Текущая программа продолжает работать.\n{p0}', p0=exc))
+                event.ignore()
+                return
         event.accept()
 
 if __name__ == "__main__":
@@ -1810,6 +1889,17 @@ if __name__ == "__main__":
         from desktop_ui.smoke import run_smoke
         output = Path(sys.argv[sys.argv.index("--smoke-test") + 1]).resolve()
         sys.exit(run_smoke(app, GeminiApp, output))
-    window = GeminiApp()
+    settings = load_app_settings()
+    startup = "--update-startup" in sys.argv
+    automatic_check = settings["check_updates"]
+    if startup:
+        settings["check_updates"] = False
+    window = GeminiApp(settings=settings)
+    window.app_settings["check_updates"] = automatic_check
     window.show()
+    if startup:
+        acknowledge_startup(sys.argv[sys.argv.index("--update-startup") + 1],
+                            sys.argv[sys.argv.index("--update-token") + 1], CURRENT_VERSION)
+    if "--update-rollback" in sys.argv:
+        QMessageBox.warning(window, tr('Обновление'), tr('Новая версия не запустилась. Прежний EXE восстановлен; сети и настройки сохранены.'))
     sys.exit(app.exec())

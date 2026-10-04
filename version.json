@@ -1,6 +1,6 @@
 {
-  "version": "2.2.1",
+  "version": "2.2.2",
   "url": "https://github.com/Drubic8/AgentScanner/releases/latest/download/ASIC_Monitor.exe",
-  "changelog": "Новая общая иконка Windows и Android. Русский и английский языки всего интерфейса: главное окно, настройки, сети, фильтры, команды и диалоги. Переключение языка сохраняется и применяется без перезапуска.",
-  "changelog_en": "New shared Windows and Android icon. Russian and English throughout the interface: overview, settings, networks, filters, commands and dialogs. Language changes are saved and applied without restarting."
+  "changelog": "Возвращено обновление Windows EXE внутри программы: фоновое скачивание, проверка SHA-256 и версии, резервная копия и откат при неудачном запуске. Установка после завершения сканирования и команд. Обновлены инструкции.",
+  "changelog_en": "Windows EXE updates are back: background download, SHA-256 and version verification, backup and rollback if startup fails. Installation waits for scanning and device commands to finish. Documentation updated."
 }

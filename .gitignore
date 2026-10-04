@@ -60,6 +60,7 @@ dist/
 !scripts/generate_icons.py
 !ASIC_Monitor.spec
 !scripts/build_windows.py
+!scripts/check_windows_update.py
 !requirements-build.lock
 !.github/workflows/windows-build.yml
 .venv-build/
