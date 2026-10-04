@@ -1,4 +1,5 @@
 """Preferences dialog. Changes are committed only after validation and Save."""
+from .i18n import tr
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QListWidget,
     QListWidgetItem, QStackedWidget, QWidget, QScrollArea, QFormLayout, QComboBox,
@@ -9,14 +10,14 @@ from .preferences import COLUMNS, TABLE_PRESETS, normalize, data_directory
 class SettingsDialog(QDialog):
     def __init__(self, current_settings, parent=None, *, configure_access=None):
         super().__init__(parent)
-        self.setWindowTitle("Настройки · ASIC Monitor")
+        self.setWindowTitle(tr('Настройки · ASIC Monitor'))
         self.resize(840, 650)
         self.setMinimumSize(740, 540)
         self.settings = normalize(current_settings)
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 20, 24, 20)
         root.setSpacing(16)
-        title = QLabel("Настройки программы")
+        title = QLabel(tr('Настройки программы'))
         title.setObjectName("DialogTitle")
         root.addWidget(title)
         body = QHBoxLayout()
@@ -30,19 +31,19 @@ class SettingsDialog(QDialog):
         self._general_page()
         self._scanner_page()
         self._columns_page()
-        self._export_page("pdf", "PDF-отчёты")
-        self._export_page("csv", "Excel и CSV")
+        self._export_page("pdf", tr('PDF-отчёты'))
+        self._export_page("csv", tr('Excel и CSV'))
         self._access_page(configure_access)
         self.navigation.currentRowChanged.connect(self.pages.setCurrentIndex)
         self.navigation.setCurrentRow(0)
         buttons = QHBoxLayout()
-        hint = QLabel("Изменения применятся после сохранения.")
+        hint = QLabel(tr('Изменения применятся после сохранения.'))
         hint.setObjectName("Muted")
         buttons.addWidget(hint)
         buttons.addStretch()
-        cancel = QPushButton("Отмена")
+        cancel = QPushButton(tr('Отмена'))
         cancel.clicked.connect(self.reject)
-        save = QPushButton("Сохранить")
+        save = QPushButton(tr('Сохранить'))
         save.setProperty("primary", True)
         save.setDefault(True)
         save.clicked.connect(self.save_and_close)
@@ -70,28 +71,28 @@ class SettingsDialog(QDialog):
         return layout
 
     def _general_page(self):
-        layout = self._page("Общие", "Оформление и поведение приложения на этом компьютере.")
+        layout = self._page(tr('Общие'), tr('Оформление и поведение приложения на этом компьютере.'))
         form = QFormLayout()
         form.setSpacing(14)
         self.theme = QComboBox()
-        for text, value in (("Как в Windows", "system"), ("Светлая", "light"), ("Тёмная", "dark")):
+        for text, value in ((tr('Как в Windows'), "system"), (tr('Светлая'), "light"), (tr('Тёмная'), "dark")):
             self.theme.addItem(text, value)
         self.theme.setCurrentIndex(self.theme.findData(self.settings["theme"]))
-        form.addRow("Тема", self.theme)
-        self.journal_language = QComboBox()
-        self.journal_language.addItem("Русский", "ru")
-        self.journal_language.addItem("English", "en")
-        self.journal_language.setCurrentIndex(self.journal_language.findData(self.settings["journal_language"]))
-        form.addRow("Язык журнала", self.journal_language)
+        form.addRow(tr('Тема'), self.theme)
+        self.language = QComboBox()
+        self.language.addItem("Русский", "ru")
+        self.language.addItem("English", "en")
+        self.language.setCurrentIndex(self.language.findData(self.settings["language"]))
+        form.addRow(tr('Язык интерфейса'), self.language)
         layout.addLayout(form)
-        self.check_updates = QCheckBox("Проверять обновления при запуске")
+        self.check_updates = QCheckBox(tr('Проверять обновления при запуске'))
         self.check_updates.setChecked(self.settings["check_updates"])
         layout.addWidget(self.check_updates)
-        hint = QLabel("Для проверки обновлений требуется интернет. Сканирование работает в локальной сети.")
+        hint = QLabel(tr('Для проверки обновлений требуется интернет. Сканирование работает в локальной сети.'))
         hint.setWordWrap(True)
         hint.setObjectName("Muted")
         layout.addWidget(hint)
-        location = QLabel(f"Настройки и диапазоны сохраняются в:\n{data_directory()}")
+        location = QLabel(tr('Настройки и диапазоны сохраняются в:\n{p0}', p0=data_directory()))
         location.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         location.setWordWrap(True)
         location.setObjectName("Muted")
@@ -99,12 +100,12 @@ class SettingsDialog(QDialog):
         layout.addWidget(location)
 
     def _scanner_page(self):
-        layout = self._page("Сканирование", "Выберите производителей и параметры опроса. Новые параметры действуют со следующего сканирования.")
+        layout = self._page(tr('Сканирование'), tr('Выберите производителей и параметры опроса. Новые параметры действуют со следующего сканирования.'))
         self.filters = {}
         for key, text in (("scan_bitmain", "Antminer · Bitmain, VNish, PitBit"),
                           ("scan_whatsminer", "Whatsminer · MicroBT"),
                           ("scan_elphapex", "Elphapex"),
-                          ("scan_other", "Остальные · Avalon, iPollo, Jasminer, Generic")):
+                          ("scan_other", tr('Остальные · Avalon, iPollo, Jasminer, Generic'))):
             box = QCheckBox(text)
             box.setChecked(self.settings[key])
             layout.addWidget(box)
@@ -112,39 +113,36 @@ class SettingsDialog(QDialog):
         form = QFormLayout()
         self.timeout = QSpinBox()
         self.timeout.setRange(1, 10)
-        self.timeout.setSuffix(" с")
+        self.timeout.setSuffix(tr(' с'))
         self.timeout.setValue(self.settings["timeout"])
         self.workers = QSpinBox()
         self.workers.setRange(1, 128)
         self.workers.setValue(self.settings["workers"])
-        form.addRow("Ожидание ответа", self.timeout)
-        form.addRow("Параллельные устройства", self.workers)
+        form.addRow(tr('Ожидание ответа'), self.timeout)
+        form.addRow(tr('Параллельные устройства'), self.workers)
         self.command_workers = QSpinBox()
         self.command_workers.setRange(1, 32)
         self.command_workers.setValue(self.settings['command_workers'])
-        form.addRow("Параллельная отправка команд", self.command_workers)
+        form.addRow(tr('Параллельная отправка команд'), self.command_workers)
         layout.addLayout(form)
-        hint = QLabel("Сканирование: по умолчанию 2 секунды и 64 устройства. Команды: до 32 устройств одновременно, проверка результата выполняется отдельно. Для медленной сети уменьшите параллельность.\n\nПрофили логинов и паролей настраиваются через «Доступ к ASIC».")
+        hint = QLabel(tr('Сканирование: по умолчанию 2 секунды и 64 устройства. Команды: до 32 устройств одновременно, проверка результата выполняется отдельно. Для медленной сети уменьшите параллельность.\n\nПрофили логинов и паролей настраиваются через «Доступ к ASIC».'))
         hint.setWordWrap(True)
         hint.setObjectName("Muted")
         layout.addWidget(hint)
         layout.addStretch()
 
     def _access_page(self, configure_access):
-        layout = self._page("Доступ к ASIC", "Профили логинов и паролей для автоматического сканирования и управления оборудованием.")
-        description = QLabel("Настройте общие профили для Antminer, VNish, WhatsMiner и Elphapex, "
-                             "а также отдельные профили для нужных IP или подсетей. "
-                             "Приоритет имеют профили для конкретных адресов.")
+        layout = self._page(tr('Доступ к ASIC'), tr('Профили логинов и паролей для автоматического сканирования и управления оборудованием.'))
+        description = QLabel(tr('Настройте общие профили для Antminer, VNish, WhatsMiner и Elphapex, а также отдельные профили для нужных IP или подсетей. Приоритет имеют профили для конкретных адресов.'))
         description.setWordWrap(True)
         layout.addWidget(description)
-        self.access_button = QPushButton("Открыть профили доступа")
+        self.access_button = QPushButton(tr('Открыть профили доступа'))
         self.access_button.setProperty("primary", True)
         self.access_button.setEnabled(configure_access is not None)
         if configure_access:
             self.access_button.clicked.connect(lambda: configure_access(parent=self))
         layout.addWidget(self.access_button)
-        hint = QLabel("Пароли скрыты в редакторе и защищены учётной записью Windows при сохранении. "
-                      "Профили сохраняются отдельно кнопкой «Сохранить профили»; отмена общих настроек их не отменяет.")
+        hint = QLabel(tr('Пароли скрыты в редакторе и защищены учётной записью Windows при сохранении. Профили сохраняются отдельно кнопкой «Сохранить профили»; отмена общих настроек их не отменяет.'))
         hint.setObjectName("Muted")
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -160,22 +158,21 @@ class SettingsDialog(QDialog):
             item.setCheckState(Qt.CheckState.Checked if code in self.settings[key] else Qt.CheckState.Unchecked)
             if key == "ui_cols" and code == "IP":
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
-                item.setToolTip("IP-адрес нужен для выбора и управления устройствами.")
+                item.setToolTip(tr('IP-адрес нужен для выбора и управления устройствами.'))
             listing.addItem(item)
         layout.addWidget(listing, 1)
         return listing
 
     def _columns_page(self):
-        layout = self._page("Таблица", "Отображаемые столбцы. IP-адрес остаётся видимым. Состав отчётов настраивается отдельно.")
+        layout = self._page(tr('Таблица'), tr('Отображаемые столбцы. IP-адрес остаётся видимым. Состав отчётов настраивается отдельно.'))
         form = QFormLayout()
         self.density = QComboBox()
-        self.density.addItem("Обычный", "comfortable")
-        self.density.addItem("Компактный", "compact")
+        self.density.addItem(tr('Обычный'), "comfortable")
+        self.density.addItem(tr('Компактный'), "compact")
         self.density.setCurrentIndex(self.density.findData(self.settings["density"]))
-        form.addRow("Режим таблицы", self.density)
+        form.addRow(tr('Режим таблицы'), self.density)
         layout.addLayout(form)
-        hint = QLabel("Компактный режим уменьшает ширину столбцов, высоту строк и отступы. "
-                      "Ширину можно изменить вручную за границу заголовка. Полный текст ячейки — при наведении.")
+        hint = QLabel(tr('Компактный режим уменьшает ширину столбцов, высоту строк и отступы. Ширину можно изменить вручную за границу заголовка. Полный текст ячейки — при наведении.'))
         hint.setObjectName("Muted")
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -183,13 +180,13 @@ class SettingsDialog(QDialog):
         presets = QHBoxLayout()
         self.table_preset = QComboBox()
         for code, (label, _) in TABLE_PRESETS.items():
-            self.table_preset.addItem(label, code)
+            self.table_preset.addItem(tr(label), code)
         presets.addWidget(self.table_preset, 1)
-        apply = QPushButton("Применить набор")
+        apply = QPushButton(tr('Применить набор'))
         apply.clicked.connect(self.apply_table_preset)
         presets.addWidget(apply)
         layout.addLayout(presets)
-        reset = QPushButton("Сбросить ширину и порядок столбцов")
+        reset = QPushButton(tr('Сбросить ширину и порядок столбцов'))
         reset.clicked.connect(self.reset_table_layout)
         layout.addWidget(reset)
 
@@ -207,21 +204,21 @@ class SettingsDialog(QDialog):
         self.settings["column_order"] = defaults()["column_order"]
 
     def _export_page(self, kind, title):
-        layout = self._page(title, "Выберите папку, порядок сортировки и столбцы отчёта. Экспорт включает все результаты сканирования.")
+        layout = self._page(title, tr('Выберите папку, порядок сортировки и столбцы отчёта. Экспорт включает все результаты сканирования.'))
         row = QHBoxLayout()
         path = QLineEdit(self.settings["export_dir" if kind == "pdf" else "export_csv_dir"])
-        path.setPlaceholderText("По умолчанию — папка данных приложения")
+        path.setPlaceholderText(tr('По умолчанию — папка данных приложения'))
         path.setClearButtonEnabled(True)
-        browse = QPushButton("Обзор…")
+        browse = QPushButton(tr('Обзор…'))
         def choose():
-            folder = QFileDialog.getExistingDirectory(self, "Папка отчётов", path.text())
+            folder = QFileDialog.getExistingDirectory(self, tr('Папка отчётов'), path.text())
             if folder:
                 path.setText(folder)
         browse.clicked.connect(choose)
         row.addWidget(path, 1)
         row.addWidget(browse)
         layout.addLayout(row)
-        copy = QCheckBox("Копировать сохранённый файл в буфер обмена")
+        copy = QCheckBox(tr('Копировать сохранённый файл в буфер обмена'))
         copy.setChecked(self.settings[f"copy_{kind}"])
         layout.addWidget(copy)
         sort = QComboBox()
@@ -229,7 +226,7 @@ class SettingsDialog(QDialog):
             sort.addItem(COLUMNS[code], code)
         sort.setCurrentIndex(max(0, sort.findData(self.settings[f"{kind}_sort"])))
         form = QFormLayout()
-        form.addRow("Сортировать по", sort)
+        form.addRow(tr('Сортировать по'), sort)
         layout.addLayout(form)
         setattr(self, f"{kind}_path", path)
         setattr(self, f"{kind}_copy", copy)
@@ -241,7 +238,7 @@ class SettingsDialog(QDialog):
         updated.update({key: box.isChecked() for key, box in self.filters.items()})
         if not any(box.isChecked() for box in self.filters.values()):
             self.navigation.setCurrentRow(1)
-            QMessageBox.warning(self, "Сканирование", "Выберите хотя бы одну группу устройств.")
+            QMessageBox.warning(self, tr('Сканирование'), tr('Выберите хотя бы одну группу устройств.'))
             return
         for key in ("ui_cols", "pdf_cols", "csv_cols"):
             listing = getattr(self, "list_" + key)
@@ -249,11 +246,11 @@ class SettingsDialog(QDialog):
                         if listing.item(i).checkState() == Qt.CheckState.Checked]
             if not selected:
                 self.navigation.setCurrentRow({"ui_cols": 2, "pdf_cols": 3, "csv_cols": 4}[key])
-                QMessageBox.warning(self, "Столбцы", "Выберите хотя бы один столбец.")
+                QMessageBox.warning(self, tr('Столбцы'), tr('Выберите хотя бы один столбец.'))
                 return
             updated[key] = selected
         updated.update(theme=self.theme.currentData(), density=self.density.currentData(),
-                       journal_language=self.journal_language.currentData(), table_preset="custom",
+                       language=self.language.currentData(), journal_language=self.language.currentData(), table_preset="custom",
                        timeout=self.timeout.value(), workers=self.workers.value(),
                        command_workers=self.command_workers.value(),
                        check_updates=self.check_updates.isChecked())

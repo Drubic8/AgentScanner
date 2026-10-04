@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboB
     QDialog, QFileDialog, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMenu,
     QMessageBox, QPlainTextEdit, QPushButton, QSplitter, QTableView, QVBoxLayout)
 from .event_log import LogEvent, OUTCOMES, export_events
+from .i18n import tr
 
 # This module is fully bilingual; raw diagnostic messages remain in their original language.
 TEXT = {
@@ -139,7 +140,7 @@ class LogDialog(QDialog):
         self.language_box = QComboBox()
         self.language_box.addItem("Русский", "ru")
         self.language_box.addItem("English", "en")
-        self.language_box.setAccessibleName("Journal language / Язык журнала")
+        self.language_box.setAccessibleName(tr("Язык интерфейса"))
         self.language_box.setCurrentIndex(self.language_box.findData(self.language))
         self.language_box.currentIndexChanged.connect(lambda: self.set_language(self.language_box.currentData()))
         heading.addWidget(self.language_box)
@@ -248,6 +249,7 @@ class LogDialog(QDialog):
     def set_language(self, language, *, emit=True):
         self.language = language
         self.model.language = language
+        self.language_box.setAccessibleName("Interface language" if language == "en" else "Язык интерфейса")
         self.setWindowTitle(self.tr_text("title") + " · ASIC Monitor")
         for widget, key in ((self.title, "title"), (self.hint, "hint"), (self.follow, "follow"),
                             (self.reset, "reset"), (self.copy_button, "copy"), (self.export_button, "export"),

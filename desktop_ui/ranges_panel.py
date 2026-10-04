@@ -1,4 +1,5 @@
 """Saved subnet tree: folders organize targets; leaf checkboxes select scans."""
+from .i18n import tr, tr_error
 from copy import deepcopy
 
 from PyQt6.QtCore import Qt, pyqtSignal, QItemSelectionModel
@@ -36,17 +37,17 @@ class RangesPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
-        title = QLabel("Сети для сканирования")
+        title = QLabel(tr('Сети для сканирования'))
         title.setObjectName("RangeSectionTitle")
         layout.addWidget(title)
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Поиск папки, сети или IP")
-        self.search.setAccessibleName("Поиск сохранённых сетей и папок")
+        self.search.setPlaceholderText(tr('Поиск папки, сети или IP'))
+        self.search.setAccessibleName(tr('Поиск сохранённых сетей и папок'))
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self.filter_groups)
         layout.addWidget(self.search)
-        self.select_all = QCheckBox("Все сети")
-        self.select_all.setToolTip("Включить или выключить все сети, включая скрытые поиском")
+        self.select_all = QCheckBox(tr('Все сети'))
+        self.select_all.setToolTip(tr('Включить или выключить все сети, включая скрытые поиском'))
         self.select_all.clicked.connect(self.toggle_all)
         layout.addWidget(self.select_all)
         self.list_ranges = NetworkTree()
@@ -56,7 +57,7 @@ class RangesPanel(QWidget):
         self.list_ranges.setIndentation(16)
         self.list_ranges.setMinimumHeight(160)
         self.list_ranges.setUniformRowHeights(True)
-        self.list_ranges.setAccessibleName("Дерево сетей; галочка папки включает все вложенные сети")
+        self.list_ranges.setAccessibleName(tr('Дерево сетей; галочка папки включает все вложенные сети'))
         self.list_ranges.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.list_ranges.itemChanged.connect(self.on_item_changed)
         self.list_ranges.currentItemChanged.connect(self.update_actions)
@@ -66,10 +67,10 @@ class RangesPanel(QWidget):
         self.list_ranges.customContextMenuRequested.connect(self.context_menu)
         layout.addWidget(self.list_ranges, 1)
         bulk = QHBoxLayout()
-        self.enable_selected = QPushButton("Включить")
-        self.disable_selected = QPushButton("Выключить")
+        self.enable_selected = QPushButton(tr('Включить'))
+        self.disable_selected = QPushButton(tr('Выключить'))
         for button, enabled in ((self.enable_selected, True), (self.disable_selected, False)):
-            button.setToolTip("Применить к выделению Shift / Ctrl; скрытые поиском сети не меняются")
+            button.setToolTip(tr('Применить к выделению Shift / Ctrl; скрытые поиском сети не меняются'))
             button.clicked.connect(lambda checked=False, value=enabled: self.toggle_selected(value))
             bulk.addWidget(button)
         layout.addLayout(bulk)
@@ -85,24 +86,24 @@ class RangesPanel(QWidget):
         self.hint.setWordWrap(True)
         layout.addWidget(self.hint)
         add_row = QHBoxLayout()
-        add = QPushButton("Добавить сеть")
+        add = QPushButton(tr('Добавить сеть'))
         add.setProperty("primary", True)
         add.clicked.connect(self.add_requested)
-        self.add_folder = QPushButton("Папка")
-        self.add_folder.setToolTip("Создать папку внутри выбранной папки или рядом с сетью")
+        self.add_folder = QPushButton(tr('Папка'))
+        self.add_folder.setToolTip(tr('Создать папку внутри выбранной папки или рядом с сетью'))
         self.add_folder.clicked.connect(self.folder_requested)
         add_row.addWidget(add, 1)
         add_row.addWidget(self.add_folder)
         layout.addLayout(add_row)
         actions = QHBoxLayout()
-        self.edit_button = QPushButton("Изменить")
-        self.delete_button = QPushButton("Удалить")
+        self.edit_button = QPushButton(tr('Изменить'))
+        self.delete_button = QPushButton(tr('Удалить'))
         self.edit_button.clicked.connect(lambda: self.edit_requested.emit(self.current_index()))
         self.delete_button.clicked.connect(lambda: self.delete_requested.emit(self.current_index()))
         actions.addWidget(self.edit_button)
         actions.addWidget(self.delete_button)
         layout.addLayout(actions)
-        self.move_button = QPushButton("Переместить в папку…")
+        self.move_button = QPushButton(tr('Переместить в папку…'))
         self.move_button.clicked.connect(self.move_selected)
         layout.addWidget(self.move_button)
         self.update_actions()
@@ -135,7 +136,7 @@ class RangesPanel(QWidget):
                 text = f"{node['name']}  ({count})"
             else:
                 ranges = node.get("ranges", [])
-                detail = ranges[0] if len(ranges) == 1 else f"Диапазонов: {len(ranges)}"
+                detail = ranges[0] if len(ranges) == 1 else tr('Диапазонов: {p0}', p0=len(ranges))
                 text = f"{node['name']} · {detail}"
             item = QTreeWidgetItem([text])
             item.setData(0, Qt.ItemDataRole.UserRole, path)
@@ -165,9 +166,9 @@ class RangesPanel(QWidget):
                                      else Qt.CheckState.PartiallyChecked if enabled else Qt.CheckState.Unchecked)
         try:
             total = len(expand_ranges(selected_ranges(self.groups)))
-            self.summary.setText(f"Сетей: {enabled} из {len(networks)} · IP: {total:,}".replace(",", " "))
+            self.summary.setText(tr('Сетей: {p0} из {p1} · IP: {p2:,}', p0=enabled, p1=len(networks), p2=total).replace(",", " "))
         except ValueError:
-            self.summary.setText(f"Сетей: {enabled} из {len(networks)} · Проверьте лимит IP")
+            self.summary.setText(tr('Сетей: {p0} из {p1} · Проверьте лимит IP', p0=enabled, p1=len(networks)))
         self.filter_groups()
         self.list_ranges.verticalScrollBar().setValue(scroll)
         self.update_actions()
@@ -189,8 +190,8 @@ class RangesPanel(QWidget):
             return any_match
         visible = visit(self.groups)
         self.empty.setVisible(not visible)
-        self.empty.setText("Ничего не найдено. Измените поиск." if self.groups else "Добавьте сеть или папку для площадки.")
-        self.hint.setText("Галочка папки меняет все вложенные сети. Shift / Ctrl — выделение. Кнопки учитывают поиск.")
+        self.empty.setText(tr('Ничего не найдено. Измените поиск.') if self.groups else tr('Добавьте сеть или папку для площадки.'))
+        self.hint.setText(tr('Галочка папки меняет все вложенные сети. Shift / Ctrl — выделение. Кнопки учитывают поиск.'))
         self.update_actions()
 
     def visible_item(self, item):
@@ -217,8 +218,8 @@ class RangesPanel(QWidget):
         selected = len(self.selected_network_paths())
         self.enable_selected.setEnabled(bool(selected))
         self.disable_selected.setEnabled(bool(selected))
-        self.enable_selected.setText(f"Включить ({selected})" if selected else "Включить")
-        self.disable_selected.setText(f"Выключить ({selected})" if selected else "Выключить")
+        self.enable_selected.setText(tr('Включить ({p0})', p0=selected) if selected else tr('Включить'))
+        self.disable_selected.setText(tr('Выключить ({p0})', p0=selected) if selected else tr('Выключить'))
         self.move_button.setEnabled(bool(self.selected_paths()))
 
     def toggle_selected(self, checked):
@@ -243,20 +244,20 @@ class RangesPanel(QWidget):
         if not paths:
             return
         dialog = QDialog(self)
-        dialog.setWindowTitle("Переместить сети и папки")
+        dialog.setWindowTitle(tr('Переместить сети и папки'))
         dialog.setMinimumWidth(360)
         layout = QVBoxLayout(dialog)
-        layout.addWidget(QLabel("Папка назначения"))
+        layout.addWidget(QLabel(tr('Папка назначения')))
         combo = QComboBox()
-        combo.addItem("Все сети (корень)", ())
+        combo.addItem(tr('Все сети (корень)'), ())
         for path, node in walk_nodes(self.groups):
             if node.get("type") == "folder" and not any(path[:len(p)] == p for p in paths):
                 label = " / ".join(node_at(self.groups, path[:i])["name"] for i in range(1, len(path)+1))
                 combo.addItem(label, path)
         layout.addWidget(combo)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Переместить")
-        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Отмена")
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(tr('Переместить'))
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(tr('Отмена'))
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
@@ -264,7 +265,7 @@ class RangesPanel(QWidget):
             try:
                 candidate = move_nodes(self.groups, paths, combo.currentData())
             except ValueError as exc:
-                QMessageBox.warning(self, "Перемещение", str(exc))
+                QMessageBox.warning(self, tr('Перемещение'), tr_error(str(exc)))
                 return
             self.changed.emit(candidate)
             if self.groups == candidate:
@@ -277,10 +278,10 @@ class RangesPanel(QWidget):
         if item and item not in self.list_ranges.selectedItems():
             self.list_ranges.setCurrentItem(item)
         menu = QMenu(self)
-        menu.addAction("Добавить сеть", self.add_requested.emit)
-        menu.addAction("Создать папку", self.folder_requested.emit)
+        menu.addAction(tr('Добавить сеть'), self.add_requested.emit)
+        menu.addAction(tr('Создать папку'), self.folder_requested.emit)
         menu.addSeparator()
-        menu.addAction("Изменить", lambda: self.edit_requested.emit(self.current_index())).setEnabled(self.edit_button.isEnabled())
-        menu.addAction("Переместить в папку…", self.move_selected).setEnabled(self.move_button.isEnabled())
-        menu.addAction("Удалить", lambda: self.delete_requested.emit(self.current_index())).setEnabled(self.delete_button.isEnabled())
+        menu.addAction(tr('Изменить'), lambda: self.edit_requested.emit(self.current_index())).setEnabled(self.edit_button.isEnabled())
+        menu.addAction(tr('Переместить в папку…'), self.move_selected).setEnabled(self.move_button.isEnabled())
+        menu.addAction(tr('Удалить'), lambda: self.delete_requested.emit(self.current_index())).setEnabled(self.delete_button.isEnabled())
         menu.exec(self.list_ranges.viewport().mapToGlobal(position))

@@ -1,4 +1,5 @@
 """Icon-only locate indicator; full state stays accessible and exportable."""
+from .i18n import tr
 from PyQt6.QtCore import Qt, QRectF
 from PyQt6.QtGui import QColor, QPainter, QPen
 from PyQt6.QtWidgets import QApplication, QStyledItemDelegate, QStyleOptionViewItem, QStyle, QTableWidgetItem
@@ -10,16 +11,16 @@ def led_item(row):
     state = row.get('IdentifyEnabled')
     if row.get('Stale') or type(state) is not bool:
         state = None
-    text = 'Включена' if state is True else 'Выключена' if state is False else 'Неизвестно'
+    text = tr('Включена') if state is True else tr('Выключена') if state is False else tr('Неизвестно')
     item = QTableWidgetItem(text)
     item.setData(STATE_ROLE, state)
     observed = (row.get('Telemetry') or {}).get('observed_at')
-    item.setData(Qt.ItemDataRole.AccessibleTextRole, 'Подсветка: ' + text)
-    hint = text + '. Последнее состояние по API. Обновляется при сканировании и после команды.'
+    item.setData(Qt.ItemDataRole.AccessibleTextRole, tr('Подсветка: ') + text)
+    hint = text + tr('. Последнее состояние по API. Обновляется при сканировании и после команды.')
     if state is None:
-        hint = 'API не подтвердил состояние подсветки. Неизвестно не означает выключена.'
+        hint = tr('API не подтвердил состояние подсветки. Неизвестно не означает выключена.')
     if observed:
-        hint += '\nВремя измерения: ' + str(observed)
+        hint += tr('\nВремя измерения: ') + str(observed)
     item.setToolTip(hint)
     return item
 

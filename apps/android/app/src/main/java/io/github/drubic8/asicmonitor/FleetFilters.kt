@@ -48,22 +48,22 @@ internal fun FleetFilters(devices: List<Device>, state: String, led: String, mod
     firmware: String, errorsOnly: Boolean, onState: (String) -> Unit, onLed: (String) -> Unit,
     onModel: (String) -> Unit, onFirmware: (String) -> Unit, onErrors: (Boolean) -> Unit,
     onReset: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Фильтры устройств") }, text = {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(tr("Фильтры устройств")) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            ChoiceField("Состояние", state, linkedMapOf("" to "Все состояния", "running" to "Майнинг", "stopped" to "Сон", "transition" to "Переход", "unknown" to "Неизвестно", "stale" to "Устарело"), onState)
-            ChoiceField("LED", led, linkedMapOf("" to "Любой LED", "on" to "Включён", "off" to "Выключен", "unknown" to "Неизвестно"), onLed)
-            ChoiceField("Model", model, linkedMapOf("" to "Все модели") + devices.map { it.model }.distinct().sorted().associateWith { it }, onModel)
-            ChoiceField("Firmware", firmware, linkedMapOf("" to "Все прошивки") + devices.map { it.firmware }.distinct().sorted().associateWith { it }, onFirmware)
-            Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(errorsOnly, onErrors); Text("С ошибками") }
+            ChoiceField(tr("Состояние"), state, linkedMapOf("" to tr("Все состояния"), "running" to tr("Майнинг"), "stopped" to tr("Сон"), "transition" to tr("Переход"), "unknown" to tr("Неизвестно"), "stale" to tr("Устарело")), onState)
+            ChoiceField("LED", led, linkedMapOf("" to tr("Любой LED"), "on" to tr("Включён"), "off" to tr("Выключен"), "unknown" to tr("Неизвестно")), onLed)
+            ChoiceField("Model", model, linkedMapOf("" to tr("Все модели")) + devices.map { it.model }.distinct().sorted().associateWith { it }, onModel)
+            ChoiceField("Firmware", firmware, linkedMapOf("" to tr("Все прошивки")) + devices.map { it.firmware }.distinct().sorted().associateWith { it }, onFirmware)
+            Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(errorsOnly, onErrors); Text(tr("С ошибками")) }
         }
-    }, confirmButton = { TextButton(onClick = onDismiss) { Text("Готово") } },
-        dismissButton = { TextButton(onClick = onReset) { Text("Сбросить") } })
+    }, confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Готово")) } },
+        dismissButton = { TextButton(onClick = onReset) { Text(tr("Сбросить")) } })
 }
 
 @Composable
 internal fun LedIndicator(device: Device) {
     val enabled = if (device.stale) null else device.led
     Icon(if (enabled == true) Icons.Filled.Lightbulb else Icons.Outlined.Lightbulb,
-        when (enabled) { true -> "LED включён"; false -> "LED выключен"; null -> "LED неизвестно" },
+        when (enabled) { true -> tr("LED включён"); false -> tr("LED выключен"); null -> tr("LED неизвестно") },
         tint = if (enabled == true) Amber else Muted, modifier = Modifier.size(18.dp))
 }

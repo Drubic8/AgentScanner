@@ -52,7 +52,12 @@ dist/
 
 # Windows desktop and release tooling
 !desktop_ui/**/*.py
+!desktop_ui/locales/*.json
 !app.ico
+!assets/branding/*.svg
+!assets/branding/*.png
+!assets/branding/README.md
+!scripts/generate_icons.py
 !ASIC_Monitor.spec
 !scripts/build_windows.py
 !requirements-build.lock

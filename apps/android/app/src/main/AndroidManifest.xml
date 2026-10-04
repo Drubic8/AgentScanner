@@ -6,7 +6,8 @@
         android:name="com.chaquo.python.android.PyApplication"
         android:allowBackup="false"
         android:label="ASIC Monitor"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.ASICMonitor"
         android:usesCleartextTraffic="true">

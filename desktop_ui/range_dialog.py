@@ -1,4 +1,5 @@
 """Subnet editor with a live, offline preview of the exact scan targets."""
+from .i18n import tr, tr_error
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
                              QPlainTextEdit, QPushButton, QVBoxLayout)
@@ -10,7 +11,7 @@ class IPRangeDialog(QDialog):
     def __init__(self, name="", ranges=None, parent=None, *, existing_names=()):
         super().__init__(parent)
         self.existing_names = tuple(existing_names)
-        self.setWindowTitle("Изменить сеть" if name else "Добавить сеть")
+        self.setWindowTitle(tr('Изменить сеть') if name else tr('Добавить сеть'))
         self.resize(680, 620)
         self.setMinimumSize(540, 560)
         layout = QVBoxLayout(self)
@@ -20,30 +21,30 @@ class IPRangeDialog(QDialog):
         title = QLabel(self.windowTitle())
         title.setObjectName("DialogTitle")
         layout.addWidget(title)
-        description = QLabel("Объедините подсети и отдельные IP в одну группу для сканирования.")
+        description = QLabel(tr('Объедините подсети и отдельные IP в одну группу для сканирования.'))
         description.setObjectName("Muted")
         description.setWordWrap(True)
         layout.addWidget(description)
 
-        label = QLabel("Название сети")
+        label = QLabel(tr('Название сети'))
         self.le_name = QLineEdit(name)
         self.le_name.setMaxLength(120)
-        self.le_name.setPlaceholderText("Площадка 1 · контейнер А")
+        self.le_name.setPlaceholderText(tr('Площадка 1 · контейнер А'))
         label.setBuddy(self.le_name)
         layout.addWidget(label)
         layout.addWidget(self.le_name)
 
-        label = QLabel("Адреса для опроса")
+        label = QLabel(tr('Адреса для опроса'))
         self.te_ranges = QPlainTextEdit()
         self.te_ranges.setObjectName("RangeEditor")
-        self.te_ranges.setAccessibleName("IP-адреса и диапазоны")
+        self.te_ranges.setAccessibleName(tr('IP-адреса и диапазоны'))
         self.te_ranges.setPlaceholderText("192.168.1.0/24\n192.168.2.10-50\n10.0.0.15")
         self.te_ranges.setPlainText("\n".join(ranges) if isinstance(ranges, list) else str(ranges or ""))
         self.te_ranges.setTabChangesFocus(True)
         label.setBuddy(self.te_ranges)
         layout.addWidget(label)
         layout.addWidget(self.te_ranges, 1)
-        help_label = QLabel("Каждый диапазон — с новой строки. При вставке можно использовать запятые и точку с запятой. Поддерживаются IPv4, CIDR и интервалы IP.")
+        help_label = QLabel(tr('Каждый диапазон — с новой строки. При вставке можно использовать запятые и точку с запятой. Поддерживаются IPv4, CIDR и интервалы IP.'))
         help_label.setObjectName("Muted")
         help_label.setWordWrap(True)
         layout.addWidget(help_label)
@@ -67,13 +68,13 @@ class IPRangeDialog(QDialog):
         layout.addWidget(self.error)
 
         actions = QHBoxLayout()
-        hint = QLabel("Проверка адресов без обращения к устройствам")
+        hint = QLabel(tr('Проверка адресов без обращения к устройствам'))
         hint.setObjectName("Muted")
         hint.setWordWrap(True)
         actions.addWidget(hint, 1)
-        cancel = QPushButton("Отмена")
+        cancel = QPushButton(tr('Отмена'))
         cancel.clicked.connect(self.reject)
-        self.btn_save = QPushButton("Сохранить сеть")
+        self.btn_save = QPushButton(tr('Сохранить сеть'))
         self.btn_save.setProperty("primary", True)
         self.btn_save.setDefault(True)
         self.btn_save.clicked.connect(self.validate_and_accept)
@@ -100,22 +101,22 @@ class IPRangeDialog(QDialog):
         try:
             preview = preview_ranges(self.te_ranges.toPlainText())
         except ValueError as exc:
-            self.summary.setText("Адреса ещё не готовы к сканированию")
-            self.details.setText("До 4096 уникальных IPv4-адресов в одной группе.")
+            self.summary.setText(tr('Адреса ещё не готовы к сканированию'))
+            self.details.setText(tr('До 4096 уникальных IPv4-адресов в одной группе.'))
             if self.te_ranges.toPlainText().strip():
-                self.error.setText(str(exc))
+                self.error.setText(tr_error(str(exc)))
             self.btn_save.setEnabled(False)
             return False
-        self.summary.setText(f"{len(preview.addresses):,} IP-адресов для опроса".replace(",", " "))
-        details = f"Диапазонов: {len(preview.ranges)}. От {preview.addresses[0]} до {preview.addresses[-1]}."
+        self.summary.setText(tr('{p0:,} IP-адресов для опроса', p0=len(preview.addresses)).replace(",", " "))
+        details = tr('Диапазонов: {p0}. От {p1} до {p2}.', p0=len(preview.ranges), p1=preview.addresses[0], p2=preview.addresses[-1])
         if preview.repeated:
-            details += f" Повторяющихся адресов: {preview.repeated}; каждый будет опрошен один раз."
-        details += " Для CIDR /30 и шире адрес сети и broadcast исключены."
+            details += tr(' Повторяющихся адресов: {p0}; каждый будет опрошен один раз.', p0=preview.repeated)
+        details += tr(' Для CIDR /30 и шире адрес сети и broadcast исключены.')
         self.details.setText(details)
         try:
             validate_name(self.le_name.text(), self.existing_names)
         except ValueError as exc:
-            self.error.setText(str(exc))
+            self.error.setText(tr_error(str(exc)))
             self.btn_save.setEnabled(False)
             return False
         self.btn_save.setEnabled(True)
