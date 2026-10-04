@@ -102,6 +102,9 @@ class UpdatePackageTests(unittest.TestCase):
 
 class UpdateInstallerTests(unittest.TestCase):
     def transaction(self, root):
+        # Windows runners redirect their temporary directory through a junction.
+        # Production prepare_update resolves both paths before writing the plan.
+        root = root.resolve()
         target = root / "installed.exe"
         target.write_bytes(b"MZ-original-program")
         stage = root / "update-test"; stage.mkdir()

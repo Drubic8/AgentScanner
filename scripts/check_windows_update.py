@@ -21,6 +21,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="update-test-", dir=output) as scratch:
         directory = Path(scratch) / "\u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 EXE"
         directory.mkdir()
+        directory = directory.resolve()
         target = directory / "ASIC Monitor.exe"
         stage = directory / "update-check"
         stage.mkdir()
