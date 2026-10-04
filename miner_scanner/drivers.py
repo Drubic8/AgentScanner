@@ -145,6 +145,22 @@ def make_record(profile, ip, data, previous=None):
     api_version = first_field(data, {"api", "api_ver", "api_version"})
     serial = first_field(data, {"serial", "serial_number", "sn"})
     mac = first_field(data, {"mac", "macaddr", "mac_address"})
+    if profile.parser == 'vnish':
+        # Named firmware metadata must win over CGMiner's display Type and
+        # hashboard serials, regardless of discovery/cache insertion order.
+        # Missing HTTP identity stays unknown; never fill it from another board.
+        info = data.get('vnish_info')
+        info = info if isinstance(info, dict) else {}
+        def text(value):
+            return value.strip() if isinstance(value, str) and value.strip() else None
+        model = text(info.get('model')) or text(info.get('miner')) or row.get('Model', 'Unknown')
+        version = text(info.get('fw_version'))
+        serial = text(info.get('serial'))
+        system = info.get('system')
+        system = system if isinstance(system, dict) else {}
+        network = system.get('network_status')
+        network = network if isinstance(network, dict) else {}
+        mac = text(network.get('mac'))
     if profile.parser == 'jasminer':
         from .parsers.jasminer import status_block
         summary = status_block(data.get('jasminer_status', {}).get('summary'))
@@ -156,7 +172,7 @@ def make_record(profile, ip, data, previous=None):
     # mining process restarts. With a current hardware ID and firmware build,
     # this telemetry field must not prevent Sleep -> Wakeup or Low -> Normal.
     # HTTP command compatibility is still re-probed before every write.
-    fingerprint_api = None if profile.parser == 'antminer' and version and (serial or mac) else api_version
+    fingerprint_api = None if profile.parser in ('antminer', 'vnish') and version and (serial or mac) else api_version
     fields = [profile.id, profile.version, model, version, fingerprint_api, serial, mac]
     if firmware_evidence is not None:
         fields.append(firmware_evidence)

@@ -1,6 +1,6 @@
 {
-  "version": "2.2.2",
+  "version": "2.2.3",
   "url": "https://github.com/Drubic8/AgentScanner/releases/latest/download/ASIC_Monitor.exe",
-  "changelog": "Возвращено обновление Windows EXE внутри программы: фоновое скачивание, проверка SHA-256 и версии, резервная копия и откат при неудачном запуске. Установка после завершения сканирования и команд. Обновлены инструкции.",
-  "changelog_en": "Windows EXE updates are back: background download, SHA-256 and version verification, backup and rollback if startup fails. Installation waits for scanning and device commands to finish. Documentation updated."
+  "changelog": "Исправлены ложные отказы массовых команд VNish: идентификация использует поля /api/v1/info и не зависит от порядка ответов HTTP/TCP. Изменения SN, MAC, модели и прошивки по-прежнему блокируют команду. Общее исправление включено в Windows и Android. Windows 2.2.2 можно обновить из программы.",
+  "changelog_en": "Fixed false VNish bulk-command skips: identity uses named /api/v1/info fields and is independent of HTTP/TCP response ordering. Real changes to serial, MAC, model or firmware still block commands. The shared fix is included in Windows and Android. Windows 2.2.2 can install this update from the app."
 }

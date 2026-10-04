@@ -8,7 +8,7 @@
 
 **[Скачать для Windows](https://github.com/Drubic8/AgentScanner/releases/latest)** · **[Руководство пользователя](docs/user_guide.md)** · **[Сообщить об ошибке](https://github.com/Drubic8/AgentScanner/issues/new/choose)** · **[Участие в разработке](CONTRIBUTING.md)**
 
-**Android:** [скачать тестовый APK 2.2.2](https://github.com/Drubic8/AgentScanner/releases/tag/v2.2.2)
+**Android:** [скачать тестовый APK 2.2.3](https://github.com/Drubic8/AgentScanner/releases/tag/v2.2.3)
 · [установка и сборка](apps/android/README.md). Первая тестовая версия с нативным интерфейсом
 и общим ядром сканера. APK собирается в
 [GitHub Actions](https://github.com/Drubic8/AgentScanner/actions/workflows/android.yml).
@@ -63,6 +63,15 @@ Get-FileHash .\ASIC_Monitor.exe -Algorithm SHA256
 Неподтверждённые команды по умолчанию заблокированы. Экспериментальное управление включается явно для выбранных устройств на текущий сеанс. Low/HEM доступны только при наличии соответствующего правила профиля. В Windows [профили доступа](docs/access_profiles.md) сохраняются с защитой DPAPI; стандартные профили Antminer и VNish доступны сразу. Токены остаются в памяти.
 
 Для проверки оборудования используйте [матрицу испытаний](docs/testing/asic_acceptance.xlsx) и [инструкцию по диагностике](docs/testing/README.md). Результаты отдельных аппаратных проверок записаны в документации; их нельзя переносить на все прошивки производителя.
+
+## Новое в 2.2.3
+
+Исправлены ложные отказы команд VNish из-за различий идентификации HTTP и TCP.
+Модель, прошивка, SN и MAC читаются из именованных полей VNish API; настоящая
+смена устройства по-прежнему блокирует команду. Исправление общего ядра включено
+в Windows и Android. Windows 2.2.2 может обновиться через меню «Справка».
+
+[Изменения версии 2.2.3](docs/releases/2.2.3.md)
 
 ## Новое в 2.2.2
 
