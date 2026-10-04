@@ -20,8 +20,8 @@ android {
         applicationId = "io.github.drubic8.asicmonitor"
         minSdk = 24
         targetSdk = 36
-        versionCode = 20201
-        versionName = "2.2.1"
+        versionCode = 20202
+        versionName = "2.2.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
