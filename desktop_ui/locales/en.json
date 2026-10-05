@@ -424,5 +424,6 @@
   "Установить версию {p0} и перезапустить программу?\nСети и настройки сохранятся. Прежний EXE останется в резервной копии.": "Install version {p0} and restart the application?\nYour networks and settings will be kept. The previous EXE will be backed up.",
   "Не удалось запустить установку. Текущая программа продолжает работать.\n{p0}": "Could not start installation. The current application is still running.\n{p0}",
   "Новая версия не запустилась. Прежний EXE восстановлен; сети и настройки сохранены.": "The new version did not start. The previous EXE was restored; your networks and settings are preserved.",
-  "Настройки не удалось сохранить. Установка отложена; программа остаётся открытой.": "Could not save settings. Installation is deferred; the application remains open."
+  "Настройки не удалось сохранить. Установка отложена; программа остаётся открытой.": "Could not save settings. Installation is deferred; the application remains open.",
+  "Не удалось открыть папку настроек:\n{p0}\n\nПоместите EXE в папку, доступную для записи, например «Документы\\ASIC Monitor». Повреждённые файлы восстановите из резервной копии.": "Could not open the settings folder:\n{p0}\n\nPlace the EXE in a writable folder, such as Documents\\ASIC Monitor. Restore damaged files from a backup."
 }

@@ -61,6 +61,7 @@ dist/
 !ASIC_Monitor.spec
 !scripts/build_windows.py
 !scripts/check_windows_update.py
+!scripts/check_windows_storage.py
 !requirements-build.lock
 !.github/workflows/windows-build.yml
 .venv-build/
@@ -105,3 +106,11 @@ apps/android/**/*.keystore
 apps/android/**/__pycache__/
 # Vendor downloads and raw support material are local references.
 docs/Whatsminer demo/
+
+# Portable desktop settings and local backups contain private network data.
+/ip_ranges.json
+/app_settings.json
+/access_profiles.dat
+/.asic-monitor-storage.json
+/.settings-backup/
+/updates/

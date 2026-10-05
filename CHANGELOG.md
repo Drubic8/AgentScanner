@@ -1,5 +1,13 @@
 # История выпусков
 
+## 2.2.4 — 2026-10-05
+
+- Windows stores network folders, preferences and encrypted ASIC profiles beside the actual EXE, independent of the working directory and PyInstaller extraction path.
+- One-time migration selects the newer valid sidecar/AppData file, preserves replaced sidecars in `.settings-backup`, and leaves old AppData intact. Later launches never re-import old data.
+- Normal startup now enables automatic persistence of language, theme and table layout; synthetic UI checks remain isolated.
+- Atomic writes retain the previous file on failure. A non-writable folder produces a visible startup error instead of redirecting settings elsewhere.
+- Added nested-folder, export-path, restart, migration and packaged EXE regression checks. Android version is 2.2.4; Android storage and miner APIs are unchanged.
+
 ## 2.2.3 — Стабильная идентификация VNish
 
 - Исправлены ложные `skipped` при массовой подсветке и других командах VNish.
