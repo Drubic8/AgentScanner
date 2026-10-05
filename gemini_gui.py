@@ -121,14 +121,13 @@ except ImportError:
 
 # Sidecars use the actual EXE directory, never PyInstaller's temporary resources.
 APP_DATA_DIR = data_directory()
-LEGACY_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(current_dir)
 CONFIG_FILE = APP_DATA_DIR / "ip_ranges.json"
 SETTINGS_FILE = APP_DATA_DIR / "app_settings.json"
 APP_TITLE = "ASIC Monitor"
 
 
 def load_app_settings():
-    return normalize(load_json(SETTINGS_FILE, LEGACY_DIR / "app_settings.json", {}))
+    return normalize(load_json(SETTINGS_FILE, default={}))
 
 
 def save_app_settings(settings):
@@ -1201,7 +1200,7 @@ class GeminiApp(QMainWindow):
 
     # --- ОСТАЛЬНЫЕ ФУНКЦИИ (Config, Scan, Export) ---
     def load_config(self):
-        return normalize_groups(load_json(CONFIG_FILE, LEGACY_DIR / "ip_ranges.json", []))
+        return normalize_groups(load_json(CONFIG_FILE, default=[]))
 
     def save_config(self, candidate=None):
         try:

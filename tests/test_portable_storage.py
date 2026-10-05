@@ -128,6 +128,24 @@ class PortableStorageTests(unittest.TestCase):
 
 @unittest.skipUnless(importlib.util.find_spec('PyQt6') and importlib.util.find_spec('pandas') and importlib.util.find_spec('fpdf'), 'Desktop dependencies not installed')
 class PortableGuiPersistenceTests(unittest.TestCase):
+    def test_explicit_gui_directory_does_not_read_legacy_sidecars(self):
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        import gemini_gui as gui
+        app = gui.QApplication.instance() or gui.QApplication([])
+        with tempfile.TemporaryDirectory() as scratch:
+            directory = Path(scratch)
+            legacy = directory / 'legacy'
+            write_json(legacy / 'ip_ranges.json', TREE)
+            write_json(legacy / 'app_settings.json', {'export_dir': 'D:/private'})
+            with patch.object(gui, 'CONFIG_FILE', directory / 'isolated/ip_ranges.json'), patch.object(gui, 'SETTINGS_FILE', directory / 'isolated/app_settings.json'), patch.object(gui, 'LEGACY_DIR', legacy, create=True):
+                window = gui.GeminiApp()
+                try:
+                    self.assertEqual(window.ranges_config, [])
+                    self.assertEqual(window.app_settings['export_dir'], '')
+                finally:
+                    window.close()
+                app.processEvents()
+
     def test_gui_saves_and_reloads_nested_networks_and_report_paths(self):
         os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
         import gemini_gui as gui
