@@ -40,3 +40,4 @@ jobs:
           path: |
             artifacts/exe-smoke
             artifacts/exe-update
+            artifacts/exe-storage

@@ -1,7 +1,7 @@
-"""Per-user preferences. Legacy files next to the application remain readable."""
+"""Desktop preferences stored beside the EXE (or the source launcher)."""
 import json
-import os
 from pathlib import Path
+from .storage import atomic_write, data_directory
 
 COLUMNS = {
     "IP": "IP", "Model": "Model", "Algo": "Algo", "Status": "State",
@@ -20,13 +20,6 @@ TABLE_PRESETS = {
     "pools": ("Пулы и воркеры", ["IP", "Model", "Status", "Real HR", "Pool", "Worker"]),
     "management": ("Управление", ["IP", "LED", "Model", "Status", "Error", "Real HR", "Firmware", "Modes"]),
 }
-
-
-def data_directory():
-    override = os.environ.get("ASIC_MONITOR_DATA_DIR")
-    if override:
-        return Path(override)
-    return Path(os.environ.get("LOCALAPPDATA", str(Path.home() / ".local" / "share"))) / "ASICMonitor"
 
 
 def defaults():
@@ -100,8 +93,4 @@ def load_json(path, legacy_path=None, default=None):
 
 
 def write_json(path, value):
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(temporary, path)
+    atomic_write(path, json.dumps(value, ensure_ascii=False, indent=2).encode("utf-8"))

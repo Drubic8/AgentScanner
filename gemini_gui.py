@@ -16,6 +16,7 @@ import pandas as pd
 from datetime import datetime
 from pathlib import Path
 from desktop_ui.preferences import COLUMNS, TABLE_PRESETS, data_directory, normalize, load_json, write_json
+from desktop_ui.storage import initialize_storage
 from desktop_ui.log_dialog import LogDialog
 from desktop_ui.device_filters import matches_device
 from desktop_ui.summary_panel import SummaryPanel
@@ -57,7 +58,7 @@ def is_system_dark_mode():
     return True # По умолчанию темная
 
 # Константы автообновления
-CURRENT_VERSION = "2.2.3"
+CURRENT_VERSION = "2.2.4"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
@@ -118,16 +119,15 @@ except ImportError:
     except ImportError:
         ACTIONS_AVAIL = False
 
-# Writable preferences are separate from PyInstaller's temporary resource directory.
+# Sidecars use the actual EXE directory, never PyInstaller's temporary resources.
 APP_DATA_DIR = data_directory()
-LEGACY_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(current_dir)
 CONFIG_FILE = APP_DATA_DIR / "ip_ranges.json"
 SETTINGS_FILE = APP_DATA_DIR / "app_settings.json"
 APP_TITLE = "ASIC Monitor"
 
 
 def load_app_settings():
-    return normalize(load_json(SETTINGS_FILE, LEGACY_DIR / "app_settings.json", {}))
+    return normalize(load_json(SETTINGS_FILE, default={}))
 
 
 def save_app_settings(settings):
@@ -346,7 +346,7 @@ class PDFReport(FPDF):
 # ДИАЛОГ НАСТРОЕК ПРОГРАММЫ
 # ==========================================
 class GeminiApp(QMainWindow):
-    def __init__(self, *, settings=None, ranges=None):
+    def __init__(self, *, settings=None, ranges=None, persist_preferences=None):
         super().__init__()
         self.setWindowTitle(f"{APP_TITLE} v{VER}")
         self.resize(1440, 900)
@@ -358,7 +358,7 @@ class GeminiApp(QMainWindow):
         self.app_settings = load_app_settings() if settings is None else normalize(settings)
         set_language(self.app_settings["language"])
         install_qt_translator(QApplication.instance())
-        self._persist_preferences = settings is None
+        self._persist_preferences = settings is None if persist_preferences is None else persist_preferences
         self._restoring_layout = True
         self._preferences_dirty = False
         self.preferences_timer = QTimer(self)
@@ -1200,7 +1200,7 @@ class GeminiApp(QMainWindow):
 
     # --- ОСТАЛЬНЫЕ ФУНКЦИИ (Config, Scan, Export) ---
     def load_config(self):
-        return normalize_groups(load_json(CONFIG_FILE, LEGACY_DIR / "ip_ranges.json", []))
+        return normalize_groups(load_json(CONFIG_FILE, default=[]))
 
     def save_config(self, candidate=None):
         try:
@@ -1888,13 +1888,22 @@ if __name__ == "__main__":
     if "--smoke-test" in sys.argv:
         from desktop_ui.smoke import run_smoke
         output = Path(sys.argv[sys.argv.index("--smoke-test") + 1]).resolve()
+        if "--check-portable-storage" in sys.argv:
+            from desktop_ui.smoke import run_storage_smoke
+            initialize_storage()
+            sys.exit(run_storage_smoke(app, GeminiApp, output))
         sys.exit(run_smoke(app, GeminiApp, output))
+    try:
+        initialize_storage()
+    except (OSError, ValueError) as exc:
+        QMessageBox.critical(None, "ASIC Monitor", tr('Не удалось открыть папку настроек:\n{p0}\n\nПоместите EXE в папку, доступную для записи, например «Документы\\ASIC Monitor». Повреждённые файлы восстановите из резервной копии.', p0=exc))
+        sys.exit(1)
     settings = load_app_settings()
     startup = "--update-startup" in sys.argv
     automatic_check = settings["check_updates"]
     if startup:
         settings["check_updates"] = False
-    window = GeminiApp(settings=settings)
+    window = GeminiApp(settings=settings, persist_preferences=True)
     window.app_settings["check_updates"] = automatic_check
     window.show()
     if startup:

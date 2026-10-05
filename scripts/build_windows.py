@@ -62,6 +62,7 @@ def main():
     if not report.get("ok") or report.get("version") != version:
         raise RuntimeError(f"EXE smoke check failed: {report}")
     subprocess.run([sys.executable, "scripts/check_windows_update.py"], cwd=ROOT, check=True, timeout=180)
+    subprocess.run([sys.executable, "scripts/check_windows_storage.py"], cwd=ROOT, check=True, timeout=300)
     with executable.open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
     (ROOT / "dist" / "SHA256SUMS.txt").write_text(f"{digest}  ASIC_Monitor.exe\n", encoding="ascii")

@@ -1,6 +1,6 @@
 {
-  "version": "2.2.3",
+  "version": "2.2.4",
   "url": "https://github.com/Drubic8/AgentScanner/releases/latest/download/ASIC_Monitor.exe",
-  "changelog": "Исправлены ложные отказы массовых команд VNish: идентификация использует поля /api/v1/info и не зависит от порядка ответов HTTP/TCP. Изменения SN, MAC, модели и прошивки по-прежнему блокируют команду. Общее исправление включено в Windows и Android. Windows 2.2.2 можно обновить из программы.",
-  "changelog_en": "Fixed false VNish bulk-command skips: identity uses named /api/v1/info fields and is independent of HTTP/TCP response ordering. Real changes to serial, MAC, model or firmware still block commands. The shared fix is included in Windows and Android. Windows 2.2.2 can install this update from the app."
+  "changelog": "Windows: подсети, дерево папок, настройки и зашифрованные профили ASIC сохраняются рядом с EXE. При первом запуске переносится более свежий файл из прежней папки AppData, существующий файл сохраняется в резервной копии. Исправлено автоматическое сохранение языка и компоновки таблицы при обычном запуске. Android обновлён до 2.2.4 без изменения своего хранилища.",
+  "changelog_en": "Windows saves networks, folder trees, preferences and encrypted ASIC access profiles beside the EXE. First launch migrates newer settings from the former AppData folder with sidecar backups. Fixed automatic persistence of language and table layout on normal startup. Android is versioned 2.2.4 with no storage changes."
 }

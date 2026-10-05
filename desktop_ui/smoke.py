@@ -13,6 +13,37 @@ from .range_dialog import IPRangeDialog
 from miner_scanner.profiles import ProfileRegistry
 
 
+def run_storage_smoke(app, window_type, output):
+    """Explicit fixture check used only on disposable copies of the packaged EXE."""
+    output = Path(output)
+    output.mkdir(parents=True, exist_ok=True)
+    window = None
+    try:
+        window = window_type()
+        window.preferences_timer.stop()
+        loaded_ranges = json.loads(json.dumps(window.ranges_config))
+        keys = ('export_dir', 'export_csv_dir', 'language', 'density')
+        loaded_settings = {key: window.app_settings[key] for key in keys}
+        # Persist through the real GUI handlers; no scan or device command.
+        assert window.commit_ranges(window.ranges_config)
+        window.app_settings.update(export_dir=str(output.parent / 'reports-pdf'),
+                                   export_csv_dir=str(output.parent / 'reports-xlsx'),
+                                   language='en', density='compact')
+        window.queue_preference_save()
+        assert window.persist_ui_preferences()
+        saved_settings = {key: window.app_settings[key] for key in keys}
+        (output / 'result.json').write_text(json.dumps(dict(ok=True, version=app.applicationVersion(),
+            loaded_ranges=loaded_ranges, loaded_settings=loaded_settings,
+            saved_settings=saved_settings, network_used=False)), encoding='utf-8')
+        return 0
+    except Exception:
+        (output / 'error.txt').write_text(traceback.format_exc(), encoding='utf-8')
+        return 1
+    finally:
+        if window is not None:
+            window.close()
+
+
 def run_smoke(app, window_type, output):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
