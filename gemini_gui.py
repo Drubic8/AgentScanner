@@ -1,9 +1,19 @@
 import sys
+CURRENT_VERSION = "2.2.5"
 if __name__ == "__main__" and "--apply-update" in sys.argv:
     from desktop_ui.update_installer import run_helper
     position = sys.argv.index("--apply-update") + 1
     sys.exit(run_helper(sys.argv[position]) if position < len(sys.argv) else 2)
 
+if __name__ == "__main__" and "--smoke-test" not in sys.argv:
+    from desktop_ui.crash_diagnostics import enable as enable_crash_diagnostics
+    from desktop_ui.storage import data_directory as diagnostic_directory
+    try:
+        enable_crash_diagnostics(diagnostic_directory() / "diagnostics", CURRENT_VERSION)
+    except OSError:
+        pass  # A read-only directory must not prevent the startup error dialog.
+
+from desktop_ui.table_items import SmartSortItem
 from desktop_ui.i18n import tr, get_language, set_language, install_qt_translator, action_label
 from html import escape
 import re
@@ -58,7 +68,6 @@ def is_system_dark_mode():
     return True # По умолчанию темная
 
 # Константы автообновления
-CURRENT_VERSION = "2.2.4"
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
 
 # --- ФИКС ПУТЕЙ ---
@@ -72,16 +81,16 @@ if os.path.exists(scanner_path) and scanner_path not in sys.path:
     sys.path.append(scanner_path)
 
 # --- QT IMPORTS ---
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QHBoxLayout, QTableWidget, QTableWidgetItem, 
-                             QPushButton, QLabel, QLineEdit, QFileDialog, 
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
+                             QHBoxLayout, QTableWidget, QTableWidgetItem,
+                             QPushButton, QLabel, QLineEdit, QFileDialog,
                              QProgressBar, QMessageBox, QHeaderView, QCheckBox,
                              QListWidget, QAbstractItemView, QInputDialog, QFrame,
-                             QScrollArea, QSizePolicy, QMenu, QDialog, QRadioButton, 
+                             QScrollArea, QSizePolicy, QMenu, QDialog, QRadioButton,
                              QButtonGroup, QTextEdit, QTabWidget, QListWidgetItem,
                              QComboBox, QStackedWidget, QProgressDialog)
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QUrl, QMimeData, QTimer, QItemSelectionModel
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QUrl, QMimeData, QTimer, QItemSelectionModel, QSignalBlocker
 from PyQt6.QtGui import QFont, QColor, QIcon, QAction
 
 # --- FPDF & PANDAS (Вместо ReportLab) ---
@@ -148,44 +157,44 @@ class CommandDialog(QDialog):
         self.setWindowTitle("Remote Control Panel")
         self.setFixedSize(350, 240)
         self.selected_action = None
-        
+
         layout = QVBoxLayout(self)
-        
+
         # Заголовок
         lbl_info = QLabel(f"Selected Devices: {count}")
         lbl_info.setStyleSheet("font-size: 16px; font-weight: bold; color: #0069D9; margin-bottom: 10px;")
         lbl_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(lbl_info)
-        
+
         # Группа кнопок
         self.grp = QButtonGroup(self)
-        
+
         self.rb_led_blink = QRadioButton("💡 LED: Flash (Locate)")
         self.rb_led_auto = QRadioButton("🌑 LED: Normal (Auto)")
         self.rb_reboot = QRadioButton("⚡ Reboot Device")
-        
+
         self.rb_led_blink.setChecked(True)
-        
+
         layout.addWidget(self.rb_led_blink)
         layout.addWidget(self.rb_led_auto)
         layout.addWidget(self.rb_reboot)
-        
+
         self.grp.addButton(self.rb_led_blink)
         self.grp.addButton(self.rb_led_auto)
         self.grp.addButton(self.rb_reboot)
-        
+
         layout.addStretch()
-        
+
         # Кнопки
         btn_layout = QHBoxLayout()
         btn_cancel = QPushButton("Cancel")
         btn_cancel.setStyleSheet("background-color: #DDD; border: 1px solid #CCC; border-radius: 4px; padding: 6px;")
         btn_cancel.clicked.connect(self.reject)
-        
+
         btn_apply = QPushButton("EXECUTE")
         btn_apply.setStyleSheet("background-color: #0069D9; color: white; font-weight: bold; border-radius: 4px; padding: 6px;")
         btn_apply.clicked.connect(self.on_apply)
-        
+
         btn_layout.addWidget(btn_cancel)
         btn_layout.addWidget(btn_apply)
         layout.addLayout(btn_layout)
@@ -302,12 +311,12 @@ class PDFReport(FPDF):
         self.cell(0, 8, f'ASIC Monitor · {CURRENT_VERSION}', 0, 1, 'L')
         self.line(10, 18, 287, 18)
         self.ln(3)
-        
+
         # Название скана
         self.set_font(self.report_font, 'B', 12)
         if hasattr(self, 'report_title'):
             self.cell(0, 6, self.report_title, 0, 1, 'L')
-        
+
         # СВОДКА (Рисуется ТОЛЬКО на первой странице)
         if self.page_no() == 1 and hasattr(self, 'summary_text'):
             self.set_font(self.report_font, '', 9)
@@ -324,7 +333,7 @@ class PDFReport(FPDF):
             for i, c in enumerate(self.table_cols):
                 self.cell(self.table_widths[i], 8, self.fit_text(COLUMNS[c], self.table_widths[i]), 1, 0, 'C', fill=True)
         self.ln()
-        
+
         # Возврат цвета для обычных строк
         self.set_text_color(0, 0, 0)
 
@@ -352,8 +361,8 @@ class GeminiApp(QMainWindow):
         self.resize(1440, 900)
         self.setMinimumSize(1060, 680)
         self.setWindowIcon(QIcon(str(Path(current_dir) / "app.ico")))
-        
-        self.scan_data = [] 
+
+        self.scan_data = []
         self.ranges_config = self.load_config() if ranges is None else normalize_groups(ranges)
         self.app_settings = load_app_settings() if settings is None else normalize(settings)
         set_language(self.app_settings["language"])
@@ -375,11 +384,11 @@ class GeminiApp(QMainWindow):
         if SCANNER_AVAIL:
             default_service().set_access_profiles(self.access_profiles)
         self.dark_mode = self.app_settings["theme"] == "dark" or (self.app_settings["theme"] == "system" and is_system_dark_mode())
-        
+
         # --- ИНИЦИАЛИЗАЦИЯ ОКНА ЛОГОВ ---
         self.log_dialog = LogDialog(self, language=self.app_settings["language"])
         self.log_dialog.language_changed.connect(self.change_application_language)
-        
+
         self.stats_timer = QTimer(self)
         self.stats_timer.setSingleShot(True)
         self.stats_timer.setInterval(150)
@@ -395,7 +404,7 @@ class GeminiApp(QMainWindow):
         main_layout = QHBoxLayout(main_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
-        
+
         self.create_menu_bar()
 
         # === SIDEBAR ===
@@ -507,17 +516,17 @@ class GeminiApp(QMainWindow):
         # 2. CONTROL BAR (Новая панель управления)
         ctrl_layout = QHBoxLayout()
         ctrl_layout.setContentsMargins(0, 5, 0, 5)
-        
+
         self.btn_select_all = QPushButton(tr('☑ Выделить всё'))
         self.btn_select_all.setCheckable(True)
         self.btn_select_all.clicked.connect(self.toggle_select_all)
-        
+
         btn_remote = QPushButton(tr('Управление'))
         self.btn_remote = btn_remote
         btn_remote.setEnabled(False)
         btn_remote.setFixedWidth(160)
 
-        
+
         # Вместо открытия CommandDialog, вешаем сразу выпадающее меню!
         ctrl_menu = QMenu(btn_remote)
         ctrl_menu.addAction(tr('Включить подсветку'), lambda: self.run_action("led_on"))
@@ -525,16 +534,16 @@ class GeminiApp(QMainWindow):
         ctrl_menu.addAction(tr('Перезагрузить'), lambda: self.run_action("reboot"))
         self.add_mining_actions(ctrl_menu)
         btn_remote.setMenu(ctrl_menu)
-        
+
         # === НОВЫЙ СЧЕТЧИК ВЫДЕЛЕННЫХ УСТРОЙСТВ ===
         self.lbl_selected_count = QLabel(tr('Выделено: 0'))
         self.lbl_selected_count.setObjectName("SelectionCount")
-        
+
         ctrl_layout.addWidget(self.btn_select_all)
         ctrl_layout.addWidget(btn_remote)
         ctrl_layout.addWidget(self.lbl_selected_count) # <--- Добавлен счетчик
         ctrl_layout.addStretch()
-        
+
         content_layout.addLayout(ctrl_layout)
 
         filters = QHBoxLayout()
@@ -603,16 +612,16 @@ class GeminiApp(QMainWindow):
         self.table.setShowGrid(False)
         self.table.setAlternatingRowColors(True)
         self.table.setWordWrap(False)
-        
+
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_context_menu)
 
         self.table.itemDoubleClicked.connect(self.open_web_interface)
-        
+
         # === СИНХРОНИЗАЦИЯ ГАЛОЧЕК И ВЫДЕЛЕНИЯ ===
         self.table.itemSelectionChanged.connect(self.sync_checkboxes_with_selection)
         self.table.itemChanged.connect(self.on_item_changed)
-        
+
         h = self.table.horizontalHeader()
         h.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         h.setStretchLastSection(False)
@@ -657,12 +666,12 @@ class GeminiApp(QMainWindow):
         self.progress.setFixedHeight(8)
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
-        
+
         # Добавляем кнопку логов
         self.btn_logs = QPushButton(tr('Журнал'))
         self.btn_logs.setFixedWidth(80)
         self.btn_logs.clicked.connect(self.log_dialog.show)
-        
+
         footer.addWidget(self.status_bar)
         footer.addWidget(self.progress)
         footer.addWidget(self.btn_logs)
@@ -760,7 +769,7 @@ class GeminiApp(QMainWindow):
                 "QTableWidget::item { padding: 2px 4px; } "
                 "QHeaderView::section { padding: 8px 4px; }" if compact else "")
             self._applied_table_density = density
-        
+
         for i, col in enumerate(all_cols):
             if col in ui_cols:
                 self.table.showColumn(i) # Явно показываем
@@ -916,7 +925,7 @@ class GeminiApp(QMainWindow):
     def take_screenshot(self):
         """Делает снимок всей правой панели (Итоги + Таблица)"""
         pixmap = self.content_panel.grab()
-        
+
         QApplication.clipboard().setPixmap(pixmap)
         self.status_bar.setText(tr('📸 Скриншот скопирован в буфер обмена!'))
         QMessageBox.information(self, tr('Успех'), tr('Скриншот дашборда и таблицы успешно скопирован в буфер обмена!'))
@@ -929,7 +938,7 @@ class GeminiApp(QMainWindow):
         """Дублирует сообщения и в статус-бар, и в логи"""
         self.status_bar.setText(message)
         self.add_log(message, action=action)
-    
+
     # ==========================================
     # ЛОГИКА АВТООБНОВЛЕНИЯ
     # ==========================================
@@ -1084,11 +1093,11 @@ class GeminiApp(QMainWindow):
 
     def update_selected_count(self):
         """Обновляет счетчик устройств и меняет его цвет"""
-        count = sum(1 for row in range(self.table.rowCount()) 
+        count = sum(1 for row in range(self.table.rowCount())
                     if self.table.item(row, 0) and self.table.item(row, 0).checkState() == Qt.CheckState.Checked)
-        
+
         self.lbl_selected_count.setText(tr('Выделено: {p0}', p0=count))
-        
+
         visible = sum(not self.table.isRowHidden(row) for row in range(self.table.rowCount()))
         self.btn_remote.setEnabled(count > 0)
         self.btn_select_all.setEnabled(visible > 0)
@@ -1128,14 +1137,14 @@ class GeminiApp(QMainWindow):
         menu.exec(self.table.viewport().mapToGlobal(pos))
 
     def run_action(self, action_type, confirm_needed=True):
-        
+
         # Собираем отмеченные галочками строки!
         rows = []
         for r in range(self.table.rowCount()):
             item = self.table.item(r, 0)
             if item and item.checkState() == Qt.CheckState.Checked:
                 rows.append(r)
-        
+
         if not rows:
             QMessageBox.warning(self, tr('Внимание'), tr('Сначала отметьте галочками устройства в таблице!'))
             return
@@ -1148,7 +1157,7 @@ class GeminiApp(QMainWindow):
         consequences = ""
         if action_type in ("wakeup", "normal", "mining_start") and any(row.get("ProfileId") == "canaan.avalon" for row in targets):
             consequences = tr('\nДля Avalon возобновление выполняется через перезагрузку.')
-        
+
         if confirm_needed:
             confirm = QMessageBox.question(
                 self, tr('Подтверждение'),
@@ -1158,7 +1167,7 @@ class GeminiApp(QMainWindow):
             if confirm != QMessageBox.StandardButton.Yes: return
 
         self.add_log(tr("🛠 Отправка команды '{p0}' на {p1} устройств...", p0=action_type, p1=len(rows)), action=action_type)
-        
+
         worker = ActionWorker(targets, action_type, getattr(self, "experimental_device_ids", set()),
                               command_workers=self.app_settings.get("command_workers", 32))
         worker.log_signal.connect(lambda message, action=action_type: self.handle_worker_log(message, action=action))
@@ -1327,23 +1336,23 @@ class GeminiApp(QMainWindow):
         self.empty_description.setText(tr('Результаты появятся по мере получения ответов. Сканирование можно остановить.'))
         self.scan_state.setText(tr('Сканирование…'))
         # ВАЖНО: Прячем столбцы СРАЗУ ПОСЛЕ очистки таблицы, чтобы они не появились снова!
-        self.apply_ui_settings() 
+        self.apply_ui_settings()
         self.scan_data = []
         self.refresh_dashboard({}, {}, {})
-        
+
         self.worker = ScanWorker(to_scan, target_filters, self.app_settings.get("timeout", 2), self.app_settings.get("workers", 64))
         self.worker.progress_signal.connect(self.on_progress)
         self.worker.result_signal.connect(self.on_result)
         self.worker.log_signal.connect(self.handle_worker_log)
         self.worker.finished.connect(self.on_finished)
-        
+
         self.btn_scan.setEnabled(False)
         self.btn_stop.setEnabled(True)
         self.progress.setValue(0)
 
         self.scan_start_time = time.perf_counter()
         self.add_log(tr('🚀 Начато сканирование. Выбрано диапазонов: {p0}', p0=len(to_scan)))
-        
+
         self.worker.start()
 
     def stop_scan(self):
@@ -1359,142 +1368,131 @@ class GeminiApp(QMainWindow):
 
     def on_result(self, res_list):
         sorting = self.table.isSortingEnabled()
-        self.table.setSortingEnabled(False)
-        self.table.blockSignals(True)
-        table_rows = {self.table.item(r, 0).text(): r for r in range(self.table.rowCount())
-                      if self.table.item(r, 0) is not None}
-        data_rows = {row.get('IP'): i for i, row in enumerate(self.scan_data)}
-        for row in res_list:
-            row = dict(row)
-            state = row.get('IdentifyEnabled')
-            if row.get('Stale') or type(state) is not bool:
-                state = None
-            row.update(IdentifyEnabled=state,
-                       LED=tr('Включена') if state is True else tr('Выключена') if state is False else tr('Неизвестно'))
-            ip = str(row.get('IP', ''))
-            existing = table_rows.get(ip)
-            if row.get('Stale') and existing is None:
-                self.add_log(tr('{p0}: актуальные данные не получены ({p1}). Сохранённая запись исключена из результатов.', p0=row.get('IP', ''), p1=row.get('Error') or tr('нет ответа')))
-                continue
-            # === ФИКС ДЛЯ JASMINER, IPOLLO И AVALON ===
-            # Принудительно задаем статус в базу, если парсер его не вернул
-            if 'Status' not in row:
-                row['Status'] = 'Unknown'
-            if 'Error' not in row:
-                row['Error'] = ''
-            # =========================================
-            
-            if ip in data_rows:
-                self.scan_data[data_rows[ip]] = row
-            else:
-                data_rows[ip] = len(self.scan_data)
-                self.scan_data.append(row)
-            checked = Qt.CheckState.Unchecked
-            if existing is None:
-                r = self.table.rowCount()
-                self.table.insertRow(r)
-                table_rows[ip] = r
-            else:
-                r = existing
-                checked = self.table.item(r, 0).checkState()
-            
-            # УМНЫЙ КЛАСС СОРТИРОВКИ ЯЧЕЕК
-            class SmartSortItem(QTableWidgetItem):
-                def __lt__(self, other):
-                    # Проверяем, есть ли скрытое числовое значение (UserRole)
-                    my_val = self.data(Qt.ItemDataRole.UserRole)
-                    other_val = other.data(Qt.ItemDataRole.UserRole)
-                    if my_val is not None and other_val is not None:
-                        return my_val < other_val
-                        
-                    # Иначе пытаемся вытащить число из начала строки (например, "15.5 TH/s" -> 15.5)
-                    try: return float(self.text().split()[0]) < float(other.text().split()[0])
-                    except: return self.text() < other.text()
+        with QSignalBlocker(self.table), QSignalBlocker(self.table.selectionModel()):
+            self.table.setSortingEnabled(False)
+            try:
+                table_rows = {self.table.item(r, 0).text(): r for r in range(self.table.rowCount())
+                              if self.table.item(r, 0) is not None}
+                data_rows = {row.get('IP'): i for i, row in enumerate(self.scan_data)}
+                for row in res_list:
+                    row = dict(row)
+                    state = row.get('IdentifyEnabled')
+                    if row.get('Stale') or type(state) is not bool:
+                        state = None
+                    row.update(IdentifyEnabled=state,
+                               LED=tr('Включена') if state is True else tr('Выключена') if state is False else tr('Неизвестно'))
+                    ip = str(row.get('IP', ''))
+                    existing = table_rows.get(ip)
+                    if row.get('Stale') and existing is None:
+                        self.add_log(tr('{p0}: актуальные данные не получены ({p1}). Сохранённая запись исключена из результатов.', p0=row.get('IP', ''), p1=row.get('Error') or tr('нет ответа')))
+                        continue
+                    # === ФИКС ДЛЯ JASMINER, IPOLLO И AVALON ===
+                    # Принудительно задаем статус в базу, если парсер его не вернул
+                    if 'Status' not in row:
+                        row['Status'] = 'Unknown'
+                    if 'Error' not in row:
+                        row['Error'] = ''
+                    # =========================================
 
-            # === 0. IP (Сортировка по сырому числовому IP) ===
-            ip_str = str(row.get('IP', ''))
-            ip_item = SmartSortItem(ip_str)
-            ip_item.setFlags(ip_item.flags() | Qt.ItemFlag.ItemIsUserCheckable) # <--- ДОБАВИТЬ
-            ip_item.setCheckState(checked)
-            ip_item.setData(Qt.ItemDataRole.UserRole, row.get('SortIP', 0))
-            ip_item.setData(Qt.ItemDataRole.UserRole + 1, row)
-            ip_item.setToolTip(tr('Прошивка: {p0} {p1}\nПрофиль: {p2}\nДанные: {p3}', p0=row.get('Firmware', 'Unknown'), p1=row.get('FirmwareVersion') or '', p2=row.get('ProfileId', 'Unknown'), p3=tr('устарели') if row.get('Stale') else tr('актуальны')))
-            self.table.setItem(r, 0, ip_item)
-            
-            # === 1, 2. Model, Algo ===
-            self.table.setItem(r, 1, QTableWidgetItem(str(row.get('Model', ''))))
-            self.table.setItem(r, 2, QTableWidgetItem(str(row.get('Algo', '-'))))
-            
-            # === 3. Status ===
-            status_str = str(row.get('Status', 'Running'))
-            status_item = QTableWidgetItem({"Running": tr('Работает'), "Sleep": tr('Сон'), "Stopping": tr('Засыпает'), "WaitWork": tr('Ожидание'), "Error": tr('Ошибка'), "Unknown": tr('Неизвестно')}.get(status_str, status_str))
-            status_item.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
-            if status_str == "Running":
-                status_item.setForeground(QColor("#00E676") if getattr(self, 'dark_mode', False) else QColor("#007e33"))
-            elif status_str in ("WaitWork", "Stopping"):
-                status_item.setForeground(QColor("#FFA000"))
-            self.table.setItem(r, 3, status_item)
-            
-            # === 4. Error ===
-            err_str = str(row.get('Error', ''))
-            err_item = QTableWidgetItem(err_str)
-            if err_str and err_str != '-':
-                err_item.setForeground(QColor("#FF4444"))
-                err_item.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-                details = str(row.get('ErrorDetails', ''))
-                if details:
-                    err_item.setToolTip(
-                        '<qt>' + escape(details).replace('\n', '<br>') + '</qt>'
-                    )
-            self.table.setItem(r, 4, err_item)
-            
-            # === 5. Uptime (Переводим дни и часы в минуты для математической сортировки) ===
-            up_str = str(row.get('Uptime', ''))
-            up_minutes = 0
-            
-            # Умный и безопасный поиск чисел, даже если они написаны слитно
-            d_match = re.search(r'(\d+)d', up_str)
-            h_match = re.search(r'(\d+)h', up_str)
-            m_match = re.search(r'(\d+)m', up_str)
-            
-            if d_match: up_minutes += int(d_match.group(1)) * 1440
-            if h_match: up_minutes += int(h_match.group(1)) * 60
-            if m_match: up_minutes += int(m_match.group(1))
-            
-            up_item = SmartSortItem(up_str)
-            up_item.setData(Qt.ItemDataRole.UserRole, up_minutes)
-            self.table.setItem(r, 5, up_item)
-            
-            # === 6. Real HR ===
-            hr = str(row.get('Real', '0'))
-            hr_item = SmartSortItem(hr)
-            if getattr(self, 'dark_mode', False): 
-                hr_item.setForeground(QColor("#00E676"))
-            else: 
-                hr_item.setForeground(QColor("#007e33")) 
-            
-            # Мы удалили hr_item.setData(...), чтобы сортировка работала по тексту (как в Avg HR)
-            self.table.setItem(r, 6, hr_item)
-            
-            # === 7, 8, 9, 10, 11 (Остальные) ===
-            self.table.setItem(r, 7, SmartSortItem(str(row.get('Avg'))))
-            self.table.setItem(r, 8, SmartSortItem(str(row.get('Temp'))))
-            self.table.setItem(r, 9, QTableWidgetItem(str(row.get('Fan'))))
-            self.table.setItem(r, 10, QTableWidgetItem(str(row.get('Pool'))))
-            self.table.setItem(r, 11, QTableWidgetItem(str(row.get('Worker', '-'))))
-            from desktop_ui.led_indicator import led_item
-            self.table.setItem(r, list(COLUMNS).index("LED"), led_item(row))
-            row["Modes"] = ", ".join(action for action, supported in (row.get("Capabilities") or {}).items()
-                                   if supported == "supported" and action not in ("led_on", "led_off", "reboot"))
-            for code in ("Firmware", "FirmwareVersion", "Modes"):
-                self.table.setItem(r, list(COLUMNS).index(code), QTableWidgetItem(str(row.get(code) or "—")))
-            for column in range(1, self.table.columnCount()):
-                cell = self.table.item(r, column)
-                if cell is not None and not cell.toolTip():
-                    cell.setToolTip(cell.text())
+                    if ip in data_rows:
+                        self.scan_data[data_rows[ip]] = row
+                    else:
+                        data_rows[ip] = len(self.scan_data)
+                        self.scan_data.append(row)
+                    checked = Qt.CheckState.Unchecked
+                    if existing is None:
+                        r = self.table.rowCount()
+                        self.table.insertRow(r)
+                        table_rows[ip] = r
+                    else:
+                        r = existing
+                        checked = self.table.item(r, 0).checkState()
 
-        self.table.blockSignals(False)
-        self.table.setSortingEnabled(sorting)
+                    # УМНЫЙ КЛАСС СОРТИРОВКИ ЯЧЕЕК
+                    # === 0. IP (Сортировка по сырому числовому IP) ===
+                    ip_str = str(row.get('IP', ''))
+                    ip_item = SmartSortItem(ip_str)
+                    ip_item.setFlags(ip_item.flags() | Qt.ItemFlag.ItemIsUserCheckable) # <--- ДОБАВИТЬ
+                    ip_item.setCheckState(checked)
+                    ip_item.setData(Qt.ItemDataRole.UserRole, row.get('SortIP', 0))
+                    ip_item.setData(Qt.ItemDataRole.UserRole + 1, row)
+                    ip_item.setToolTip(tr('Прошивка: {p0} {p1}\nПрофиль: {p2}\nДанные: {p3}', p0=row.get('Firmware', 'Unknown'), p1=row.get('FirmwareVersion') or '', p2=row.get('ProfileId', 'Unknown'), p3=tr('устарели') if row.get('Stale') else tr('актуальны')))
+                    self.table.setItem(r, 0, ip_item)
+
+                    # === 1, 2. Model, Algo ===
+                    self.table.setItem(r, 1, QTableWidgetItem(str(row.get('Model', ''))))
+                    self.table.setItem(r, 2, QTableWidgetItem(str(row.get('Algo', '-'))))
+
+                    # === 3. Status ===
+                    status_str = str(row.get('Status', 'Running'))
+                    status_item = QTableWidgetItem({"Running": tr('Работает'), "Sleep": tr('Сон'), "Stopping": tr('Засыпает'), "WaitWork": tr('Ожидание'), "Error": tr('Ошибка'), "Unknown": tr('Неизвестно')}.get(status_str, status_str))
+                    status_item.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+                    if status_str == "Running":
+                        status_item.setForeground(QColor("#00E676") if getattr(self, 'dark_mode', False) else QColor("#007e33"))
+                    elif status_str in ("WaitWork", "Stopping"):
+                        status_item.setForeground(QColor("#FFA000"))
+                    self.table.setItem(r, 3, status_item)
+
+                    # === 4. Error ===
+                    err_str = str(row.get('Error', ''))
+                    err_item = QTableWidgetItem(err_str)
+                    if err_str and err_str != '-':
+                        err_item.setForeground(QColor("#FF4444"))
+                        err_item.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+                        details = str(row.get('ErrorDetails', ''))
+                        if details:
+                            err_item.setToolTip(
+                                '<qt>' + escape(details).replace('\n', '<br>') + '</qt>'
+                            )
+                    self.table.setItem(r, 4, err_item)
+
+                    # === 5. Uptime (Переводим дни и часы в минуты для математической сортировки) ===
+                    up_str = str(row.get('Uptime', ''))
+                    up_minutes = 0
+
+                    # Умный и безопасный поиск чисел, даже если они написаны слитно
+                    d_match = re.search(r'(\d+)d', up_str)
+                    h_match = re.search(r'(\d+)h', up_str)
+                    m_match = re.search(r'(\d+)m', up_str)
+
+                    if d_match: up_minutes += int(d_match.group(1)) * 1440
+                    if h_match: up_minutes += int(h_match.group(1)) * 60
+                    if m_match: up_minutes += int(m_match.group(1))
+
+                    up_item = SmartSortItem(up_str)
+                    up_item.setData(Qt.ItemDataRole.UserRole, up_minutes)
+                    self.table.setItem(r, 5, up_item)
+
+                    # === 6. Real HR ===
+                    hr = str(row.get('Real', '0'))
+                    hr_item = SmartSortItem(hr)
+                    if getattr(self, 'dark_mode', False):
+                        hr_item.setForeground(QColor("#00E676"))
+                    else:
+                        hr_item.setForeground(QColor("#007e33"))
+
+                    # Мы удалили hr_item.setData(...), чтобы сортировка работала по тексту (как в Avg HR)
+                    self.table.setItem(r, 6, hr_item)
+
+                    # === 7, 8, 9, 10, 11 (Остальные) ===
+                    self.table.setItem(r, 7, SmartSortItem(str(row.get('Avg'))))
+                    self.table.setItem(r, 8, SmartSortItem(str(row.get('Temp'))))
+                    self.table.setItem(r, 9, QTableWidgetItem(str(row.get('Fan'))))
+                    self.table.setItem(r, 10, QTableWidgetItem(str(row.get('Pool'))))
+                    self.table.setItem(r, 11, QTableWidgetItem(str(row.get('Worker', '-'))))
+                    from desktop_ui.led_indicator import led_item
+                    self.table.setItem(r, list(COLUMNS).index("LED"), led_item(row))
+                    row["Modes"] = ", ".join(action for action, supported in (row.get("Capabilities") or {}).items()
+                                           if supported == "supported" and action not in ("led_on", "led_off", "reboot"))
+                    for code in ("Firmware", "FirmwareVersion", "Modes"):
+                        self.table.setItem(r, list(COLUMNS).index(code), QTableWidgetItem(str(row.get(code) or "—")))
+                    for column in range(1, self.table.columnCount()):
+                        cell = self.table.item(r, column)
+                        if cell is not None and not cell.toolTip():
+                            cell.setToolTip(cell.text())
+
+            finally:
+                self.table.setSortingEnabled(sorting)
         self.update_selected_count()
         self.update_device_filter_options()
         self.apply_table_filter()
@@ -1505,10 +1503,10 @@ class GeminiApp(QMainWindow):
         """Открывает веб-интерфейс асика в браузере по двойному клику на IP"""
         # Получаем таблицу, в которой кликнули
         table = item.tableWidget()
-        
+
         # Проверяем, как называется заголовок колонки, по которой кликнули
         header_item = table.horizontalHeaderItem(item.column())
-        
+
         # Если кликнули именно по колонке "IP"
         if item.column() == 0:
             ip_address = item.text().strip()
@@ -1519,7 +1517,7 @@ class GeminiApp(QMainWindow):
         self.btn_scan.setEnabled(True)
         self.btn_stop.setEnabled(False)
         self.table.setSortingEnabled(True)
-        
+
         # --- ОСТАНОВКА ТАЙМЕРА ---
         elapsed = time.perf_counter() - getattr(self, 'scan_start_time', time.perf_counter())
         cancelled = getattr(getattr(self, "worker", None), "cancel", Event()).is_set()
@@ -1534,20 +1532,20 @@ class GeminiApp(QMainWindow):
         self.update_stats()
         self.apply_table_filter()
         self.status_bar.setText(msg)
-        self.add_log(f"⏱️ {msg}") 
-        
+        self.add_log(f"⏱️ {msg}")
+
         # --- АНАЛИТИКА: СРЕДНЕЕ ВРЕМЯ ОПРОСА И КОЛИЧЕСТВО ---
         if self.scan_data:
             df = pd.DataFrame(self.scan_data)
             if 'ScanTime' in df.columns and 'Make' in df.columns:
                 # Группируем, считаем среднее (mean) и количество (count)
                 grouped = df.groupby('Make')['ScanTime'].agg(['mean', 'count'])
-                
+
                 # Формируем красивую строку: "Bitmain: 4.454s (10 шт.)"
                 log_text = " | ".join([tr('{p0}: {p1:.3f}s ({p2} шт.)', p0=make, p1=row['mean'], p2=int(row['count']))
                                       for make, row in grouped.iterrows()])
                 self.add_log(tr('📊 Аналитика отклика: {p0}', p0=log_text))
-                
+
         self.apply_ui_settings()
 
     def update_stats(self):
@@ -1579,7 +1577,7 @@ class GeminiApp(QMainWindow):
         self.summary_panel.update_totals(len(self.scan_data), statuses, models, hashrates)
 
     def export_csv(self):
-        if not self.scan_data: 
+        if not self.scan_data:
             QMessageBox.warning(self, tr('Экспорт'), tr('Сначала выполните сканирование.'))
             return
 
@@ -1594,18 +1592,18 @@ class GeminiApp(QMainWindow):
             if len(clean_name) > 50: clean_name = clean_name[:50]
 
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            
+
             # Use QFileDialog for file type selection (CSV or XLSX)
             file_filter = "Excel (*.xlsx);;CSV (*.csv)"
             chosen_path, selected_filter = QFileDialog.getSaveFileName(self, tr('Сохранить отчет'),
                                                                        os.path.join(export_csv_dir, f"{clean_name}_{timestamp}.xlsx"), # Default to XLSX
                                                                        file_filter)
-            
+
             if not chosen_path: # User cancelled
                 return
 
             full_path = chosen_path
-            
+
             columns = [column for column in COLUMNS if column in self.app_settings.get("csv_cols", COLUMNS)]
             df = export_frame(self.scan_data, columns, self.app_settings.get("csv_sort", "IP"))
             if not Path(full_path).suffix:
@@ -1634,8 +1632,8 @@ class GeminiApp(QMainWindow):
         if not FPDF_AVAIL:
             QMessageBox.critical(self, "Error", "FPDF library not installed!\nRun: pip install fpdf")
             return
-            
-        if not self.scan_data: 
+
+        if not self.scan_data:
             QMessageBox.warning(self, tr('Экспорт'), tr('Сначала выполните сканирование.'))
             return
 
@@ -1663,10 +1661,10 @@ class GeminiApp(QMainWindow):
             df['CleanedModel'] = df['Model'].replace('', pd.NA).dropna().apply(lambda x: re.sub(r'\(.*?\)', '', str(x)).strip())
             models_c = df['CleanedModel'].value_counts()
             models_str = " | ".join([f"{k}: {v}" for k, v in models_c.items()])
-            
+
             algos_c = df['Algo'].replace('', pd.NA).dropna().value_counts()
             algos_str = " | ".join([f"{k}: {v}" for k, v in algos_c.items()])
-            
+
             status_c = df['Status'].replace('', pd.NA).dropna().value_counts()
             status_str = " | ".join([f"{k}: {v}" for k, v in status_c.items()])
 
@@ -1675,29 +1673,29 @@ class GeminiApp(QMainWindow):
             if 'Algo' in df.columns and 'Real' in df.columns:
                 df['Algo_Upper'] = df['Algo'].astype(str).str.upper()
                 algos = df['Algo_Upper'].dropna().unique()
-                
+
                 for algo in algos:
                     if algo in ['NAN', 'UNKNOWN', ''] or not algo: continue
                     sub = df[df['Algo_Upper'] == algo]
                     total_hash = 0.0
                     unit = ""
-                    
+
                     for val in sub['Real']:
                         try:
                             parts = str(val).strip().split()
                             if len(parts) >= 1: total_hash += float(parts[0].replace(',', '.'))
-                            if len(parts) >= 2 and not unit: unit = parts[1] 
+                            if len(parts) >= 2 and not unit: unit = parts[1]
                         except: pass
-                    
+
                     if not unit:
                         if "SHA" in algo: unit = "TH/s"
                         elif "SCRYPT" in algo: unit = "GH/s"
                         elif "EQUIHASH" in algo: unit = "kSol/s"
                         elif "X11" in algo: unit = "GH/s"
                         elif "ETCHASH" in algo: unit = "MH/s"
-                    
+
                     hashrates_summary[algo] = f"{total_hash:,.2f} {unit}".strip()
-            
+
             hashrates_summary_str = " | ".join([f"{k}: {v}" for k, v in hashrates_summary.items()])
             if not hashrates_summary_str:
                 hashrates_summary_str = "N/A"
@@ -1714,8 +1712,8 @@ class GeminiApp(QMainWindow):
             # --- ФИЛЬТРАЦИЯ СТОЛБЦОВ И ШИРИНА ---
             all_cols = list(COLUMNS)
             pdf_cols_setting = self.app_settings.get("pdf_cols", all_cols)
-            selected_cols = [c for c in all_cols if c in pdf_cols_setting] 
-            
+            selected_cols = [c for c in all_cols if c in pdf_cols_setting]
+
             base_widths = {"IP": 28, "Model": 40, "Algo": 20, "Status": 20, "Error": 25, "Uptime": 20, "Real HR": 20, "Avg HR": 20, "Temp": 20, "Fan": 25, "Pool": 40, "Worker": 35}
             widths = [base_widths.get(c, 20) for c in selected_cols]
 
@@ -1723,35 +1721,35 @@ class GeminiApp(QMainWindow):
             pdf = PDFReport(orientation='L', unit='mm', format='A4')
             scale = (pdf.w - pdf.l_margin - pdf.r_margin) / sum(widths)
             widths = [width * scale for width in widths]
-            
+
             # Передаем настройки напрямую в объект (это спасает от ошибки fpdf)
             pdf.report_title = safe_text(f"REPORT: {clean_name}")
             pdf.summary_text = summary_text
             pdf.table_cols = selected_cols
             pdf.table_widths = widths
-            
+
             pdf.add_page() # Тут автоматически нарисуется шапка со сводкой
             pdf.set_font(pdf.report_font, size=7)
-            
+
             data_keys = {"IP": "IP", "Model": "Model", "Algo": "Algo", "Status": "Status", "Error": "Error", "Uptime": "Uptime", "Real HR": "Real", "Avg HR": "Avg", "Temp": "Temp", "Fan": "Fan", "Pool": "Pool", "Worker": "Worker"}
-            
+
             for _, row in df.iterrows():
                 for i, col_name in enumerate(selected_cols):
                     dict_key = data_keys.get(col_name, col_name)
                     text = safe_text(str(row.get(dict_key, '')))
-                    
+
                     if col_name == "Pool" and len(text) > 35:
                         clean_text = "..." + text[-32:]
                     elif col_name == "Worker" and len(text) > 25:
                         clean_text = "..." + text[-22:]
-                    else: 
+                    else:
                         clean_text = text[:38]
 
                     pdf.cell(widths[i], 6, pdf.fit_text(clean_text, widths[i]), 1, 0, 'C')
                 pdf.ln()
-            
+
             pdf.output(full_path)
-            
+
             # --- ЛОГИКА БУФЕРА ОБМЕНА ---
             if self.app_settings.get("copy_pdf", False):
                 mime_data = QMimeData()

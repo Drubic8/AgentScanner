@@ -1,0 +1,16 @@
+{
+  "rpc_info": {
+    "code": 0,
+    "desc": "get.device.info",
+    "msg": {
+      "miner": {"working": "false", "type": "M61S+_VL30", "cointype": "BTC"},
+      "system": {"api": "3.0.5", "fwversion": "20260729.11.Rel2", "apiswitch": "1"},
+      "error-code": []
+    }
+  },
+  "rpc_summary": {
+    "code": 0,
+    "desc": "get.miner.status",
+    "msg": {"elapsed": 0, "hash-average": 0, "hash-realtime": 0}
+  }
+}

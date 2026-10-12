@@ -2,6 +2,8 @@
 import json
 import traceback
 import os
+from copy import deepcopy
+from PyQt6 import sip
 from pathlib import Path
 from unittest.mock import patch
 from PyQt6.QtCore import Qt
@@ -65,6 +67,18 @@ def run_smoke(app, window_type, output):
         window.resize(1440, 900)
         window.show()
         app.processEvents()
+        original_ranges = deepcopy(window.ranges_config)
+        # Exercise the real signal chain in the packaged Qt DLL, without saving
+        # synthetic targets over the user's sidecars.
+        with patch.object(window, 'save_config', return_value=True):
+            for index in range(6):
+                folder = window.ranges_panel.items[(0,)]
+                state = Qt.CheckState.Checked if index % 2 == 0 else Qt.CheckState.Unchecked
+                folder.setCheckState(0, state)
+                assert not sip.isdeleted(folder), 'Active tree item deleted inside native checkbox update'
+                app.processEvents()
+                assert window.ranges_panel.items[(0,)].checkState(0) == state
+            assert window.commit_ranges(original_ranges)
         window.grab().save(str(output / "empty-light.png"))
         # Synthetic editor screenshots exercise validation without saving local settings.
         ranges_dialog = IPRangeDialog("Контейнер А", ["192.0.2.1-24", "192.0.2.10", "198.51.100.0/30"], window)
@@ -194,7 +208,8 @@ def run_smoke(app, window_type, output):
         assert not errors, errors
         assert list(output.glob("UI_smoke_*.pdf")), "PDF export missing"
         result = {"ok": True, "version": app.applicationVersion(), "synthetic_rows": len(rows),
-                  "profiles": len(registry.profiles), "exports": ["clipboard_png", "csv", "xlsx", "pdf"], "network_used": False}
+                  "profiles": len(registry.profiles), "exports": ["clipboard_png", "csv", "xlsx", "pdf"], "network_used": False,
+                  "subnet_checkbox_lifetime": True}
         (output / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
         return 0
     except Exception:
