@@ -2,7 +2,7 @@
 from .i18n import tr, tr_error
 from copy import deepcopy
 
-from PyQt6.QtCore import Qt, pyqtSignal, QItemSelectionModel
+from PyQt6.QtCore import Qt, pyqtSignal, QItemSelectionModel, QTimer
 from PyQt6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog,
     QDialogButtonBox, QHBoxLayout, QLabel, QLineEdit, QMenu, QMessageBox,
     QPushButton, QStyle, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
@@ -34,6 +34,11 @@ class RangesPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.groups, self.items = [], {}
+        self._handling_item_change = False
+        self._pending_refresh = None
+        self._refresh_timer = QTimer(self)
+        self._refresh_timer.setSingleShot(True)
+        self._refresh_timer.timeout.connect(self._apply_pending_refresh)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
@@ -119,6 +124,17 @@ class RangesPanel(QWidget):
         return path if node_at(self.groups, path).get("type") == "folder" else path[:-1]
 
     def set_groups(self, groups, current=None):
+        if self._handling_item_change:
+            # setCheckState -> itemChanged -> changed -> commit_ranges used to
+            # clear the tree while Qt's QTreeWidgetItem::setData still held the
+            # active item. Keep it alive until the native call has returned.
+            # Advance the model now, so rapid edits build on the latest choice.
+            self.groups = deepcopy(groups)
+            self._pending_refresh = (deepcopy(groups), current)
+            self._refresh_timer.start(0)
+            return
+        self._refresh_timer.stop()
+        self._pending_refresh = None
         selected = {item.data(0, Qt.ItemDataRole.UserRole) for item in self.list_ranges.selectedItems()}
         expanded = {path for path, item in self.items.items() if item.isExpanded()}
         scroll = self.list_ranges.verticalScrollBar().value()
@@ -172,6 +188,11 @@ class RangesPanel(QWidget):
         self.filter_groups()
         self.list_ranges.verticalScrollBar().setValue(scroll)
         self.update_actions()
+
+    def _apply_pending_refresh(self):
+        if self._pending_refresh is not None:
+            groups, current = self._pending_refresh
+            self.set_groups(groups, current)
 
     def filter_groups(self):
         query = self.search.text().strip().casefold()
@@ -231,7 +252,12 @@ class RangesPanel(QWidget):
     def on_item_changed(self, item, column):
         candidate = deepcopy(self.groups)
         set_enabled(node_at(candidate, item.data(0, Qt.ItemDataRole.UserRole)), item.checkState(0) == Qt.CheckState.Checked)
-        self.changed.emit(candidate)
+        previous = self._handling_item_change
+        self._handling_item_change = True
+        try:
+            self.changed.emit(candidate)
+        finally:
+            self._handling_item_change = previous
 
     def toggle_all(self, checked):
         candidate = deepcopy(self.groups)

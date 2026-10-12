@@ -3,6 +3,7 @@ import re
 from ..utils import get_uptime_str, normalize_hashrate
 
 from ..whatsminer_errors import decode_errors
+from ..whatsminer_compatibility import info_message
 
 def safe_float(val, mult=1.0):
     try:
@@ -16,22 +17,22 @@ def parse_whatsminer_data(ip, resp_info, resp_summary, resp_pools):
     model_full = "Whatsminer Detected"
     algo = "SHA-256"
     error_code = ""
-    
+
     # 1. ЗАПРОС ИНФО (Модель и Ошибки)
-    working_status = "unknown" 
-    
+    working_status = "unknown"
+
     if resp_info and resp_info.get('code') == 0:
         info = resp_info.get('msg', {})
-        
+
         if isinstance(info, dict):
             m_type = info.get('miner', {}).get('type') or \
                      info.get('sub_version') or \
                      info.get('product_type')
             if m_type: model_full = f"Whatsminer {m_type}"
-            
+
             # --- СЧИТЫВАЕМ СТАТУС WORKING ---
             working_status = str(info.get('miner', {}).get('working', 'unknown')).lower()
-            
+
             ctype = info.get('miner', {}).get('cointype', 'SHA-256')
             if 'BTC' not in str(ctype).upper(): algo = str(ctype)
 
@@ -45,19 +46,19 @@ def parse_whatsminer_data(ip, resp_info, resp_summary, resp_pools):
     fans = []
     pool = ""
     worker = ""
-    
+
     if resp_summary:
         msg = resp_summary.get('msg', {})
         if isinstance(msg, dict):
             if not msg and 'Msg' in resp_summary: msg = resp_summary['Msg']
-            
-            summary = msg.get('summary') if isinstance(msg, dict) else msg 
+
+            summary = msg.get('summary') if isinstance(msg, dict) else msg
             if not summary: summary = msg
 
             if summary and isinstance(summary, dict):
                 rt = safe_float(summary.get('hash-realtime')) or safe_float(summary.get('HS RT')) or safe_float(summary.get('GHS 5s'), 1000)
                 av = safe_float(summary.get('hash-average')) or safe_float(summary.get('MHS av')) or safe_float(summary.get('GHS av'), 1000)
-                
+
                 if rt > 10000: raw_hash = rt / 1_000_000
                 else: raw_hash = rt
 
@@ -65,13 +66,13 @@ def parse_whatsminer_data(ip, resp_info, resp_summary, resp_pools):
                 else: avg_hash = av
 
                 uptime = int(safe_float(summary.get('elapsed') or summary.get('Uptime') or summary.get('Elapsed')))
-                
+
                 t_list = summary.get('board-temperature') or summary.get('temperature')
                 if isinstance(t_list, list):
                     temps = [int(safe_float(t)) for t in t_list]
                 elif summary.get('Chip Temp Avg'):
                     temps.append(int(safe_float(summary['Chip Temp Avg'])))
-                    
+
                 for fan_key in ['fan-speed-in', 'fan-speed-out', 'Fan Speed In', 'Fan Speed Out']:
                     if summary.get(fan_key): fans.append(str(summary[fan_key]))
 
@@ -107,6 +108,11 @@ def parse_whatsminer_data(ip, resp_info, resp_summary, resp_pools):
         final_status = "Running"       # Майнит (Штатная работа)
     elif error_code:
         final_status = "Error"         # Не майнит, есть аппаратные ошибки
+    elif working_status == "false" and info_message(resp_info) is not None:
+        # RPC 3 reports the service state, also used to verify stop commands.
+        # A stopped service may have no summary/elapsed at all. Do not require
+        # uptime > 60 to recognize it, or confuse its residual hash with mining.
+        final_status = "Stopping" if raw_hash > 0 else "Sleep"
     elif raw_hash == 0 and working_status == "false":
         # Если хеша нет, ошибок нет, и он не "working"
         # Обычно при старте асик быстро переходит в прогрев,
@@ -119,17 +125,17 @@ def parse_whatsminer_data(ip, resp_info, resp_summary, resp_pools):
         final_status = "WaitWork"
 
     return {
-        "IP": ip, 
-        "Make": "MicroBT", 
-        "Model": model_full, 
+        "IP": ip,
+        "Make": "MicroBT",
+        "Model": model_full,
         "Algo": algo,
         "Status": final_status,
         "Uptime": get_uptime_str(uptime),
-        "Real": f"{final_real} {u_r}", 
-        "Avg": f"{final_avg} {u_a}", 
-        "Fan": " ".join(fans), 
-        "Temp": " ".join(str(t) for t in temps), 
-        "Pool": pool, 
+        "Real": f"{final_real} {u_r}",
+        "Avg": f"{final_avg} {u_a}",
+        "Fan": " ".join(fans),
+        "Temp": " ".join(str(t) for t in temps),
+        "Pool": pool,
         "Worker": worker,
         "SortIP": int(ipaddress.IPv4Address(ip)),
         "RawHash": float(raw_hash),

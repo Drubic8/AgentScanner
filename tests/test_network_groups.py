@@ -126,6 +126,7 @@ class NetworkUITests(unittest.TestCase):
         self.assertEqual(folder.checkState(0), qt.CheckState.PartiallyChecked)
         folder.setCheckState(0, qt.CheckState.Checked)
         self.assertEqual(selected_ranges(load_json(path)), ['192.0.2.1', '192.0.2.2', '192.0.2.3'])
+        self.app.processEvents()  # Qt must finish its item update before rebuilding.
         panel.list_ranges.setCurrentItem(panel.items[(0,)])
         panel.search.setText('Row 1')
         self.assertTrue(panel.items[(0, 1)].isHidden())
@@ -136,6 +137,7 @@ class NetworkUITests(unittest.TestCase):
         panel.search.clear()
         with patch.object(self.gui, 'write_json', side_effect=OSError('disk full')), patch.object(self.gui.QMessageBox, 'critical'):
             panel.items[(0,)].setCheckState(0, qt.CheckState.Unchecked)
+        self.app.processEvents()
         self.assertEqual(selected_ranges(window.ranges_config), selected_ranges(saved))
         self.assertEqual(panel.items[(0,)].checkState(0), qt.CheckState.PartiallyChecked)
 
@@ -178,6 +180,7 @@ class NetworkUITests(unittest.TestCase):
         panel.list_ranges.item(1).setCheckState(0, self.gui.Qt.CheckState.Checked)
         self.assertEqual(len(selected_ranges(window.ranges_config)), 2)
         self.assertTrue(all(group["enabled"] for group in load_json(path)))
+        self.app.processEvents()
         panel.select_all.click()
         self.assertEqual(selected_ranges(window.ranges_config), [])
         with patch.object(self.gui, "ScanWorker") as worker, patch.object(self.gui.QMessageBox, "warning"):
@@ -192,6 +195,7 @@ class NetworkUITests(unittest.TestCase):
         window, _ = self.window()
         with patch.object(self.gui, "write_json", side_effect=OSError("disk full")), patch.object(self.gui.QMessageBox, "critical") as critical:
             window.list_ranges.item(0).setCheckState(0, self.gui.Qt.CheckState.Unchecked)
+        self.app.processEvents()
         critical.assert_called_once()
         self.assertTrue(window.ranges_config[0]["enabled"])
         self.assertEqual(window.list_ranges.item(0).checkState(0), self.gui.Qt.CheckState.Checked)

@@ -1,6 +1,6 @@
 {
-  "version": "2.2.4",
+  "version": "2.2.5",
   "url": "https://github.com/Drubic8/AgentScanner/releases/latest/download/ASIC_Monitor.exe",
-  "changelog": "Windows: подсети, дерево папок, настройки и зашифрованные профили ASIC сохраняются рядом с EXE. При первом запуске переносится более свежий файл из прежней папки AppData, существующий файл сохраняется в резервной копии. Исправлено автоматическое сохранение языка и компоновки таблицы при обычном запуске. Android обновлён до 2.2.4 без изменения своего хранилища.",
-  "changelog_en": "Windows saves networks, folder trees, preferences and encrypted ASIC access profiles beside the EXE. First launch migrates newer settings from the former AppData folder with sidecar backups. Fixed automatic persistence of language and table layout on normal startup. Android is versioned 2.2.4 with no storage changes."
+  "changelog": "Исправлен сбой при переключении галочек в дереве подсетей: дерево обновляется после завершения обработки Qt. Исправлена сортировка чисел и пустых значений, защищено обновление таблицы. Добавлена диагностика падений рядом с EXE. WhatsMiner RPC 3 корректно отображает остановленный сервис как сон при нулевом uptime. Android использует обновлённое ядро сканера.",
+  "changelog_en": "Fixed subnet checkbox crashes by deferring tree rebuilds until Qt finishes processing the item. Fixed mixed-value sorting and guarded table refreshes. Added local crash diagnostics beside the EXE. WhatsMiner RPC 3 recognizes a stopped service with zero uptime. Android includes the updated scanner core."
 }
