@@ -2,6 +2,10 @@
 
 ## Аппаратные прогоны
 
+- [Goldshell HS5 / Stock 2.2.1: MCB API, алгоритм, хешрейт и датчики](goldshell-hs5-2026-10-13.md).
+
+- [Antminer A3 Stock: определение модели, Blake2B, хешрейт и датчики](antminer-a3-stock-2026-10-13.md).
+
 - [Antminer S21 / PitBit.78: LED, Sleep/Wakeup и перезагрузка](pitbit-s21-2026-10-03.md).
 
 - [Avalon 1346-110: подсветка, Sleep/Wakeup и определение состояния](avalon-1346-2026-10-02.md).

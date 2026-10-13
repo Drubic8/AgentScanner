@@ -191,6 +191,13 @@ def normalize(data, row, parser, metrics=None):
         snapshot.average_rate = explicit_rate(summary.get("avg"))[0]
         snapshot.uptime_seconds = number(summary.get("uptime"))
         snapshot.fan_rpm, snapshot.temperatures_c = sensor_readings(status)
+    elif parser == "goldshell":
+        from .parsers.goldshell import readings
+        (snapshot.rate, snapshot.average_rate, snapshot.uptime_seconds,
+         snapshot.fan_rpm, snapshot.temperatures_c) = readings(data)
+        settings = data.get('goldshell_setting')
+        if isinstance(settings, dict) and type(settings.get('ledcontrol')) is bool:
+            snapshot.identify_enabled = settings['ledcontrol']
     elif parser == "elphapex":
         stats = block(data.get("elphapex_stats"), "STATS")
         chains = stats.get("chain", [])
@@ -239,10 +246,10 @@ def normalize(data, row, parser, metrics=None):
     state = str(row.get("Status", "Unknown"))
     snapshot.mining_state = {"Sleep": "stopped", "Stopping": "stopping",
                              "Starting": "starting", "WaitWork": "starting", "Init": "starting"}.get(state, "unknown")
-    avalon_explicit_state = parser == 'avalon' and 'Status' in row
-    if avalon_explicit_state and state == 'Running':
+    explicit_state = parser in ('avalon', 'goldshell') and 'Status' in row
+    if explicit_state and state == 'Running':
         snapshot.mining_state = 'running'
-    if (not avalon_explicit_state and snapshot.mining_state not in ("stopped", "stopping")
+    if (not explicit_state and snapshot.mining_state not in ("stopped", "stopping")
             and snapshot.rate is not None and snapshot.rate > 0):
         snapshot.mining_state = "running"
     return snapshot
@@ -252,7 +259,8 @@ def format_rate(value, unit="H/s", algorithm=None):
     if value is None:
         return "—"
     preferred = {"SHA-256": "TH/s", "Scrypt": "GH/s", "X11": "GH/s",
-                 "Equihash": "kSol/s", "Etchash": "MH/s", "kHeavyHash": "TH/s"}.get(algorithm)
+                 "Equihash": "kSol/s", "Etchash": "MH/s", "kHeavyHash": "TH/s",
+                 "Blake2B": "GH/s", "Blake2B-Sia": "GH/s", "Blake2B+SHA3": "GH/s"}.get(algorithm)
     if preferred and (unit == "Sol/s") == ("Sol" in preferred):
         return f"{value / UNITS[preferred]:.2f} {preferred}"
     scales = ((1e6, "MSol/s"), (1e3, "kSol/s"), (1, "Sol/s")) if unit == "Sol/s" else ((1e12, "TH/s"), (1e9, "GH/s"), (1e6, "MH/s"), (1e3, "KH/s"), (1, "H/s"))

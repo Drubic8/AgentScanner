@@ -102,7 +102,7 @@ class Transport:
             op.remaining()
             return response.status_code, bytes(content)
 
-    def http_json(self, path: str, method="GET", **kwargs):
+    def http_json(self, path: str, method="GET", *, expect_list=False, **kwargs):
         status, raw = self.http(path, method, **kwargs)
         if status != 200:
             return None
@@ -110,8 +110,8 @@ class Transport:
             value = json.loads(raw)
         except (ValueError, UnicodeError) as exc:
             raise ProtocolError("Expected a JSON API response") from exc
-        if not isinstance(value, dict):
-            raise ProtocolError("Expected a JSON object")
+        if not isinstance(value, list if expect_list else dict):
+            raise ProtocolError("Expected a JSON array" if expect_list else "Expected a JSON object")
         return value
 
     def cgminer(self, command: str, *, port=4028, raw=False, repair=None):

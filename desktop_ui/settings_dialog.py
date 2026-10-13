@@ -105,7 +105,7 @@ class SettingsDialog(QDialog):
         for key, text in (("scan_bitmain", "Antminer · Bitmain, VNish, PitBit"),
                           ("scan_whatsminer", "Whatsminer · MicroBT"),
                           ("scan_elphapex", "Elphapex"),
-                          ("scan_other", tr('Остальные · Avalon, iPollo, Jasminer, Generic'))):
+                          ("scan_other", tr('Остальные · Avalon, iPollo, Jasminer, Goldshell, Generic'))):
             box = QCheckBox(text)
             box.setChecked(self.settings[key])
             layout.addWidget(box)

@@ -42,6 +42,11 @@ class FakeTransport:
             "/cgi-bin/luci/stats.cgi": "elphapex_stats",
             "/cgi-bin/luci/get_miner_conf.cgi": "elphapex_config",
             "/cgi-bin/minerStatus.cgi": "jasminer_status",
+            "/mcb/status": "goldshell_status",
+            "/mcb/cgminer?cgminercmd=devs": "goldshell_devs",
+            "/mcb/algosetting": "goldshell_algo",
+            "/mcb/pools": "goldshell_pools",
+            "/mcb/setting": "goldshell_setting",
         }.get(path, path)
         return self.value(key)
 

@@ -116,6 +116,7 @@ class ScannerService:
         probes = [
             ("version", "cgminer", "version", True),
             ("stats", "cgminer", "stats", False, {"repair": "antminer_stats"}),
+            ("goldshell_status", "http", "/mcb/status", True),
             ("rpc_info", "rpc", "get.device.info", True),
             ("system", "http", "/cgi-bin/get_system_info.cgi", True),
             ("vnish_info", "http", "/api/v1/info", True),
@@ -278,8 +279,9 @@ class ScannerService:
                     self._control_contracts[ip] = compatibility
                     stock_compatibility.apply_capabilities(record, profile, compatibility)
                 from .identify import read_state
-                record.telemetry.identify_enabled = read_state(profile.control, transport, data,
-                                                               compatibility=self._control_contracts.get(ip))
+                if profile.control is not None:
+                    record.telemetry.identify_enabled = read_state(profile.control, transport, data,
+                                                                   compatibility=self._control_contracts.get(ip))
                 if (profile.parser == "antminer" and record.display.get("Status") == "Unknown"
                         and record.display.get("Error") == "STATE UNCONFIRMED"
                         and "config:auth_required" in op.errors):
