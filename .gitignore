@@ -61,6 +61,7 @@ dist/
 !ASIC_Monitor.spec
 !scripts/build_windows.py
 !scripts/check_windows_update.py
+!scripts/check_published_release.py
 !scripts/check_windows_storage.py
 !requirements-build.lock
 !.github/workflows/windows-build.yml

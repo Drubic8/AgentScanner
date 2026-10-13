@@ -25,7 +25,9 @@ jobs:
       - name: Test, build and smoke-test EXE
         run: python scripts/build_windows.py
       - name: Check published release discovery
-        run: python -c "from desktop_ui.update_package import discover_release; r = discover_release(); print('Published update metadata verified:', r['version'], r['size'])"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/check_published_release.py
       - uses: actions/upload-artifact@v4
         with:
           name: ASIC-Monitor-Windows
