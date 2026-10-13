@@ -602,6 +602,24 @@
       "verified_commands": []
     },
     {
+      "id": "goldshell.mcb",
+      "version": 1,
+      "make": "Goldshell",
+      "firmware": "Stock",
+      "signature": "goldshell",
+      "priority": 20,
+      "parser": "goldshell",
+      "control": null,
+      "queries": [
+        ["goldshell_status", "http", "/mcb/status", true],
+        ["goldshell_devs", "http", "/mcb/cgminer?cgminercmd=devs", false],
+        ["goldshell_algo", "http", "/mcb/algosetting", false],
+        ["goldshell_pools", "http_array", "/mcb/pools", false],
+        ["goldshell_setting", "http", "/mcb/setting", false]
+      ],
+      "verified_commands": []
+    },
+    {
       "id": "generic.cgminer",
       "version": 1,
       "make": "Unknown",

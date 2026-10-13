@@ -169,7 +169,7 @@
   "Настройки и диапазоны сохраняются в:\n{p0}": "Settings and ranges are stored in:\n{p0}",
   "Сканирование": "Scanning",
   "Выберите производителей и параметры опроса. Новые параметры действуют со следующего сканирования.": "Choose manufacturers and polling settings. Changes apply to the next scan.",
-  "Остальные · Avalon, iPollo, Jasminer, Generic": "Others · Avalon, iPollo, Jasminer, Generic",
+  "Остальные · Avalon, iPollo, Jasminer, Goldshell, Generic": "Others · Avalon, iPollo, Jasminer, Goldshell, Generic",
   " с": " s",
   "Ожидание ответа": "Response timeout",
   "Параллельные устройства": "Parallel devices",

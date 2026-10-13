@@ -22,6 +22,7 @@ from .parsers.elphapex import parse_elphapex
 from .parsers.avalon import parse_avalon
 from .parsers.ipollo import parse_ipollo
 from .parsers.jasminer import parse_jasminer
+from .parsers.goldshell import parse_goldshell
 
 
 def query(transport, definition):
@@ -38,6 +39,8 @@ def query(transport, definition):
         elif protocol in {"html", "text"}:
             status, raw = transport.http(command, **options)
             value = raw.decode("utf-8", errors="replace") if status == 200 else None
+        elif protocol == "http_array":
+            value = transport.http_json(command, expect_list=True, **options)
         else:
             value = transport.http_json(command, "POST" if protocol == "http_post" else "GET", **options)
         return value
@@ -100,6 +103,7 @@ PARSERS = {
     "elphapex": lambda ip, d: parse_elphapex(ip, d.get("elphapex_stats", {}), d.get("elphapex_config", {})),
     "avalon": parse_avalon, "ipollo": parse_ipollo,
     "jasminer": lambda ip, d: parse_jasminer(ip, d.get("jasminer_status", {})),
+    "goldshell": parse_goldshell,
     "generic": parse_generic, "cgminer_web": parse_generic,
 }
 
@@ -140,6 +144,9 @@ def make_record(profile, ip, data, previous=None):
     firmware_evidence = None
     if profile.parser == 'antminer':
         version, firmware_evidence = antminer_firmware_metadata(data)
+    if profile.parser == 'goldshell':
+        info = data.get('goldshell_status', {})
+        model, version = info.get('model', model), info.get('firmware')
     if profile.parser == 'avalon':
         version = block(data.get('version'), 'VERSION').get('VERSION') or version
     api_version = first_field(data, {"api", "api_ver", "api_version"})

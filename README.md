@@ -8,7 +8,7 @@
 
 **[Скачать для Windows](https://github.com/Drubic8/AgentScanner/releases/latest)** · **[Руководство пользователя](docs/user_guide.md)** · **[Сообщить об ошибке](https://github.com/Drubic8/AgentScanner/issues/new/choose)** · **[Участие в разработке](CONTRIBUTING.md)**
 
-**Android:** [скачать тестовый APK 2.2.4](https://github.com/Drubic8/AgentScanner/releases/tag/v2.2.4)
+**Android:** [скачать APK 2.4.0](https://github.com/Drubic8/AgentScanner/releases/tag/v2.4.0)
 · [установка и сборка](apps/android/README.md). Первая тестовая версия с нативным интерфейсом
 и общим ядром сканера. APK собирается в
 [GitHub Actions](https://github.com/Drubic8/AgentScanner/actions/workflows/android.yml).
@@ -24,6 +24,17 @@
 ![ASIC Monitor: таблица устройств, показатели и выбор сетей](docs/images/overview.png)
 
 *На снимках демонстрационные данные; это не результаты испытаний реальных моделей.*
+
+## 2.4.0: Antminer A3 и Goldshell HS5
+
+Добавлено сканирование Antminer A3 (Blake2B, GH/s, температуры и вентиляторы) и
+Goldshell MCB, проверенное на HS5 / Stock 2.2.1. Для HS5 читаются показатели всех
+плат, выбранный алгоритм SC/HNS, пул, worker и состояние LED. Goldshell входит в
+фильтр «Остальные». Команды управления Goldshell пока не подтверждены.
+
+Windows EXE и Android APK выпускаются из тега `v2.4.0` через GitHub Actions.
+[Файлы выпуска](https://github.com/Drubic8/AgentScanner/releases/tag/v2.4.0)
+· [Описание версии](docs/releases/2.4.0.md).
 
 ## 2.2.4: настройки рядом с EXE
 
@@ -62,7 +73,7 @@ Get-FileHash .\ASIC_Monitor.exe -Algorithm SHA256
 
 ### Совместимость с ASIC
 
-В каталоге есть профили чтения для Bitmain Stock, VNish, PitBit, Whatsminer, Avalon, Elphapex, iPollo, Jasminer и общего CGMiner API. **Наличие профиля не означает подтверждённую совместимость со всеми моделями и версиями прошивок.**
+В каталоге есть профили чтения для Bitmain Stock, VNish, PitBit, Whatsminer, Avalon, Elphapex, iPollo, Jasminer, Goldshell MCB и общего CGMiner API. **Наличие профиля не означает подтверждённую совместимость со всеми моделями и версиями прошивок.**
 
 Неподтверждённые команды по умолчанию заблокированы. Экспериментальное управление включается явно для выбранных устройств на текущий сеанс. Low/HEM доступны только при наличии соответствующего правила профиля. В Windows [профили доступа](docs/access_profiles.md) сохраняются с защитой DPAPI; стандартные профили Antminer и VNish доступны сразу. Токены остаются в памяти.
 

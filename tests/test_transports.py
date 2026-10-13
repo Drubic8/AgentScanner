@@ -30,6 +30,19 @@ class FragmentSocket:
 
 
 class TransportTests(unittest.TestCase):
+    def test_json_array_requires_explicit_shape_and_rejects_other_types(self):
+        with Transport('192.0.2.13', Operation()) as transport:
+            body = b'[{"active":true,"user":"demo.worker"}]'
+            with patch.object(transport, 'http', return_value=(200, body)):
+                with self.assertRaises(ProtocolError):
+                    transport.http_json('/mcb/pools')
+                self.assertEqual(transport.http_json('/mcb/pools', expect_list=True),
+                                 [{'active': True, 'user': 'demo.worker'}])
+            for body in (b'{}', b'null', b'42', b'not-json'):
+                with self.subTest(body=body), patch.object(transport, 'http', return_value=(200, body)):
+                    with self.assertRaises(ProtocolError):
+                        transport.http_json('/mcb/pools', expect_list=True)
+
     def test_legacy_form_has_form_encoding_and_cannot_mix_with_json(self):
         response=MagicMock()
         response.__enter__.return_value=response

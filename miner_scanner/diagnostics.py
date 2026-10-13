@@ -27,6 +27,8 @@ HTTP_READS = {
     "/cgi-bin/luci/get_miner_conf.cgi", "/cgi-bin/luci/get_system_info.cgi",
     "/cgi-bin/minerStatus.cgi", "/cgi-bin/minerConfiguration.cgi", "/warning",
     "/miner.html", "/index.html", "/cgi-bin/get_blink_status.cgi",
+    "/mcb/status", "/mcb/cgminer?cgminercmd=devs", "/mcb/algosetting",
+    "/mcb/pools", "/mcb/setting",
 }
 SENSITIVE = re.compile(r"pass|pwd|secret|token|auth|cookie|salt|sign|user|worker|wallet|pool|url|host|serial|(^|_)sn$|mac|address|fingerprint|device.?id|(^|_)ip$", re.I)
 SAFE_TEXT = {"model", "minertype", "type", "make", "firmware", "firmwareversion",

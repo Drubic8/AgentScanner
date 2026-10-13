@@ -4,7 +4,7 @@ import re
 
 
 def repair_antminer_stats(text):
-    """Recover separators in complete Stock Z11/Z15/Z15e STATS replies.
+    """Recover separators in complete Stock A3/Z11/Z15/Z15e STATS replies.
 
     Earlier releases used global regex substitutions for this firmware defect.
     Only edit locations identified by the JSON decoder, then require a known model
@@ -21,7 +21,7 @@ def repair_antminer_stats(text):
                 candidate = candidate[:exc.pos] + "," + tail
             elif (exc.msg == "Expecting ',' delimiter" and tail.startswith("{")
                   and candidate[:exc.pos].rstrip().endswith("}")):
-                # Stock Z15 2020: adjacent STATS array objects are sent as }{.
+                # Stock A3 2017 / Z15 2020 send adjacent STATS objects as }{.
                 candidate = candidate[:exc.pos] + "," + tail
             elif (exc.msg.startswith("Illegal trailing comma") and
                   re.match(r",\s*[}\]]", tail)):
@@ -38,8 +38,8 @@ def repair_antminer_stats(text):
         raise ValueError("Too many legacy JSON defects")
     stats = value.get("STATS") if isinstance(value, dict) else None
     if not isinstance(stats, list) or not any(
-        isinstance(item, dict) and re.fullmatch(r"Antminer\s+(?:Z11|Z15(?:e|\+|\s+Pro)?)", str(item.get("Type", "")), re.I)
+        isinstance(item, dict) and re.fullmatch(r"Antminer\s+(?:A3|Z11|Z15(?:e|\+|\s+Pro)?)", str(item.get("Type", "")), re.I)
         for item in stats
     ):
-        raise ValueError("Legacy repair requires a known stock Z-series STATS identity")
+        raise ValueError("Legacy repair requires a known stock STATS identity")
     return candidate

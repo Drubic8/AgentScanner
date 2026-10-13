@@ -10,6 +10,31 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 @unittest.skipUnless(importlib.util.find_spec("PyQt6") and importlib.util.find_spec("pandas") and importlib.util.find_spec("fpdf"), "Desktop dependencies not installed")
 class DesktopTests(unittest.TestCase):
+    def test_goldshell_other_filter_and_table(self):
+        import json
+        from pathlib import Path
+        from miner_scanner.drivers import make_record
+        from miner_scanner.profiles import ProfileRegistry
+        data = json.loads((Path(__file__).parent / 'fixtures' / 'goldshell_hs5_mcb.json').read_text(encoding='utf-8'))['data']
+        record = make_record(ProfileRegistry().resolve(data), '192.0.2.13', data)
+        window = self.gui.GeminiApp(settings={'scan_bitmain': False, 'scan_whatsminer': False,
+            'scan_elphapex': False, 'scan_other': True, 'check_updates': False}, ranges=[
+                {'name': 'test', 'ranges': ['192.0.2.13'], 'enabled': True}])
+        try:
+            with patch.object(self.gui, 'ScanWorker') as worker:
+                worker.return_value.isRunning.return_value = False
+                window.start_scan()
+                self.assertIn('Goldshell', worker.call_args.args[1])
+                worker.return_value.start.assert_called_once()
+                window.on_result([record.to_legacy()])
+                self.assertEqual(window.table.rowCount(), 1)
+                self.assertEqual(window.scan_data[0]['Make'], 'Goldshell')
+                self.assertEqual(window.scan_data[0]['Model'], 'Goldshell-HS5')
+                self.assertEqual(window.scan_data[0]['Real'], '5082.35 GH/s')
+        finally:
+            window.worker = None
+            window.close()
+
     @classmethod
     def setUpClass(cls):
         original_connect = socket.socket.connect

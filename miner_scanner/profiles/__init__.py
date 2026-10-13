@@ -15,7 +15,7 @@ def identity_values(data):
         for key, value in data.items():
             if key.lower() in IDENTITY_KEYS and isinstance(value, (str, int, float)):
                 result.append(str(value))
-            elif isinstance(value, (dict, list)) and key.lower() not in {"pools", "rpc_pools", "config", "elphapex_config"}:
+            elif isinstance(value, (dict, list)) and key.lower() not in {"pools", "rpc_pools", "goldshell_pools", "config", "elphapex_config"}:
                 result.extend(identity_values(value))
     elif isinstance(data, list):
         for item in data:
@@ -29,7 +29,7 @@ def first_field(data, names):
             if key.lower() in names and isinstance(value, (str, int, float)) and str(value).strip():
                 return str(value)
         for key, value in data.items():
-            if key.lower() not in {"pools", "config", "rpc_pools", "elphapex_config"}:
+            if key.lower() not in {"pools", "config", "rpc_pools", "goldshell_pools", "elphapex_config"}:
                 found = first_field(value, names)
                 if found is not None:
                     return found
@@ -55,7 +55,7 @@ def signatures(data):
     if "antminer" in text or "bitmain" in text:
         found.add("antminer")
     system = data.get("system", {})
-    if isinstance(system, dict) and system.get("minertype") and re.match(r"^(S19|S21|T19|T21|L7|L9|D7|D9|Z11|Z15)\b", str(system["minertype"]), re.I):
+    if isinstance(system, dict) and system.get("minertype") and re.match(r"^(A3|S19|S21|T19|T21|L7|L9|D7|D9|Z11|Z15)\b", str(system["minertype"]), re.I):
         found.add("antminer")
     if "avalon" in text or "ava100" in text:
         found.add("avalon")
@@ -70,6 +70,11 @@ def signatures(data):
             found.add("whatsminer")
     if "elphapex" in text or re.search(r"\bdg\d", text):
         found.add("elphapex")
+    goldshell = data.get('goldshell_status')
+    if (isinstance(goldshell, dict)
+            and re.fullmatch(r'Goldshell[- ][A-Za-z0-9][A-Za-z0-9 _+.-]{0,63}', str(goldshell.get('model', '')), re.I)
+            and isinstance(goldshell.get('firmware'), str) and goldshell['firmware'].strip()):
+        found.add('goldshell')
     jas = data.get("jasminer_status", {})
     if "jasminer" in " ".join(identity_values(jas)).lower() and isinstance(jas.get("summary"), (dict, list)):
         found.add("jasminer")
@@ -121,7 +126,7 @@ class ProfileRegistry:
             if profile.version < 1 or not profile.id:
                 raise ValueError("Invalid profile identity")
             for query in profile.queries:
-                if len(query) not in (4, 5) or query[1] not in {"cgminer", "http", "http_post", "rpc", "html", "text"}:
+                if len(query) not in (4, 5) or query[1] not in {"cgminer", "http", "http_array", "http_post", "rpc", "html", "text"}:
                     raise ValueError(f"Invalid query in {profile.id}")
                 if len(query) == 5:
                     options = query[4]

@@ -10,6 +10,8 @@ from ..utils import get_uptime_str
 def algorithm_for(model, data):
     # Algorithms are properties of the model, not of the CGMiner field name.
     name = re.sub(r"^antminer\s*", "", model.strip(), flags=re.I).upper()
+    if name == "A3":
+        return "Blake2B"
     for prefix, algorithm in (("Z", "Equihash"), ("D", "X11"), ("L", "Scrypt"),
                               ("E", "Etchash"), ("KS", "kHeavyHash"),
                               ("KA", "Blake2S"), ("K", "Eaglesong"),

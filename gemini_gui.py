@@ -1,5 +1,5 @@
 import sys
-CURRENT_VERSION = "2.2.5"
+CURRENT_VERSION = "2.4.0"
 if __name__ == "__main__" and "--apply-update" in sys.argv:
     from desktop_ui.update_installer import run_helper
     position = sys.argv.index("--apply-update") + 1
@@ -1315,7 +1315,7 @@ class GeminiApp(QMainWindow):
         if self.app_settings.get("scan_bitmain", True): target_filters.append("Bitmain")
         if self.app_settings.get("scan_whatsminer", True): target_filters.append("MicroBT")
         if self.app_settings.get("scan_elphapex", True): target_filters.append("Elphapex")
-        if self.app_settings.get("scan_other", True): target_filters.extend(["Canaan", "iPollo", "Jasminer"])
+        if self.app_settings.get("scan_other", True): target_filters.extend(["Canaan", "iPollo", "Jasminer", "Goldshell"])
 
         if not target_filters:
             QMessageBox.warning(self, tr('Ошибка'), tr('В настройках отключены все типы оборудования!'))

@@ -1,0 +1,97 @@
+{
+  "description": "Read-only Goldshell HS5 / Stock 2.2.1 capture, 2026-10-13; no device IP, MAC, credentials or pools.",
+  "data": {
+    "goldshell_status": {
+      "hardware": "xx.xx.A3",
+      "model": "Goldshell-HS5",
+      "mcbversion": "MCB_V3_3",
+      "firmware": "2.2.1"
+    },
+    "goldshell_devs": {
+      "status": 2,
+      "data": [
+        {
+          "valid": 10,
+          "av_hashrate": 1363424.753,
+          "rejected": 1,
+          "time": 41,
+          "id": 0,
+          "powerplan": 0,
+          "hwerrors": 3,
+          "fanspeed": "5580 rpm / 4860 rpm / 4860 rpm / 5100 rpm",
+          "accepted": 112,
+          "hwerr_ration": 0.002781,
+          "nonces": 1520,
+          "hashrate": 1115882.6,
+          "temp": "49.0 \u00b0C / 44.4 \u00b0C",
+          "minerstatus": 0
+        },
+        {
+          "valid": 10,
+          "av_hashrate": 1281632.005,
+          "rejected": 3,
+          "time": 41,
+          "id": 1,
+          "powerplan": 0,
+          "hwerrors": 5,
+          "fanspeed": "5580 rpm / 4860 rpm / 4860 rpm / 5100 rpm",
+          "accepted": 94,
+          "hwerr_ration": 0.003636,
+          "nonces": 1431,
+          "hashrate": 1134308.367,
+          "temp": "47.0 \u00b0C / 45.8 \u00b0C",
+          "minerstatus": 0
+        },
+        {
+          "valid": 10,
+          "av_hashrate": 1327472.3909999998,
+          "rejected": 1,
+          "time": 41,
+          "id": 2,
+          "powerplan": 0,
+          "hwerrors": 1,
+          "fanspeed": "5580 rpm / 4860 rpm / 4860 rpm / 5100 rpm",
+          "accepted": 89,
+          "hwerr_ration": 0.000701,
+          "nonces": 1478,
+          "hashrate": 1372289.217,
+          "temp": "49.0 \u00b0C / 45.3 \u00b0C",
+          "minerstatus": 0
+        },
+        {
+          "valid": 10,
+          "av_hashrate": 1371515.4959999998,
+          "rejected": 0,
+          "time": 41,
+          "id": 3,
+          "powerplan": 0,
+          "hwerrors": 2,
+          "fanspeed": "5580 rpm / 4860 rpm / 4860 rpm / 5100 rpm",
+          "accepted": 109,
+          "hwerr_ration": 0.0012699999999999999,
+          "nonces": 1528,
+          "hashrate": 1459866.301,
+          "temp": "56.0 \u00b0C / 49.7 \u00b0C",
+          "minerstatus": 0
+        }
+      ]
+    },
+    "goldshell_algo": {
+      "algos": [
+        {
+          "name": "blake2bsha3(HNS)",
+          "id": 0
+        },
+        {
+          "name": "blake2b(SC)",
+          "id": 1
+        }
+      ],
+      "algo_select": 1,
+      "version": "v4.0"
+    },
+    "goldshell_setting": {
+      "ledcontrol": false
+    }
+  }
+}
