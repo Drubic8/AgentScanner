@@ -1,5 +1,5 @@
 import sys
-CURRENT_VERSION = "2.4.0"
+CURRENT_VERSION = "2.4.1"
 if __name__ == "__main__" and "--apply-update" in sys.argv:
     from desktop_ui.update_installer import run_helper
     position = sys.argv.index("--apply-update") + 1
@@ -625,12 +625,17 @@ class GeminiApp(QMainWindow):
         h = self.table.horizontalHeader()
         h.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         h.setStretchLastSection(False)
+        h.setMaximumSectionSize(32768)
+        h.setResizeContentsPrecision(-1)
+        h.sectionHandleDoubleClicked.connect(self.fit_table_columns)
+        h.setToolTip(tr('Двойной щелчок по границе — ширина по содержимому. Правый щелчок — настройки столбцов.'))
         h.setSectionsMovable(True)
         h.sectionResized.connect(self.remember_table_layout)
         h.sectionMoved.connect(self.remember_table_layout)
         h.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         h.customContextMenuRequested.connect(self.show_columns_menu)
         self.table.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self.table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
 
         self.table_stack = QStackedWidget()
         self.table_stack.addWidget(self.table)
@@ -793,6 +798,27 @@ class GeminiApp(QMainWindow):
         widths.update({code: self.table.columnWidth(i) for i, code in enumerate(codes) if not self.table.isColumnHidden(i)})
         self.queue_preference_save()
 
+    def fit_table_columns(self, column=None):
+        """Measure complete single-line cells once, outside the scan result loop."""
+        previous = self._restoring_layout
+        self._restoring_layout = True
+        try:
+            columns = range(self.table.columnCount()) if column is None else [column]
+            for index in columns:
+                if not self.table.isColumnHidden(index):
+                    self.table.resizeColumnToContents(index)
+                    if list(COLUMNS)[index] == "LED":
+                        self.table.setColumnWidth(index, 46)
+        finally:
+            self._restoring_layout = previous
+        self.remember_table_layout()
+
+    def set_auto_fit_columns(self, enabled):
+        self.app_settings["auto_fit_columns"] = enabled
+        if enabled and self.table.rowCount():
+            self.fit_table_columns()
+        self.queue_preference_save()
+
     def queue_preference_save(self):
         self._preferences_dirty = True
         if self._persist_preferences:
@@ -906,6 +932,15 @@ class GeminiApp(QMainWindow):
 
     def show_columns_menu(self, position):
         menu = QMenu(self)
+        menu.addAction(tr('Подобрать ширину всех столбцов'), lambda: self.fit_table_columns())
+        column = self.table.horizontalHeader().logicalIndexAt(position)
+        action = menu.addAction(tr('Подобрать ширину этого столбца'), lambda: self.fit_table_columns(column))
+        action.setEnabled(column >= 0)
+        automatic = menu.addAction(tr('Подбирать ширину столбцов после сканирования'))
+        automatic.setCheckable(True)
+        automatic.setChecked(self.app_settings["auto_fit_columns"])
+        automatic.toggled.connect(self.set_auto_fit_columns)
+        menu.addSeparator()
         for code, label in COLUMNS.items():
             action = menu.addAction(label)
             action.setCheckable(True)
@@ -1547,6 +1582,9 @@ class GeminiApp(QMainWindow):
                 self.add_log(tr('📊 Аналитика отклика: {p0}', p0=log_text))
 
         self.apply_ui_settings()
+
+        if self.app_settings["auto_fit_columns"]:
+            self.fit_table_columns()
 
     def update_stats(self):
         states = Counter(row.get("Status", "Unknown") for row in self.scan_data)

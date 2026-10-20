@@ -2,18 +2,67 @@
 from .i18n import tr, tr_error
 from copy import deepcopy
 
-from PyQt6.QtCore import Qt, pyqtSignal, QItemSelectionModel, QTimer
+from PyQt6.QtCore import Qt, pyqtSignal, QItemSelectionModel, QTimer, QMimeData
+from PyQt6.QtGui import QDrag, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog,
     QDialogButtonBox, QHBoxLayout, QLabel, QLineEdit, QMenu, QMessageBox,
-    QPushButton, QStyle, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
+    QPushButton, QStyle, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
 from miner_scanner.ranges import expand_ranges
-from .network_groups import (folder_state, move_nodes, node_at, selected_ranges,
-                             set_enabled, walk_networks, walk_nodes)
+from .network_groups import (folder_state, relocate_nodes, node_at, selected_ranges,
+                             set_enabled, siblings_at, walk_networks, walk_nodes)
 
 
 class NetworkTree(QTreeWidget):
     """Keep flat-list access for integrations while exposing native tree items."""
+    move_requested = pyqtSignal(object, object, object)
+
+    def mimeTypes(self):
+        return ["application/x-asic-network-tree"]
+
+    def startDrag(self, supported_actions):
+        # Keep Qt from moving/deleting live items: the persisted model owns order.
+        def visible(item):
+            while item:
+                if item.isHidden():
+                    return False
+                item = item.parent()
+            return True
+        self._drag_paths = [item.data(0, Qt.ItemDataRole.UserRole)
+                            for item in self.selectedItems() if visible(item)]
+        if not self._drag_paths:
+            return
+        drag = QDrag(self)
+        mime = QMimeData()
+        mime.setData("application/x-asic-network-tree", b"move")
+        drag.setMimeData(mime)
+        try:
+            drag.exec(Qt.DropAction.MoveAction)
+        finally:
+            self._drag_paths = []
+
+    def dropEvent(self, event):
+        if event.source() is not self or not getattr(self, "_drag_paths", None):
+            event.ignore()
+            return
+        item = self.itemAt(event.position().toPoint())
+        indicator = self.dropIndicatorPosition()
+        if item is None or indicator == QAbstractItemView.DropIndicatorPosition.OnViewport:
+            destination, position = (), self.topLevelItemCount()
+        else:
+            path = item.data(0, Qt.ItemDataRole.UserRole)
+            if indicator == QAbstractItemView.DropIndicatorPosition.OnItem:
+                if not item.flags() & Qt.ItemFlag.ItemIsDropEnabled:
+                    event.ignore()
+                    return
+                destination, position = path, item.childCount()
+            else:
+                destination = path[:-1]
+                position = path[-1] + (indicator == QAbstractItemView.DropIndicatorPosition.BelowItem)
+        self.move_requested.emit(list(self._drag_paths), destination, position)
+        event.setDropAction(Qt.DropAction.MoveAction)
+        event.accept()
+
     def item(self, index):
         return self.topLevelItem(index)
 
@@ -64,6 +113,10 @@ class RangesPanel(QWidget):
         self.list_ranges.setUniformRowHeights(True)
         self.list_ranges.setAccessibleName(tr('Дерево сетей; галочка папки включает все вложенные сети'))
         self.list_ranges.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.list_ranges.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self.list_ranges.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self.list_ranges.setDropIndicatorShown(True)
+        self.list_ranges.move_requested.connect(self.relocate_selection)
         self.list_ranges.itemChanged.connect(self.on_item_changed)
         self.list_ranges.currentItemChanged.connect(self.update_actions)
         self.list_ranges.itemSelectionChanged.connect(self.update_actions)
@@ -111,6 +164,25 @@ class RangesPanel(QWidget):
         self.move_button = QPushButton(tr('Переместить в папку…'))
         self.move_button.clicked.connect(self.move_selected)
         layout.addWidget(self.move_button)
+        order = QHBoxLayout()
+        self.order_buttons = {}
+        for direction, label, icon, shortcut in (
+            ("up", "Выше", QStyle.StandardPixmap.SP_ArrowUp, "Alt+Up"),
+            ("down", "Ниже", QStyle.StandardPixmap.SP_ArrowDown, "Alt+Down"),
+            ("out", "На уровень выше", QStyle.StandardPixmap.SP_ArrowLeft, "Alt+Left"),
+            ("in", "В предыдущую папку", QStyle.StandardPixmap.SP_ArrowRight, "Alt+Right"),
+        ):
+            button = QToolButton()
+            button.setIcon(self.style().standardIcon(icon))
+            button.setToolTip(f"{tr(label)} ({shortcut})")
+            button.setAccessibleName(tr(label))
+            button.clicked.connect(lambda checked=False, direction=direction: self.move_current(direction))
+            order.addWidget(button)
+            key = QShortcut(QKeySequence(shortcut), self.list_ranges)
+            key.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            key.activated.connect(button.click)
+            self.order_buttons[direction] = button
+        layout.addLayout(order)
         self.update_actions()
 
     def current_index(self):
@@ -157,7 +229,8 @@ class RangesPanel(QWidget):
             item = QTreeWidgetItem([text])
             item.setData(0, Qt.ItemDataRole.UserRole, path)
             item.setToolTip(0, "\n".join([node["name"], *node.get("ranges", [])]))
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            flags = item.flags() | Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsDragEnabled
+            item.setFlags(flags | Qt.ItemFlag.ItemIsDropEnabled if folder else flags & ~Qt.ItemFlag.ItemIsDropEnabled)
             state = folder_state(node) if folder else "on" if node.get("enabled", True) else "off"
             item.setCheckState(0, {"on": Qt.CheckState.Checked, "mixed": Qt.CheckState.PartiallyChecked,
                                    "off": Qt.CheckState.Unchecked}[state])
@@ -212,7 +285,7 @@ class RangesPanel(QWidget):
         visible = visit(self.groups)
         self.empty.setVisible(not visible)
         self.empty.setText(tr('Ничего не найдено. Измените поиск.') if self.groups else tr('Добавьте сеть или папку для площадки.'))
-        self.hint.setText(tr('Галочка папки меняет все вложенные сети. Shift / Ctrl — выделение. Кнопки учитывают поиск.'))
+        self.hint.setText(tr('Перетаскивайте сети и папки: между строками — порядок, на папку — внутрь. Shift / Ctrl — выделение. Стрелки — порядок и уровень.'))
         self.update_actions()
 
     def visible_item(self, item):
@@ -242,6 +315,57 @@ class RangesPanel(QWidget):
         self.enable_selected.setText(tr('Включить ({p0})', p0=selected) if selected else tr('Включить'))
         self.disable_selected.setText(tr('Выключить ({p0})', p0=selected) if selected else tr('Выключить'))
         self.move_button.setEnabled(bool(self.selected_paths()))
+        paths = self.selected_paths()
+        path = paths[0] if len(paths) == 1 else ()
+        siblings = siblings_at(self.groups, path[:-1]) if path else []
+        for direction, enabled in {
+            "up": bool(path and path[-1] > 0),
+            "down": bool(path and path[-1] < len(siblings) - 1),
+            "out": len(path) > 1,
+            "in": bool(path and path[-1] > 0 and siblings[path[-1]-1].get("type") == "folder"),
+        }.items():
+            if direction in self.order_buttons:
+                self.order_buttons[direction].setEnabled(enabled)
+
+    def move_current(self, direction):
+        if not self.order_buttons[direction].isEnabled():
+            return
+        path = self.selected_paths()[0]
+        destination, position = path[:-1], path[-1]
+        if direction == "up":
+            position -= 1
+        elif direction == "down":
+            position += 2
+        elif direction == "out":
+            destination, position = path[:-2], path[-2] + 1
+        else:
+            destination, position = (*path[:-1], path[-1]-1), None
+        self.relocate_selection([path], destination, position)
+
+    def relocate_selection(self, paths, destination, position=None):
+        try:
+            candidate, moved_paths = relocate_nodes(self.groups, paths, destination, position)
+        except ValueError as exc:
+            QMessageBox.warning(self, tr('Перемещение'), tr_error(str(exc)))
+            return
+        if candidate == self.groups:
+            return
+        # Rebuild only through the normal save path; a failed write leaves order intact.
+        self.changed.emit(candidate)
+        if self.groups == candidate:
+            self.list_ranges.clearSelection()
+            for path in moved_paths:
+                item = self.items[path]
+                ancestor = item.parent()
+                while ancestor:
+                    ancestor.setExpanded(True)
+                    ancestor = ancestor.parent()
+                item.setSelected(True)
+            if moved_paths:
+                item = self.items[moved_paths[0]]
+                self.list_ranges.setCurrentItem(item, 0, QItemSelectionModel.SelectionFlag.NoUpdate)
+                self.list_ranges.scrollToItem(item)
+            self.update_actions()
 
     def toggle_selected(self, checked):
         candidate = deepcopy(self.groups)
@@ -288,16 +412,7 @@ class RangesPanel(QWidget):
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
         if dialog.exec():
-            try:
-                candidate = move_nodes(self.groups, paths, combo.currentData())
-            except ValueError as exc:
-                QMessageBox.warning(self, tr('Перемещение'), tr_error(str(exc)))
-                return
-            self.changed.emit(candidate)
-            if self.groups == candidate:
-                # Paths change on a move; don't select an unrelated former row.
-                self.list_ranges.clearSelection()
-                self.list_ranges.setCurrentItem(None)
+            self.relocate_selection(paths, combo.currentData())
 
     def context_menu(self, position):
         item = self.list_ranges.itemAt(position)
@@ -309,5 +424,7 @@ class RangesPanel(QWidget):
         menu.addSeparator()
         menu.addAction(tr('Изменить'), lambda: self.edit_requested.emit(self.current_index())).setEnabled(self.edit_button.isEnabled())
         menu.addAction(tr('Переместить в папку…'), self.move_selected).setEnabled(self.move_button.isEnabled())
+        for direction, label in (("up", "Выше"), ("down", "Ниже"), ("out", "На уровень выше"), ("in", "В предыдущую папку")):
+            menu.addAction(tr(label), lambda checked=False, direction=direction: self.move_current(direction)).setEnabled(self.order_buttons[direction].isEnabled())
         menu.addAction(tr('Удалить'), lambda: self.delete_requested.emit(self.current_index())).setEnabled(self.delete_button.isEnabled())
         menu.exec(self.list_ranges.viewport().mapToGlobal(position))

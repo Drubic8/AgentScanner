@@ -172,6 +172,9 @@ class SettingsDialog(QDialog):
         self.density.setCurrentIndex(self.density.findData(self.settings["density"]))
         form.addRow(tr('Режим таблицы'), self.density)
         layout.addLayout(form)
+        self.auto_fit_columns = QCheckBox(tr('Подбирать ширину столбцов после сканирования'))
+        self.auto_fit_columns.setChecked(self.settings["auto_fit_columns"])
+        layout.addWidget(self.auto_fit_columns)
         hint = QLabel(tr('Компактный режим уменьшает ширину столбцов, высоту строк и отступы. Ширину можно изменить вручную за границу заголовка. Полный текст ячейки — при наведении.'))
         hint.setObjectName("Muted")
         hint.setWordWrap(True)
@@ -253,6 +256,7 @@ class SettingsDialog(QDialog):
                        language=self.language.currentData(), journal_language=self.language.currentData(), table_preset="custom",
                        timeout=self.timeout.value(), workers=self.workers.value(),
                        command_workers=self.command_workers.value(),
+                       auto_fit_columns=self.auto_fit_columns.isChecked(),
                        check_updates=self.check_updates.isChecked())
         for kind in ("pdf", "csv"):
             updated["export_dir" if kind == "pdf" else "export_csv_dir"] = getattr(self, f"{kind}_path").text().strip()

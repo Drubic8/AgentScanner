@@ -27,7 +27,7 @@ def defaults():
                 scan_other=True, timeout=2, workers=64, command_workers=32, theme="system", density="comfortable",
                 check_updates=False, summary_expanded=False, columns_version=2, language="ru", journal_language="ru", table_preset="overview",
                 column_order=["IP", "LED"] + [c for c in COLUMNS if c not in ("IP", "LED")],
-                column_widths={}, export_dir="", export_csv_dir="", copy_pdf=False,
+                column_widths={}, auto_fit_columns=True, export_dir="", export_csv_dir="", copy_pdf=False,
                 copy_csv=False, pdf_sort="IP", csv_sort="IP", ui_cols=list(BASE_COLUMNS),
                 pdf_cols=list(BASE_COLUMNS), csv_cols=list(BASE_COLUMNS))
 
@@ -79,7 +79,7 @@ def normalize(settings):
             values = widths.get(density)
             if isinstance(values, dict):
                 result["column_widths"][density] = {code: width for code, width in values.items()
-                    if code in COLUMNS and isinstance(width, int) and not isinstance(width, bool) and 36 <= width <= 1200}
+                    if code in COLUMNS and isinstance(width, int) and not isinstance(width, bool) and 36 <= width <= 32768}
     return result
 
 
