@@ -2,7 +2,8 @@
 import ipaddress
 import re
 
-from ..normalization import antminer_fan_readings, block, format_rate, normalize, number
+from ..normalization import (antminer_fan_readings, antminer_model_name, block,
+                             format_rate, normalize, number)
 from ..profiles import first_field
 from ..utils import get_uptime_str
 
@@ -68,7 +69,12 @@ def parse_antminer_stock(ip, resp, diagnostics=("", ""), work_mode=None):
         short_error = " + ".join(filter(None, (f"HW ERR (B{boards})", short_error)))
         detail_error = "\n".join(filter(None, (f"API сообщает неработающие чипы на платах {boards}", detail_error)))
 
-    if number(work_mode) == 1:
+    # Stock KS5 builds can retain mode=1 throughout active mining. Their
+    # current rate is authoritative in this conflict, never the average rate.
+    # Other families deliberately retain mode precedence while stopping.
+    ks5_hashing = (antminer_model_name(model) in {"KS5", "KS5 PRO"}
+                   and snapshot.rate is not None and snapshot.rate > 0)
+    if number(work_mode) == 1 and not ks5_hashing:
         status = "Sleep"
         short_error, detail_error = diagnostics
     elif snapshot.rate is not None and snapshot.rate > 0:

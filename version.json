@@ -1,5 +1,5 @@
 {
-  "version": "2.4.0",
+  "version": "2.4.1",
   "url": "https://github.com/Drubic8/AgentScanner/releases/latest/download/ASIC_Monitor.exe",
   "changelog": "Добавлено сканирование Antminer A3: Blake2B, хешрейт в GH/s, температуры и вентиляторы; исправлен некорректный JSON старой прошивки. Добавлен профиль Goldshell MCB, проверенный на HS5 2.2.1: суммарный хешрейт четырёх плат, текущий алгоритм SC/HNS, датчики, активный пул, worker и состояние LED. Goldshell включён в фильтр «Остальные». Команды управления Goldshell пока не подтверждены. Сохранены исправления стабильности и состояния WhatsMiner из 2.2.5.",
   "changelog_en": "Added Antminer A3 scanning: Blake2B, GH/s rates, temperatures and fans, including malformed legacy JSON recovery. Added the Goldshell MCB profile, tested on HS5 2.2.1: combined board rates, current SC/HNS algorithm, sensors, active pool, worker and LED state. Goldshell is included in the Others filter. Goldshell control commands are not yet verified. Retains the stability and WhatsMiner state fixes from 2.2.5."

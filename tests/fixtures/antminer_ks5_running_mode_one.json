@@ -1,0 +1,106 @@
+{
+  "provenance": "Read-only stock KS5 CGMiner and HTTP captures, 2026-10-16. Device IDs, network and pool data omitted. VERSION retains model/API fields only.",
+  "cases": [
+    {
+      "system": {
+        "minertype": "Antminer KS5",
+        "system_filesystem_version": "Fri Apr 26 19:31:43 CST 2024"
+      },
+      "version": {
+        "VERSION": [
+          {
+            "BMMiner": "2.12",
+            "API": "3.1",
+            "Type": "Antminer KS5"
+          }
+        ]
+      },
+      "config": {
+        "bitmain-work-mode": "1"
+      },
+      "stats": {
+        "STATS": [
+          {
+            "Type": "Antminer KS5"
+          },
+          {
+            "Elapsed": 230541,
+            "GHS 5s": 13991.28,
+            "GHS av": 13599.37,
+            "fan1": 2250,
+            "fan2": 2250,
+            "fan3": 2250,
+            "fan4": 2250,
+            "temp1": 59,
+            "temp2_1": 82,
+            "temp3": 60,
+            "temp2_3": 87,
+            "chain_acs1": "ooooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo ooo",
+            "chain_acs3": "ooooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo ooo"
+          }
+        ]
+      },
+      "summary": {
+        "SUMMARY": [
+          {
+            "Elapsed": 230541,
+            "GHS 5s": 13991.28,
+            "GHS av": 13599.37
+          }
+        ]
+      }
+    },
+    {
+      "system": {
+        "minertype": "Antminer KS5",
+        "system_filesystem_version": "Mon May 13 11:55:33 CST 2024"
+      },
+      "version": {
+        "VERSION": [
+          {
+            "BMMiner": "2.12",
+            "API": "3.1",
+            "Type": "Antminer KS5"
+          }
+        ]
+      },
+      "config": {
+        "bitmain-work-mode": "1"
+      },
+      "stats": {
+        "STATS": [
+          {
+            "Type": "Antminer KS5"
+          },
+          {
+            "Elapsed": 230849,
+            "GHS 5s": 19516.33,
+            "GHS av": 20469.49,
+            "fan1": 2090,
+            "fan2": 2100,
+            "fan3": 2250,
+            "fan4": 2140,
+            "temp1": 69,
+            "temp2_1": 93,
+            "temp2": 68,
+            "temp2_2": 87,
+            "temp3": 70,
+            "temp2_3": 94,
+            "chain_acs1": "ooooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo ooo",
+            "chain_acs2": "ooooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo ooo",
+            "chain_acs3": "ooooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo ooo"
+          }
+        ]
+      },
+      "summary": {
+        "SUMMARY": [
+          {
+            "Elapsed": 230849,
+            "GHS 5s": 19516.33,
+            "GHS av": 20469.49
+          }
+        ]
+      }
+    }
+  ]
+}

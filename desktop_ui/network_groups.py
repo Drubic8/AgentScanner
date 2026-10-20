@@ -116,16 +116,27 @@ def folder_state(node):
     return "on" if networks and enabled == len(networks) else "mixed" if enabled else "off"
 
 
-def move_nodes(groups, paths, destination):
-    """Move selected roots without losing selection flags or creating cycles."""
+def move_nodes(groups, paths, destination, position=None):
+    """Move roots to a folder and an insertion position in the original snapshot."""
+    return relocate_nodes(groups, paths, destination, position)[0]
+
+
+def relocate_nodes(groups, paths, destination, position=None):
+    """Return a new tree and the moved paths; never mutate the saved snapshot."""
     from copy import deepcopy
     paths = sorted(set(tuple(p) for p in paths))
     roots = [p for p in paths if not any(p[:len(q)] == q for q in paths if len(q) < len(p))]
+    if not roots:
+        return deepcopy(groups), []
     destination = tuple(destination)
     if any(destination[:len(p)] == p for p in roots):
         raise ValueError("Нельзя переместить папку в неё саму или во вложенную папку.")
     candidate = deepcopy(groups)
+    if destination and node_at(candidate, destination).get("type") != "folder":
+        raise ValueError("Назначение должно быть папкой.")
     target = siblings_at(candidate, destination)
+    position = len(target) if position is None else max(0, min(len(target), position))
+    insertion = position - sum(p[:-1] == destination and p[-1] < position for p in roots)
     nodes = [node_at(candidate, p) for p in roots]
     existing = [n["name"] for n in target if all(n is not moving for moving in nodes)]
     for node in nodes:
@@ -133,5 +144,7 @@ def move_nodes(groups, paths, destination):
         existing.append(node["name"])
     for path in sorted(roots, reverse=True):
         del siblings_at(candidate, path[:-1])[path[-1]]
-    target.extend(nodes)
-    return candidate
+    target[insertion:insertion] = nodes
+    identities = {id(node) for node in nodes}
+    moved_paths = [path for path, node in walk_nodes(candidate) if id(node) in identities]
+    return candidate, moved_paths

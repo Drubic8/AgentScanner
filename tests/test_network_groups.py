@@ -49,6 +49,26 @@ class NetworkGroupsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'уже есть'):
             move_nodes(groups, [(0, 0)], ())
         self.assertEqual(groups[0]['children'][0]['name'], 'Row 1')
+
+    def test_insertion_uses_original_positions_and_preserves_multi_selection_order(self):
+        groups = normalize_groups([{'name': name, 'ranges': [f'192.0.2.{i+1}']}
+                                   for i, name in enumerate('ABCDE')])
+        self.assertEqual([n['name'] for n in move_nodes(groups, [(1,), (3,)], (), 5)], list('ACEBD'))
+        self.assertEqual([n['name'] for n in move_nodes(groups, [(1,), (3,)], (), 0)], list('BDACE'))
+        self.assertEqual(move_nodes(groups, [(1,), (2,)], (), 2), groups)
+        self.assertEqual([n['name'] for n in groups], list('ABCDE'))
+
+    def test_folder_moves_keep_descendants_and_return_new_selection_paths(self):
+        from desktop_ui.network_groups import relocate_nodes
+        groups = self.tree()
+        moved, paths = relocate_nodes(groups, [(0, 0)], (0, 1), 0)
+        self.assertEqual(paths, [(0, 0, 0)])
+        self.assertEqual(node_at(moved, paths[0])['name'], 'Row 1')
+        moved, paths = relocate_nodes(groups, [(0,), (0, 1)], (), 2)
+        self.assertEqual(paths, [(1,)])
+        self.assertEqual(moved[1], groups[0])
+        with self.assertRaises(ValueError):
+            move_nodes(groups, [(1,)], (0, 0))
     def test_legacy_migration_preserves_ranges_and_explicit_disabled_state(self):
         self.assertEqual(normalize_groups({"Old": "192.0.2.1,192.0.2.2"}), [
             {"name": "Old", "ranges": ["192.0.2.1", "192.0.2.2"], "enabled": True}])
@@ -155,6 +175,55 @@ class NetworkUITests(unittest.TestCase):
             window.delete_range((0, 1))
         self.assertEqual(selected_ranges(load_json(path)), ['192.0.2.1', '192.0.2.3'])
         self.assertEqual(normalize_groups(load_json(path)), window.ranges_config)
+
+    def test_reorder_indent_outdent_save_and_rollback(self):
+        window, saved = self.window()
+        window.commit_ranges(NetworkGroupsTests().tree(), (1,))
+        panel = window.ranges_panel
+        panel.move_current('in')
+        self.assertEqual(panel.current_index(), (0, 2))
+        self.assertEqual(node_at(load_json(saved), (0, 2))['name'], 'Spare')
+        panel.move_current('up')
+        self.assertEqual(panel.current_index(), (0, 1))
+        panel.move_current('out')
+        self.assertEqual(panel.current_index(), (1,))
+        self.assertEqual(load_json(saved), window.ranges_config)
+        before = load_json(saved)
+        with patch.object(self.gui, 'write_json', side_effect=OSError('disk full')), patch.object(self.gui.QMessageBox, 'critical'):
+            panel.move_current('up')
+        self.assertEqual(panel.groups, before)
+        self.assertEqual(load_json(saved), before)
+
+    def test_internal_drop_reorders_and_moves_into_folder_without_native_mutation(self):
+        from PyQt6.QtCore import QPointF, QMimeData
+        from PyQt6.QtGui import QDropEvent
+        window, saved = self.window()
+        window.commit_ranges(NetworkGroupsTests().tree(), (1,))
+        tree = window.ranges_panel.list_ranges
+        tree.show()
+        self.app.processEvents()
+        qt = self.gui.Qt
+        from PyQt6.QtCore import QModelIndex
+        mime = QMimeData()
+        mime.setData('application/x-asic-network-tree', b'move')
+        self.assertTrue(tree.model().canDropMimeData(mime, qt.DropAction.MoveAction, -1, 0, QModelIndex()))
+        class InternalDrop(QDropEvent):
+            def source(self):
+                return tree
+        item = tree.topLevelItem(0)
+        point = QPointF(tree.visualItemRect(item).center())
+        tree._drag_paths = [(1,)]
+        event = InternalDrop(point, qt.DropAction.MoveAction, QMimeData(), qt.MouseButton.LeftButton, qt.KeyboardModifier.NoModifier)
+        with patch.object(tree, 'dropIndicatorPosition', return_value=self.gui.QAbstractItemView.DropIndicatorPosition.OnItem):
+            tree.dropEvent(event)
+        self.assertTrue(event.isAccepted())
+        self.assertEqual(node_at(load_json(saved), (0, 2))['name'], 'Spare')
+        self.assertEqual(window.ranges_panel.current_index(), (0, 2))
+        # Cycles are rejected without changing the saved hierarchy.
+        before = load_json(saved)
+        with patch.object(self.gui.QMessageBox, 'warning'):
+            window.ranges_panel.relocate_selection([(0,)], (0, 1), 0)
+        self.assertEqual(load_json(saved), before)
 
     def test_folder_dialog_allows_root_creation_and_reports_sibling_conflicts(self):
         from desktop_ui.folder_dialog import FolderDialog

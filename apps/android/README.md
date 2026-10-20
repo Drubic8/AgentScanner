@@ -1,6 +1,6 @@
 # ASIC Monitor для Android
 
-Текущая Android-версия: **2.4.0** (тестовый выпуск). Интерфейс Kotlin / Jetpack Compose,
+Текущая Android-версия: **2.4.1** (тестовый выпуск). Интерфейс Kotlin / Jetpack Compose,
 ядро Python `miner_scanner` встроено через Chaquopy. ПК и облачный сервер для сканирования не нужны.
 APK проходит проверки сборки, lint и тесты интерфейса на эмуляторе в GitHub Actions.
 Поддержка новых A3 и Goldshell HS5 проверена на реальном оборудовании через общее

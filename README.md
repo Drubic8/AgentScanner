@@ -8,7 +8,7 @@
 
 **[Скачать для Windows](https://github.com/Drubic8/AgentScanner/releases/latest)** · **[Руководство пользователя](docs/user_guide.md)** · **[Сообщить об ошибке](https://github.com/Drubic8/AgentScanner/issues/new/choose)** · **[Участие в разработке](CONTRIBUTING.md)**
 
-**Android:** [скачать APK 2.4.0](https://github.com/Drubic8/AgentScanner/releases/tag/v2.4.0)
+**Android:** [скачать APK 2.4.1](https://github.com/Drubic8/AgentScanner/releases/tag/v2.4.1)
 · [установка и сборка](apps/android/README.md). Первая тестовая версия с нативным интерфейсом
 и общим ядром сканера. APK собирается в
 [GitHub Actions](https://github.com/Drubic8/AgentScanner/actions/workflows/android.yml).
@@ -25,16 +25,27 @@
 
 *На снимках демонстрационные данные; это не результаты испытаний реальных моделей.*
 
-## 2.4.0: Antminer A3 и Goldshell HS5
+## 2.4.1: порядок сетей и читаемая таблица
+
+В Windows сети и папки можно перетаскивать между строками и уровнями. Стрелки
+и Alt+↑/↓/←/→ позволяют менять порядок без перетаскивания. Таблица подбирает
+ширину столбцов после сканирования; длинный worker виден полностью при
+горизонтальной прокрутке. Автоподбор отключается в настройках; двойной щелчок
+по границе заголовка подбирает отдельный столбец. Исправлено ложное состояние
+сна KS5 при положительном текущем хешрейте.
+
+Windows EXE и Android APK выпускаются из тега `v2.4.1` через GitHub Actions.
+[Файлы выпуска](https://github.com/Drubic8/AgentScanner/releases/tag/v2.4.1)
+· [Описание версии](docs/releases/2.4.1.md).
+
+### Поддержка A3 и Goldshell из 2.4.0
 
 Добавлено сканирование Antminer A3 (Blake2B, GH/s, температуры и вентиляторы) и
 Goldshell MCB, проверенное на HS5 / Stock 2.2.1. Для HS5 читаются показатели всех
 плат, выбранный алгоритм SC/HNS, пул, worker и состояние LED. Goldshell входит в
 фильтр «Остальные». Команды управления Goldshell пока не подтверждены.
 
-Windows EXE и Android APK выпускаются из тега `v2.4.0` через GitHub Actions.
-[Файлы выпуска](https://github.com/Drubic8/AgentScanner/releases/tag/v2.4.0)
-· [Описание версии](docs/releases/2.4.0.md).
+[Описание поддержки устройств](docs/releases/2.4.0.md).
 
 ## 2.2.4: настройки рядом с EXE
 
