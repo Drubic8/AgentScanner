@@ -65,9 +65,10 @@ def mode_payload(config, target, model, *, pitbit=False):
 def _http_accept(transport, path, method="POST", payload=None, headers=None, *, success_codes=(0, "0", "B000"), verify_server_error=False, form=None):
     options = {'form': form} if form is not None else {}
     status, raw = transport.http(path, method, payload=payload, headers=headers, **options)
-    if verify_server_error and 500 <= status <= 599:
-        # Some stock CGI workers exit after applying the command and return
-        # HTTP 500. Only a separate state read can resolve this outcome.
+    if 500 <= status <= 599:
+        # Any control handler can apply a write and then fail while replying.
+        # A server error is uncertainty, never an explicit retryable rejection.
+        # Keep verify_server_error as a backwards-compatible caller keyword.
         return None
     if status not in (200, 204):
         return False
@@ -268,6 +269,25 @@ SUPPORTED_ACTIONS["jasminer"] = {"identify_on", "identify_off"}
 SUPPORTED_ACTIONS["avalon"] = {"identify_on", "identify_off", "identify_toggle", "reboot", "mining_stop", "mining_start"}
 
 
+def command_support(profile, compatibility, action, *, allow_unverified=False):
+    """Shared compatibility gate for read-only preflight and final dispatch.
+
+    A missing rule is not necessarily unsupported: RPC/native executors use
+    ``None`` rules. Explicit interface blocks always take precedence.
+    """
+    action = ALIASES.get(action, action)
+    if action in compatibility.get('blocked', ()):
+        return False, None, compatibility.get('reason',
+            "Совместимость команды не подтверждена для текущего интерфейса или конфигурации ASIC")
+    compatible = action in compatibility.get('rules', {})
+    rule = compatibility['rules'][action] if compatible else (profile.command_rules or {}).get(action)
+    if rule is None and action not in SUPPORTED_ACTIONS.get(profile.control, set()):
+        return False, None, "Для этого профиля действие не реализовано"
+    if not compatible and action not in profile.verified_commands and not allow_unverified:
+        return False, None, "Не подтверждена совместимость API для этой команды; нужен поддерживаемый интерфейс или проверенный профиль"
+    return True, rule, ""
+
+
 def declarative_command(transport, rule):
     payload = rule.get("payload")
     if rule.get("read_config"):
@@ -425,7 +445,8 @@ class PendingCommand:
                 self.close()
 
 
-def dispatch_command(service, ip, action, *, device_id=None, command_id=None, cancel=None, allow_unverified=False):
+def dispatch_command(service, ip, action, *, device_id=None, command_id=None, cancel=None,
+                     allow_unverified=False, expected_fingerprint=None):
     """Identify and write once. Return a result or owned read-only verification."""
     command_id = command_id or str(uuid4())
     existing = service.repository.command_result(command_id)
@@ -458,7 +479,9 @@ def dispatch_command(service, ip, action, *, device_id=None, command_id=None, ca
         task.record = record
         if record is None or record.telemetry.stale:
             return finish("skipped", "Не удалось подтвердить актуальность профиля")
-        if record.identity.fingerprint != previous.identity.fingerprint or (device_id and record.identity.device_id != device_id):
+        if (record.identity.fingerprint != previous.identity.fingerprint
+                or (device_id and record.identity.device_id != device_id)
+                or (expected_fingerprint and record.identity.fingerprint != expected_fingerprint)):
             names = {'model': 'модель', 'firmware_version': 'версия прошивки',
                      'api_version': 'версия API', 'serial': 'серийный номер',
                      'mac': 'MAC-адрес', 'profile_id': 'профиль устройства',
@@ -469,18 +492,16 @@ def dispatch_command(service, ip, action, *, device_id=None, command_id=None, ca
                 changed.append('метаданные идентификации прошивки')
             if device_id and record.identity.device_id != device_id:
                 changed.append('идентификатор выбранной строки')
+            if expected_fingerprint and record.identity.fingerprint != expected_fingerprint:
+                changed.append('паспорт выбранной строки')
             return finish("skipped", "Проверка перед командой: изменились " + ', '.join(changed)
                           + ". Запрос управления не отправлен. Проверьте актуальные данные устройства.")
         profile = service.registry.by_id[record.identity.profile_id]
         compatibility = service._control_contracts.get(ip, {})
-        if action in compatibility.get('blocked', ()):
-            return finish("unsupported", compatibility.get('reason', "Совместимость команды не подтверждена для текущего интерфейса или конфигурации ASIC"))
-        compatible = action in compatibility.get('rules', {})
-        rule = compatibility['rules'][action] if compatible else (profile.command_rules or {}).get(action)
-        if rule is None and action not in SUPPORTED_ACTIONS.get(profile.control, set()):
-            return finish("unsupported", "Для этого профиля действие не реализовано")
-        if not compatible and action not in profile.verified_commands and not allow_unverified:
-            return finish("unsupported", "Не подтверждена совместимость API для этой команды; нужен поддерживаемый интерфейс или проверенный профиль")
+        supported, rule, reason = command_support(profile, compatibility, action,
+                                                  allow_unverified=allow_unverified)
+        if not supported:
+            return finish("unsupported", reason)
         task.op.remaining()
         # Persist uncertain intent before any write. A crash must never cause replay.
         finish("unconfirmed", "Выполнение начато; конечный результат пока неизвестен")
@@ -518,8 +539,10 @@ def dispatch_command(service, ip, action, *, device_id=None, command_id=None, ca
             task.close()
 
 
-def execute_command(service, ip, action, *, device_id=None, command_id=None, cancel=None, allow_unverified=False):
+def execute_command(service, ip, action, *, device_id=None, command_id=None, cancel=None,
+                    allow_unverified=False, expected_fingerprint=None):
     """Synchronous compatibility API; batch callers split the two phases."""
     pending = dispatch_command(service, ip, action, device_id=device_id, command_id=command_id,
-                               cancel=cancel, allow_unverified=allow_unverified)
+                               cancel=cancel, allow_unverified=allow_unverified,
+                               expected_fingerprint=expected_fingerprint)
     return pending.complete() if isinstance(pending, PendingCommand) else pending

@@ -11,7 +11,10 @@ from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
 from .preferences import defaults
 from .settings_dialog import SettingsDialog
+from .command_batch_dialog import CommandBatchDialog
 from .range_dialog import IPRangeDialog
+from miner_scanner.models import CommandResult
+from miner_scanner.preflight import PreflightResult
 from miner_scanner.profiles import ProfileRegistry
 
 
@@ -44,6 +47,99 @@ def run_storage_smoke(app, window_type, output):
     finally:
         if window is not None:
             window.close()
+
+
+def _font_controls_smoke(app, window, output):
+    """Exercise packaged Qt popup geometry and editable values, not user settings."""
+    dialog = SettingsDialog(window.app_settings, window)
+    try:
+        dialog.show()
+        app.processEvents()
+        for control, name in ((dialog.font_family, 'font-family-popup'),
+                              (dialog.font_size, 'font-size-popup')):
+            control.showPopup()
+            app.processEvents()
+            popup = control.view().window()
+            available = dialog.screen().availableGeometry()
+            assert popup.isVisible(), f'{name} did not open'
+            assert popup.width() <= control.width(), f'{name} exceeded its field width'
+            assert popup.height() <= available.height() // 2, f'{name} exceeded its height limit'
+            assert available.contains(popup.geometry()), f'{name} left the available screen'
+            assert popup.grab().save(str(output / f'{name}.png'))
+            control.hidePopup()
+        # 15 is intentionally absent from the presets: this must read editor
+        # text rather than save the previously selected combobox item.
+        assert dialog.font_size.findText('15') == -1
+        dialog.font_size.setEditText('15')
+        dialog.table_font_size.setEditText('23')
+        app.processEvents()
+        assert dialog.font_size.lineEdit().hasAcceptableInput()
+        assert dialog.font_preview.font().pixelSize() == 15
+        assert dialog.table_font_preview.font().pixelSize() == 23
+        assert dialog.grab().save(str(output / 'settings-fonts-custom.png'))
+        dialog.save_and_close()
+        assert dialog.result() == dialog.DialogCode.Accepted
+        assert dialog.settings['font_size'] == 15
+        assert dialog.settings['table_font_size'] == 23
+        assert window.app_settings['font_size'] == 13, 'Standalone preview changed main preferences'
+    finally:
+        dialog.font_family.hidePopup()
+        dialog.font_size.hidePopup()
+        dialog.close()
+
+
+def _command_review_smoke(app, window, output):
+    """Standalone synthetic review; no Gemini controller or transport is started."""
+    targets = [dict(IP=f'192.0.2.{200 + index}', Model=model, Firmware='Demo',
+                    DeviceId=f'smoke-review-{index}', Identity={'fingerprint': f'demo-{index}'})
+               for index, model in enumerate(('Antminer T21', 'Antminer L9',
+                                              'Antminer KS5', 'Avalon 1346', 'WhatsMiner M61'), 1)]
+    dialog = CommandBatchDialog(targets, 'sleep', window)
+    starts, retries = [], []
+    dialog.start_requested.connect(starts.append)
+    dialog.retry_requested.connect(retries.append)
+    try:
+        dialog.show()
+        app.processEvents()
+        assert not dialog.start_button.isEnabled()
+        for target, status in zip(targets, ('ready', 'ready', 'unsupported', 'offline', 'ready')):
+            dialog.add_preflight(PreflightResult(target['IP'], status, 'Synthetic compatibility fixture', target))
+        dialog.finish_preflight()
+        app.processEvents()
+        assert dialog.phase == 'prepared' and not starts
+        assert len(dialog.ready_targets()) == 3
+        assert dialog.grab().save(str(output / 'command-review-preflight.png'))
+        dialog.start_button.click()
+        dialog.start_button.click()
+        assert len(starts) == 1, 'Send was duplicated'
+        assert [row['IP'] for row in starts[0]] == [targets[i]['IP'] for i in (0, 1, 4)]
+        for index, status, accepted, message in (
+            (0, 'succeeded', True, 'Ожидаемое состояние подтверждено чтением API'),
+            (1, 'unconfirmed', True, 'API принял команду, но ожидаемое состояние не подтверждено'),
+            (4, 'failed', False, 'API отклонил команду'),
+        ):
+            ip = targets[index]['IP']
+            dialog.mark_dispatched(ip, accepted)
+            dialog.set_result(ip, CommandResult(f'smoke-result-{index}', status, message, accepted))
+        dialog.finish_execution()
+        entries = {entry.ip: entry for entry in dialog.model.entries}
+        assert entries[targets[0]['IP']].result_status == 'succeeded'
+        assert entries[targets[1]['IP']].accepted and entries[targets[1]['IP']].result_status == 'unconfirmed'
+        assert not entries[targets[2]['IP']].attempted and not entries[targets[3]['IP']].attempted
+        assert [row['IP'] for row in dialog.retry_targets()] == [targets[4]['IP']]
+        selected = dialog.proxy.mapFromSource(dialog.model.index(dialog.model.by_ip[targets[1]['IP']], 0))
+        dialog.table.selectRow(selected.row())
+        app.processEvents()
+        assert dialog.grab().save(str(output / 'command-review-results.png'))
+        dialog.retry_button.click()
+        assert len(retries) == 1 and [row['IP'] for row in retries[0]] == [targets[4]['IP']]
+        assert len(starts) == 1, 'Retry sent a command instead of requesting a new review'
+    finally:
+        if dialog.phase == 'checking':
+            dialog.finish_preflight()
+        if dialog.phase == 'executing':
+            dialog.finish_execution()
+        dialog.close()
 
 
 def run_smoke(app, window_type, output):
@@ -146,6 +242,8 @@ def run_smoke(app, window_type, output):
         app.processEvents()
         english_settings.grab().save(str(output / "settings-en.png"))
         english_settings.close()
+        _font_controls_smoke(app, window, output)
+        _command_review_smoke(app, window, output)
         journal.outcome.setCurrentIndex(journal.outcome.findData("unconfirmed"))
         assert journal.proxy.rowCount() == 6
         app.processEvents()
@@ -209,7 +307,8 @@ def run_smoke(app, window_type, output):
         assert list(output.glob("UI_smoke_*.pdf")), "PDF export missing"
         result = {"ok": True, "version": app.applicationVersion(), "synthetic_rows": len(rows),
                   "profiles": len(registry.profiles), "exports": ["clipboard_png", "csv", "xlsx", "pdf"], "network_used": False,
-                  "subnet_checkbox_lifetime": True}
+                  "subnet_checkbox_lifetime": True, "editable_font_controls": True,
+                  "bulk_command_review": True}
         (output / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
         return 0
     except Exception:

@@ -22,7 +22,7 @@ class AccessProfilesDialog(QDialog):
         self.result_profiles = profiles
         layout = QVBoxLayout(self)
         heading = QLabel(tr('Доступ без повторного ввода паролей'))
-        heading.setStyleSheet('font-size: 18px; font-weight: 600;')
+        heading.setObjectName('DialogTitle')
         layout.addWidget(heading)
         description = QLabel(tr('Профили автоматически применяются при сканировании и управлении. Сначала используются профили для конкретных IP, затем общие. Пароли сохраняются с защитой учётной записи Windows.'))
         description.setWordWrap(True)

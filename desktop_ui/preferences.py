@@ -3,6 +3,11 @@ import json
 from pathlib import Path
 from .storage import atomic_write, data_directory
 
+DEFAULT_FONT_FAMILY = "Segoe UI"
+DEFAULT_FONT_SIZE = 13
+INTERFACE_FONT_RANGE = (11, 20)
+TABLE_FONT_RANGE = (10, 24)
+
 COLUMNS = {
     "IP": "IP", "Model": "Model", "Algo": "Algo", "Status": "State",
     "Error": "Errors", "Uptime": "Uptime", "Real HR": "Real Hash",
@@ -26,6 +31,7 @@ def defaults():
     return dict(scan_bitmain=True, scan_whatsminer=True, scan_elphapex=True,
                 scan_other=True, timeout=2, workers=64, command_workers=32, theme="system", density="comfortable",
                 check_updates=False, summary_expanded=False, columns_version=2, language="ru", journal_language="ru", table_preset="overview",
+                font_family=DEFAULT_FONT_FAMILY, font_size=DEFAULT_FONT_SIZE, table_font_size=DEFAULT_FONT_SIZE,
                 column_order=["IP", "LED"] + [c for c in COLUMNS if c not in ("IP", "LED")],
                 column_widths={}, auto_fit_columns=True, export_dir="", export_csv_dir="", copy_pdf=False,
                 copy_csv=False, pdf_sort="IP", csv_sort="IP", ui_cols=list(BASE_COLUMNS),
@@ -47,6 +53,15 @@ def normalize(settings):
             result[key] = max(lo, min(hi, int(settings.get(key, result[key]))))
         except (TypeError, ValueError, OverflowError):
             pass
+    for key, (lo, hi) in (("font_size", INTERFACE_FONT_RANGE), ("table_font_size", TABLE_FONT_RANGE)):
+        value = settings.get(key, result[key])
+        try:
+            if not isinstance(value, bool):
+                result[key] = max(lo, min(hi, int(value)))
+        except (TypeError, ValueError, OverflowError):
+            pass
+    family = result["font_family"].strip()
+    result["font_family"] = family if family and len(family) <= 128 and not any(ord(c) < 32 for c in family) else DEFAULT_FONT_FAMILY
     for key in ("ui_cols", "pdf_cols", "csv_cols"):
         value = settings.get(key)
         if isinstance(value, list):

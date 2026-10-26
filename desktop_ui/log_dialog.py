@@ -40,7 +40,7 @@ LEVELS = {"info": ("Информация", "Info"), "success": ("Успех", "S
           "warning": ("Предупреждение", "Warning"), "error": ("Ошибка", "Error")}
 RESULTS = {"succeeded": ("Подтверждено", "Confirmed"), "unconfirmed": ("Не подтверждено", "Unconfirmed"),
            "failed": ("Ошибка", "Failed"), "unsupported": ("Не поддерживается", "Unsupported"),
-           "skipped": ("Пропущено", "Skipped")}
+           "skipped": ("Пропущено", "Skipped"), "cancelled": ("Отменено", "Cancelled")}
 
 
 class EventModel(QAbstractTableModel):

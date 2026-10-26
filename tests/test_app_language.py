@@ -44,6 +44,13 @@ class LanguageCatalogTests(unittest.TestCase):
                          "Each group supports up to 4096 IP addresses.")
         self.assertEqual(tr_error("FAN ERR (B1)"), "FAN ERR (B1)")
 
+    def test_repeated_counter_fields_translate_without_duplicate_regex_groups(self):
+        set_language('en')
+        self.assertEqual(tr_error('Выбрано: 3 · Проверено: 2/3 · Готово: 1 · Не готовы: 1'),
+                         'Selected: 3 · Checked: 2/3 · Ready: 1 · Not ready: 1')
+        inconsistent = 'Выбрано: 3 · Проверено: 2/4 · Готово: 1 · Не готовы: 1'
+        self.assertEqual(tr_error(inconsistent), inconsistent)
+
 
 @unittest.skipUnless(all(importlib.util.find_spec(name) for name in ("PyQt6", "pandas", "fpdf")),
                      "Desktop dependencies not installed")

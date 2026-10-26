@@ -1,5 +1,5 @@
 import sys
-CURRENT_VERSION = "2.4.1"
+CURRENT_VERSION = "2.5.0"
 if __name__ == "__main__" and "--apply-update" in sys.argv:
     from desktop_ui.update_installer import run_helper
     position = sys.argv.index("--apply-update") + 1
@@ -32,18 +32,23 @@ from desktop_ui.device_filters import matches_device
 from desktop_ui.summary_panel import SummaryPanel
 from desktop_ui.icons import theme_icon
 from desktop_ui.settings_dialog import SettingsDialog
+from desktop_ui.command_batch_dialog import CommandBatchDialog
 from desktop_ui.range_dialog import IPRangeDialog
 from desktop_ui.ranges_panel import RangesPanel
 from desktop_ui.network_groups import (normalize_groups, selected_ranges, node_at,
     siblings_at, walk_networks)
 from copy import deepcopy
+from dataclasses import replace
 from desktop_ui.theme import apply_theme as apply_desktop_theme
+from desktop_ui.fonts import bold_cell_font
 from desktop_ui.updates import UpdateCheckWorker, UpdateDownloadWorker, version_tuple
 from desktop_ui.update_installer import launch_updater, acknowledge_startup
-from desktop_ui.reports import export_frame, sorted_frame
+from desktop_ui.reports import export_frame, sorted_frame, write_spreadsheet
 from desktop_ui.access_dialog import AccessProfilesDialog
 from desktop_ui.access_store import AccessStore
 from miner_scanner.access import AccessProfiles
+from miner_scanner.models import CommandResult
+from uuid import uuid4
 from collections import Counter, defaultdict
 
 
@@ -238,32 +243,75 @@ class ScanWorker(QThread):
         self.cancel.set()
 
 
+class PreflightWorker(QThread):
+    result_signal = pyqtSignal(object)
+
+    def __init__(self, targets, action_type, experimental_ids=(), *, command_workers=32):
+        super().__init__()
+        self.targets = deepcopy(targets)
+        self.action = action_type
+        self.experimental_ids = frozenset(experimental_ids)
+        self.command_workers = command_workers
+        self.cancel = Event()
+
+    def run(self):
+        from miner_scanner.preflight import PreflightResult, preflight_batch
+        seen = set()
+        try:
+            for item in preflight_batch(default_service(), self.targets, self.action,
+                    workers=self.command_workers, cancel=self.cancel,
+                    experimental_ids=self.experimental_ids):
+                seen.add(item.ip)
+                self.result_signal.emit(item)
+        except Exception as exc:
+            # Every selected IP must get an explanation, even if the review
+            # infrastructure fails. No control request is made by this worker.
+            message = tr('Проверка не завершена ({p0}). Команда не отправлялась.', p0=type(exc).__name__)
+            for row in self.targets:
+                ip = row['IP']
+                if ip not in seen:
+                    seen.add(ip)
+                    self.result_signal.emit(PreflightResult(ip, 'failed', message, row))
+
+    def stop(self):
+        self.cancel.set()
+
+
 class ActionWorker(QThread):
     log_signal = pyqtSignal(str)
     result_signal = pyqtSignal(list)
     progress_signal = pyqtSignal(int, int, int, int)
+    dispatched_signal = pyqtSignal(str, bool)
+    command_result_signal = pyqtSignal(str, object)
 
     def __init__(self, targets, action_type, experimental_ids=(), *, command_workers=32):
         super().__init__()
-        self.targets = targets
+        self.targets = deepcopy(targets)
         self.action = action_type
         self.experimental_ids = frozenset(experimental_ids)
         self.command_workers = command_workers
+        self.cancel = Event()
 
     def run(self):
         from concurrent.futures import ThreadPoolExecutor
         service = default_service()
         total = len({row['IP'] for row in self.targets})
         processed = accepted = confirmed = 0
+        dispatches, results, accepted_ips = set(), set(), set()
 
         def progress():
             self.progress_signal.emit(processed, total, accepted, confirmed)
 
         def dispatched(ip, api_accepted):
             nonlocal processed, accepted
-            processed += 1
-            accepted += bool(api_accepted)
-            progress()
+            if ip not in dispatches:
+                dispatches.add(ip)
+                if api_accepted:
+                    accepted_ips.add(ip)
+                processed += 1
+                accepted += bool(api_accepted)
+                self.dispatched_signal.emit(ip, bool(api_accepted))
+                progress()
 
         def refresh(ip):
             # Telemetry refresh has its own workers and never holds a dispatch slot.
@@ -276,22 +324,45 @@ class ActionWorker(QThread):
 
         progress()
         with ThreadPoolExecutor(max_workers=8, thread_name_prefix="asic-refresh") as refresh_pool:
-            try:
-                for ip, result in execute_batch(service, self.targets, self.action,
-                        workers=self.command_workers, experimental_ids=self.experimental_ids,
-                        on_dispatch=dispatched):
-                    confirmed += result.status == 'succeeded'
-                    self.log_signal.emit(f"{ip}: [{result.status}] {result.message}")
-                    progress()
-                    if result.status in ('succeeded', 'unconfirmed'):
-                        refresh_pool.submit(refresh, ip)
-                    else:
+            def publish(ip, result):
+                nonlocal confirmed
+                if ip in results:
+                    return
+                if ip in accepted_ips and not result.accepted_by_api:
+                    result = replace(result, accepted_by_api=True)
+                results.add(ip)
+                confirmed += result.status == 'succeeded'
+                self.command_result_signal.emit(ip, result)
+                self.log_signal.emit(f"{ip}: [{result.status}] {result.message}")
+                progress()
+                if result.status in ('succeeded', 'unconfirmed') and not self.cancel.is_set():
+                    refresh_pool.submit(refresh, ip)
+                else:
+                    try:
                         current = service.get_record(ip)
                         if current is not None:
                             self.result_signal.emit([current.to_legacy()])
+                    except Exception as exc:
+                        self.log_signal.emit(tr('{p0}: не удалось обновить таблицу ({p1})', p0=ip, p1=type(exc).__name__))
+            try:
+                for ip, result in execute_batch(service, self.targets, self.action,
+                        workers=self.command_workers, experimental_ids=self.experimental_ids,
+                        on_dispatch=dispatched, cancel=self.cancel):
+                    publish(ip, result)
             except Exception as exc:
                 self.log_signal.emit(tr('Ошибка очереди команд ({p0})', p0=type(exc).__name__))
+                for row in self.targets:
+                    ip = row['IP']
+                    if ip not in results:
+                        # A broken queue cannot prove a write did not occur.
+                        publish(ip, CommandResult(str(uuid4()), 'unconfirmed',
+                            tr('Очередь прервана. Проверьте состояние ASIC перед повторной командой.'),
+                            accepted_by_api=ip in accepted_ips,
+                            device_id=row.get('DeviceId'), profile_id=row.get('ProfileId')))
         self.log_signal.emit(tr("Команда '{p0}': обработано {p1}/{p2}, принято API {p3}, состояние подтверждено {p4}.", p0=self.action, p1=processed, p2=total, p3=accepted, p4=confirmed))
+
+    def stop(self):
+        self.cancel.set()
 
 
 class PDFReport(FPDF):
@@ -368,6 +439,7 @@ class GeminiApp(QMainWindow):
         set_language(self.app_settings["language"])
         install_qt_translator(QApplication.instance())
         self._persist_preferences = settings is None if persist_preferences is None else persist_preferences
+        self._closing_requested = False
         self._restoring_layout = True
         self._preferences_dirty = False
         self.preferences_timer = QTimer(self)
@@ -388,6 +460,7 @@ class GeminiApp(QMainWindow):
         # --- ИНИЦИАЛИЗАЦИЯ ОКНА ЛОГОВ ---
         self.log_dialog = LogDialog(self, language=self.app_settings["language"])
         self.log_dialog.language_changed.connect(self.change_application_language)
+        self.command_batch_dialog = None
 
         self.stats_timer = QTimer(self)
         self.stats_timer.setSingleShot(True)
@@ -663,7 +736,13 @@ class GeminiApp(QMainWindow):
         self.command_progress.setWordWrap(True)
         self.command_progress.setToolTip(tr('Очередь — устройства, прошедшие этап подготовки и отправки, включая отказы. Принято API — положительный ответ на запись. Подтверждено — нужное состояние прочитано из API; разгон майнинга может продолжаться.'))
         self.command_progress.hide()
-        content_layout.addWidget(self.command_progress)
+        command_footer = QHBoxLayout()
+        command_footer.addWidget(self.command_progress, 1)
+        self.btn_command_results = QPushButton(tr('Результаты команды'))
+        self.btn_command_results.clicked.connect(self.show_command_results)
+        self.btn_command_results.setVisible(self.command_batch_dialog is not None)
+        command_footer.addWidget(self.btn_command_results)
+        content_layout.addLayout(command_footer)
         footer = QHBoxLayout()
         self.status_bar = QLabel(tr('Готов к работе'))
         self.progress = QProgressBar()
@@ -757,7 +836,15 @@ class GeminiApp(QMainWindow):
         ui_cols = self.app_settings.get("ui_cols", all_cols)
         density = self.app_settings.get("density", "comfortable")
         compact = density == "compact"
-        self.table.verticalHeader().setDefaultSectionSize(32 if compact else 42)
+        self.table.ensurePolished()
+        self.table.verticalHeader().setDefaultSectionSize(max(32 if compact else 42,
+            self.table.fontMetrics().height() + (8 if compact else 12)))
+        self.log_dialog.table.verticalHeader().setDefaultSectionSize(max(32,
+            self.log_dialog.table.fontMetrics().height() + 8))
+        dialog = self.command_batch_dialog
+        if dialog is not None:
+            dialog.table.ensurePolished()
+            dialog.table.verticalHeader().setDefaultSectionSize(max(34, dialog.table.fontMetrics().height() + 10))
         previous = self._restoring_layout
         self._restoring_layout = True
         if restore or getattr(self, '_applied_table_density', None) != density:
@@ -784,6 +871,17 @@ class GeminiApp(QMainWindow):
         self.table_preset.setCurrentIndex(max(0, self.table_preset.findData(self.app_settings["table_preset"])))
         self.table_preset.blockSignals(False)
         self._restoring_layout = previous
+        font_key = (self.table.font().family(), self.table.font().pixelSize())
+        previous_font = getattr(self, '_applied_table_font', None)
+        self._applied_table_font = font_key
+        if previous_font != font_key:
+            for row in range(self.table.rowCount()):
+                for column in (3, 4):
+                    item = self.table.item(row, column)
+                    if item is not None and item.font().bold():
+                        item.setFont(bold_cell_font(self.table.font()))
+            if previous_font is not None and self.app_settings['auto_fit_columns'] and self.table.rowCount():
+                self.fit_table_columns()
 
     def remember_table_layout(self, *args):
         if self._restoring_layout:
@@ -1189,28 +1287,89 @@ class GeminiApp(QMainWindow):
         if not targets:
             return
 
-        consequences = ""
-        if action_type in ("wakeup", "normal", "mining_start") and any(row.get("ProfileId") == "canaan.avalon" for row in targets):
-            consequences = tr('\nДля Avalon возобновление выполняется через перезагрузку.')
+        # The review dialog is the confirmation; only its Send button writes.
+        self.prepare_command_batch(targets, action_type)
 
-        if confirm_needed:
-            confirm = QMessageBox.question(
-                self, tr('Подтверждение'),
-                tr("Выполнить '{p0}' для {p1} устройств?{p2}", p0=action_label(action_type), p1=len(rows), p2=consequences),
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            if confirm != QMessageBox.StandardButton.Yes: return
+    def show_command_results(self):
+        if self.command_batch_dialog is not None:
+            self.command_batch_dialog.show()
+            self.command_batch_dialog.raise_()
+            self.command_batch_dialog.activateWindow()
 
-        self.add_log(tr("🛠 Отправка команды '{p0}' на {p1} устройств...", p0=action_type, p1=len(rows)), action=action_type)
+    def prepare_command_batch(self, targets, action_type):
+        if self._closing_requested:
+            return
+        current = self.command_batch_dialog
+        if current is not None and (current.active or (current.phase == 'prepared' and current.isVisible())):
+            self.show_command_results()
+            return
+        if current is not None:
+            current.close()
+            current.deleteLater()
+        targets = list({row['IP']: deepcopy(row) for row in targets}.values())
+        dialog = CommandBatchDialog(targets, action_type, self)
+        self.command_batch_dialog = dialog
+        self.btn_command_results.show()
+        self.command_progress.setText(tr('Проверка совместимости: {p0} устройств. Команды ещё не отправлены.', p0=len(targets)))
+        self.command_progress.show()
+        dialog.start_requested.connect(lambda ready: self.start_command_batch(dialog, ready, action_type))
+        dialog.retry_requested.connect(lambda retry: self.prepare_command_batch(retry, action_type))
+        dialog.cancel_requested.connect(lambda: self.cancel_command_batch(dialog))
+        worker = PreflightWorker(targets, action_type, getattr(self, 'experimental_device_ids', set()),
+                                 command_workers=self.app_settings.get('command_workers', 32))
+        dialog.preflight_worker = worker
 
+        def checked(item):
+            dialog.add_preflight(item)
+            if item.record is not None:
+                self.on_result([item.record])
+
+        def reviewed():
+            dialog.preflight_worker = None
+            dialog.finish_preflight()
+            self.command_progress.setText(tr('Проверка завершена. Готово: {p0}/{p1}. Подробности — в результатах команды.',
+                p0=len(dialog.ready_targets()), p1=len(targets)))
+
+        worker.result_signal.connect(checked)
+        worker.finished.connect(reviewed)
+        dialog.show()
+        self.track_command_worker(worker)
+
+    def cancel_command_batch(self, dialog):
+        for name in ('preflight_worker', 'action_worker'):
+            worker = getattr(dialog, name, None)
+            if worker is not None:
+                worker.stop()
+
+    def start_command_batch(self, dialog, targets, action_type):
+        if self._closing_requested:
+            if dialog.phase == 'executing':
+                for row in targets:
+                    dialog.set_result(row['IP'], CommandResult(str(uuid4()), 'cancelled',
+                        tr('Программа закрывается. Команда не отправлялась.')))
+                dialog.finish_execution()
+            return
+        self.add_log(tr("🛠 Отправка команды '{p0}' на {p1} устройств...", p0=action_type, p1=len(targets)), action=action_type)
         worker = ActionWorker(targets, action_type, getattr(self, "experimental_device_ids", set()),
                               command_workers=self.app_settings.get("command_workers", 32))
+        dialog.action_worker = worker
         worker.log_signal.connect(lambda message, action=action_type: self.handle_worker_log(message, action=action))
         worker.result_signal.connect(self.on_result)
+        worker.dispatched_signal.connect(dialog.mark_dispatched)
+        worker.command_result_signal.connect(dialog.set_result)
         def show_progress(processed, total, accepted, confirmed):
             self.command_progress.setText(tr('{p0} · очередь {p1}/{p2} · принято API {p3} · подтверждено {p4}', p0=action_label(action_type), p1=processed, p2=total, p3=accepted, p4=confirmed))
             self.command_progress.show()
         worker.progress_signal.connect(show_progress)
+
+        def completed():
+            dialog.action_worker = None
+            dialog.finish_execution()
+
+        worker.finished.connect(completed)
+        self.track_command_worker(worker)
+
+    def track_command_worker(self, worker):
         if not hasattr(self, 'workers'):
             self.workers = []
         self.workers.append(worker)
@@ -1461,7 +1620,7 @@ class GeminiApp(QMainWindow):
                     # === 3. Status ===
                     status_str = str(row.get('Status', 'Running'))
                     status_item = QTableWidgetItem({"Running": tr('Работает'), "Sleep": tr('Сон'), "Stopping": tr('Засыпает'), "WaitWork": tr('Ожидание'), "Error": tr('Ошибка'), "Unknown": tr('Неизвестно')}.get(status_str, status_str))
-                    status_item.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+                    status_item.setFont(bold_cell_font(self.table.font()))
                     if status_str == "Running":
                         status_item.setForeground(QColor("#00E676") if getattr(self, 'dark_mode', False) else QColor("#007e33"))
                     elif status_str in ("WaitWork", "Stopping"):
@@ -1473,7 +1632,7 @@ class GeminiApp(QMainWindow):
                     err_item = QTableWidgetItem(err_str)
                     if err_str and err_str != '-':
                         err_item.setForeground(QColor("#FF4444"))
-                        err_item.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+                        err_item.setFont(bold_cell_font(self.table.font()))
                         details = str(row.get('ErrorDetails', ''))
                         if details:
                             err_item.setToolTip(
@@ -1647,10 +1806,7 @@ class GeminiApp(QMainWindow):
             if not Path(full_path).suffix:
                 full_path += ".csv" if "*.csv" in selected_filter else ".xlsx"
 
-            if full_path.lower().endswith(".csv"):
-                df.to_csv(full_path, index=False, encoding="utf-8-sig")
-            else: # .xlsx
-                df.to_excel(full_path, index=False, engine="openpyxl")
+            write_spreadsheet(df, full_path)
 
             # --- ЛОГИКА БУФЕРА ОБМЕНА ---
             if self.app_settings.get("copy_csv", False):
@@ -1810,7 +1966,11 @@ class GeminiApp(QMainWindow):
         self.queue_preference_save()
 
     def apply_theme(self):
-        apply_desktop_theme(QApplication.instance(), self.dark_mode)
+        apply_desktop_theme(QApplication.instance(), self.dark_mode, typography=self.app_settings)
+        sidebar = self.sidebar_scroll.widget()
+        sidebar.ensurePolished()
+        self.sidebar_scroll.setFixedWidth(max(290, sidebar.minimumSizeHint().width()
+            + self.sidebar_scroll.verticalScrollBar().sizeHint().width() + 2))
         self.btn_theme.setIcon(theme_icon(sun=self.dark_mode, color="#eebc65" if self.dark_mode else "#255fd4"))
         theme_label = tr('Включить светлую тему') if self.dark_mode else tr('Включить тёмную тему')
         self.btn_theme.setToolTip(theme_label + " (Ctrl+Shift+T)")
@@ -1885,12 +2045,19 @@ class GeminiApp(QMainWindow):
         self.apply_table_filter()
 
     def closeEvent(self, event):
+        self._closing_requested = True
         workers = list(getattr(self, "workers", []))
         workers += [getattr(self, "worker", None), getattr(self, "update_worker", None), getattr(self, "download_worker", None)]
         if any(worker is not None and worker.isRunning() for worker in workers):
+            if self.command_batch_dialog is not None and self.command_batch_dialog.active:
+                self.command_batch_dialog.reject()
             download = getattr(self, "download_worker", None)
             if download is not None:
                 download.cancel()
+            for worker in getattr(self, 'workers', []):
+                stop = getattr(worker, 'stop', None)
+                if stop:
+                    stop()
             self.stop_scan()
             self.status_bar.setText(tr('Завершаем текущие операции перед закрытием…'))
             event.ignore()
@@ -1900,6 +2067,7 @@ class GeminiApp(QMainWindow):
         if getattr(self, "install_on_close", False):
             if not saved:
                 self.install_on_close = False
+                self._closing_requested = False
                 QMessageBox.warning(self, tr('Обновление'), tr('Настройки не удалось сохранить. Установка отложена; программа остаётся открытой.'))
                 event.ignore()
                 return
@@ -1908,6 +2076,7 @@ class GeminiApp(QMainWindow):
                 self.install_on_close = False
             except OSError as exc:
                 self.install_on_close = False
+                self._closing_requested = False
                 QMessageBox.warning(self, tr('Обновление'), tr('Не удалось запустить установку. Текущая программа продолжает работать.\n{p0}', p0=exc))
                 event.ignore()
                 return

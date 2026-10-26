@@ -41,8 +41,18 @@ def tr_error(source):
         parts = list(Formatter().parse(template))
         if not any(field for _, field, _, _ in parts) or any(spec or conversion for _, _, spec, conversion in parts):
             continue
-        pattern = "".join(re.escape(literal) + (f"(?P<{field}>.*?)" if field else "")
-                          for literal, field, _, _ in parts)
+        # A template can repeat a field (e.g. checked/total counters). Capture it
+        # once and require the same value at each subsequent occurrence.
+        groups, fragments = set(), []
+        for literal, field, _, _ in parts:
+            fragments.append(re.escape(literal))
+            if field:
+                if field in groups:
+                    fragments.append(f"(?P={field})")
+                else:
+                    fragments.append(f"(?P<{field}>.*?)")
+                    groups.add(field)
+        pattern = "".join(fragments)
         match = re.fullmatch(pattern, source, re.DOTALL)
         if match:
             return translated.format(**match.groupdict())

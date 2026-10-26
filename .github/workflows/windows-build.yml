@@ -31,6 +31,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ASIC-Monitor-Windows
+          retention-days: 7
           path: |
             dist/ASIC_Monitor.exe
             dist/SHA256SUMS.txt
@@ -39,6 +40,7 @@ jobs:
         if: always()
         with:
           name: Desktop-checks
+          retention-days: 3
           path: |
             artifacts/exe-smoke
             artifacts/exe-update
