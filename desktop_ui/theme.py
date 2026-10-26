@@ -1,8 +1,13 @@
 """Shared Qt palette and styles for windows, dialogs and menus."""
-from PyQt6.QtGui import QColor, QPalette
+from PyQt6.QtGui import QColor, QPalette, QFont
+from .fonts import available_font_family, font_css
+from .preferences import normalize
 
 
-def apply_theme(app, dark=False):
+def apply_theme(app, dark=False, *, typography=None):
+    settings = normalize(typography)
+    family = available_font_family(settings["font_family"])
+    font_size = settings["font_size"]
     colors = dict(bg="#101722", panel="#182230", field="#202d3e", line="#314156",
                   text="#e7edf5", muted="#a4b3c6", accent="#78aaff", selected="#263f62",
                   hover="#293b50", danger="#ff919b") if dark else dict(
@@ -11,6 +16,9 @@ def apply_theme(app, dark=False):
                   hover="#edf2fa", danger="#b93649")
     c = colors
     app.setStyle("Fusion")
+    font = QFont(family)
+    font.setPixelSize(font_size)
+    app.setFont(font)
     palette = QPalette()
     for role, color in ((QPalette.ColorRole.Window, c["bg"]), (QPalette.ColorRole.WindowText, c["text"]),
                         (QPalette.ColorRole.Base, c["panel"]), (QPalette.ColorRole.AlternateBase, c["field"]),
@@ -22,21 +30,26 @@ def apply_theme(app, dark=False):
         palette.setColor(role, QColor(color))
     palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(c["muted"]))
     app.setPalette(palette)
+    colors.update(font=font_css(family, font_size), table_font_size=settings["table_font_size"])
+    for size in (11, 14, 18, 19, 21, 26, 27):
+        colors[f"size{size}"] = round(size * font_size / 13)
     app.setStyleSheet("""
-        QWidget { font-family: 'Segoe UI'; font-size: 13px; color: %(text)s; }
+        QWidget { %(font)s color: %(text)s; }
+        QTableWidget, QTableView, QHeaderView { font-size: %(table_font_size)dpx; }
         QMainWindow, QDialog, #ContentArea { background: %(bg)s; }
         QLabel { background: transparent; }
         #Sidebar, #DashBox, #EmptyState { background: %(panel)s; border: 1px solid %(line)s; border-radius: 10px; }
         #Sidebar { border-radius: 0; border-top: none; border-left: none; border-bottom: none; }
-        #Logo { font-size: 21px; font-weight: 700; color: %(accent)s; }
-        #PageTitle { font-size: 26px; font-weight: 700; }
-        #DialogTitle { font-size: 21px; font-weight: 600; }
+        #Logo { font-size: %(size21)dpx; font-weight: 700; color: %(accent)s; }
+        #PageTitle { font-size: %(size26)dpx; font-weight: 700; }
+        #DialogTitle { font-size: %(size21)dpx; font-weight: 600; }
         #Muted, #SectionHeader, #DashTitle { color: %(muted)s; }
-        #SectionHeader { font-size: 11px; font-weight: 600; }
-        #DashValue { font-size: 18px; font-weight: 600; }
-        #CardValue { font-size: 27px; font-weight: 600; }
+        #SectionHeader { font-size: %(size11)dpx; font-weight: 600; }
+        #DashValue { font-size: %(size18)dpx; font-weight: 600; }
+        #CardValue { font-size: %(size27)dpx; font-weight: 600; }
         #SummaryPanel { background: %(panel)s; border: 1px solid %(line)s; border-radius: 8px; }
-        #SummaryValue { font-size: 19px; font-weight: 600; }
+        #SummaryValue { font-size: %(size19)dpx; font-weight: 600; }
+        #FontPreview { background: %(field)s; border: 1px solid %(line)s; border-radius: 6px; }
         #BtnTheme { padding: 0; }
         #SummaryDetails::pane { border: none; }
         QTabBar::tab { background: %(field)s; padding: 6px 12px; border-radius: 4px; }
@@ -45,16 +58,17 @@ def apply_theme(app, dark=False):
         QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox { background: %(panel)s; border: 1px solid %(line)s;
             border-radius: 6px; padding: 7px; selection-background-color: %(selected)s; }
         QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QSpinBox:focus { border-color: %(accent)s; }
+        #FontSizeCombo QLineEdit { border: none; background: transparent; padding: 0; }
         QPushButton { background: %(panel)s; border: 1px solid %(line)s; border-radius: 6px;
             padding: 8px 12px; min-height: 16px; }
         QPushButton:hover { background: %(hover)s; border-color: %(accent)s; }
         QPushButton:pressed, QPushButton:checked { background: %(selected)s; }
         QPushButton:focus { border-color: %(accent)s; }
-        #RangeSectionTitle { font-size: 14px; font-weight: 600; }
+        #RangeSectionTitle { font-size: %(size14)dpx; font-weight: 600; }
         #RangePreview { background: %(panel)s; border: 1px solid %(line)s; border-radius: 8px; }
-        #RangeSummary { color: %(accent)s; font-size: 19px; font-weight: 600; }
+        #RangeSummary { color: %(accent)s; font-size: %(size19)dpx; font-weight: 600; }
         #ValidationError { color: %(danger)s; }
-        #RangeEditor { font-family: 'Consolas'; font-size: 14px; }
+        #RangeEditor { font-family: 'Consolas'; font-size: %(size14)dpx; }
         #NetworkList::item, #NetworkTree::item { padding: 5px 7px; }
         #DashDetails { color: %(muted)s; background: transparent; border: none; padding: 0; }
         QPushButton[primary="true"]:disabled { background: %(field)s; color: %(muted)s; border-color: %(line)s; }

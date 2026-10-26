@@ -1,10 +1,15 @@
 """Preferences dialog. Changes are committed only after validation and Save."""
 from .i18n import tr
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QListWidget,
     QListWidgetItem, QStackedWidget, QWidget, QScrollArea, QFormLayout, QComboBox,
-    QSpinBox, QCheckBox, QLineEdit, QPushButton, QFileDialog, QMessageBox)
-from .preferences import COLUMNS, TABLE_PRESETS, normalize, data_directory
+    QSpinBox, QCheckBox, QLineEdit, QPushButton, QFileDialog, QMessageBox,
+    QFontComboBox, QGroupBox, QFrame)
+from .preferences import (COLUMNS, TABLE_PRESETS, normalize, data_directory,
+    DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE, INTERFACE_FONT_RANGE, TABLE_FONT_RANGE)
+from .fonts import available_font_family, font_css
+from .font_controls import CompactFontComboBox, FontSizeComboBox
 
 
 class SettingsDialog(QDialog):
@@ -34,13 +39,16 @@ class SettingsDialog(QDialog):
         self._export_page("pdf", tr('PDF-отчёты'))
         self._export_page("csv", tr('Excel и CSV'))
         self._access_page(configure_access)
+        self.navigation.ensurePolished()
+        self.navigation.setFixedWidth(max(160, max(self.navigation.fontMetrics().horizontalAdvance(
+            self.navigation.item(index).text()) for index in range(self.navigation.count())) + 32))
         self.navigation.currentRowChanged.connect(self.pages.setCurrentIndex)
         self.navigation.setCurrentRow(0)
         buttons = QHBoxLayout()
         hint = QLabel(tr('Изменения применятся после сохранения.'))
+        hint.setWordWrap(True)
         hint.setObjectName("Muted")
-        buttons.addWidget(hint)
-        buttons.addStretch()
+        buttons.addWidget(hint, 1)
         cancel = QPushButton(tr('Отмена'))
         cancel.clicked.connect(self.reject)
         save = QPushButton(tr('Сохранить'))
@@ -85,6 +93,7 @@ class SettingsDialog(QDialog):
         self.language.setCurrentIndex(self.language.findData(self.settings["language"]))
         form.addRow(tr('Язык интерфейса'), self.language)
         layout.addLayout(form)
+        self._font_controls(layout)
         self.check_updates = QCheckBox(tr('Проверять обновления при запуске'))
         self.check_updates.setChecked(self.settings["check_updates"])
         layout.addWidget(self.check_updates)
@@ -98,6 +107,85 @@ class SettingsDialog(QDialog):
         location.setObjectName("Muted")
         layout.addStretch()
         layout.addWidget(location)
+
+    def _font_controls(self, layout):
+        group = QGroupBox(tr('Шрифт и читаемость'))
+        content = QVBoxLayout(group)
+        form = QFormLayout()
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        self.font_family = CompactFontComboBox()
+        self.font_family.setFontFilters(QFontComboBox.FontFilter.ScalableFonts)
+        self.font_family.setEditable(False)
+        self.font_family.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.font_family.setMinimumContentsLength(16)
+        self.font_family.setCurrentFont(QFont(available_font_family(self.settings['font_family'])))
+        self.font_size = FontSizeComboBox(*INTERFACE_FONT_RANGE, self.settings['font_size'])
+        self.table_font_size = FontSizeComboBox(*TABLE_FONT_RANGE, self.settings['table_font_size'])
+        for text, control in ((tr('Семейство шрифта'), self.font_family),
+                              (tr('Размер интерфейса'), self.font_size),
+                              (tr('Размер таблиц'), self.table_font_size)):
+            label = QLabel(text)
+            label.setBuddy(control)
+            control.setAccessibleName(text)
+            if control is self.font_family:
+                form.addRow(label, control)
+            else:
+                field = QWidget()
+                row = QHBoxLayout(field)
+                row.setContentsMargins(0, 0, 0, 0)
+                row.addWidget(control)
+                row.addWidget(QLabel(tr(' пкс').strip()))
+                row.addStretch()
+                form.addRow(label, field)
+        content.addLayout(form)
+        self.font_error = QLabel()
+        self.font_error.setObjectName('ValidationError')
+        self.font_error.setTextFormat(Qt.TextFormat.PlainText)
+        self.font_error.setWordWrap(True)
+        self.font_error.hide()
+        content.addWidget(self.font_error)
+        hint = QLabel(tr('Выберите размер из списка или введите свой. Размер таблиц применяется к устройствам и журналу.'))
+        hint.setWordWrap(True)
+        hint.setObjectName('Muted')
+        content.addWidget(hint)
+        preview_title = QLabel(tr('Предпросмотр'))
+        preview_title.setObjectName('Muted')
+        content.addWidget(preview_title)
+        preview = QFrame()
+        preview.setObjectName('FontPreview')
+        preview_layout = QVBoxLayout(preview)
+        preview_layout.setContentsMargins(12, 10, 12, 10)
+        self.font_preview = QLabel(tr('Обзор оборудования · Устройства'))
+        self.table_font_preview = QLabel('192.0.2.21 · Antminer S21\nReal Hash: 200.00 TH/s · worker.01')
+        for label in (self.font_preview, self.table_font_preview):
+            label.setTextFormat(Qt.TextFormat.PlainText)
+            label.setWordWrap(True)
+            preview_layout.addWidget(label)
+        content.addWidget(preview)
+        self.reset_fonts_button = QPushButton(tr('Сбросить шрифт'))
+        self.reset_fonts_button.clicked.connect(self.reset_fonts)
+        content.addWidget(self.reset_fonts_button, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(group)
+        self.font_family.currentFontChanged.connect(self.update_font_preview)
+        self.font_size.valueChanged.connect(self.update_font_preview)
+        self.table_font_size.valueChanged.connect(self.update_font_preview)
+        self.font_size.currentTextChanged.connect(self.clear_font_error)
+        self.table_font_size.currentTextChanged.connect(self.clear_font_error)
+        self.update_font_preview()
+
+    def clear_font_error(self):
+        if self.font_size.lineEdit().hasAcceptableInput() and self.table_font_size.lineEdit().hasAcceptableInput():
+            self.font_error.hide()
+
+    def update_font_preview(self):
+        family = self.font_family.currentFont().family()
+        self.font_preview.setStyleSheet(font_css(family, self.font_size.value()))
+        self.table_font_preview.setStyleSheet(font_css(family, self.table_font_size.value()))
+
+    def reset_fonts(self):
+        self.font_family.setCurrentFont(QFont(available_font_family(DEFAULT_FONT_FAMILY)))
+        self.font_size.setValue(DEFAULT_FONT_SIZE)
+        self.table_font_size.setValue(DEFAULT_FONT_SIZE)
 
     def _scanner_page(self):
         layout = self._page(tr('Сканирование'), tr('Выберите производителей и параметры опроса. Новые параметры действуют со следующего сканирования.'))
@@ -237,6 +325,17 @@ class SettingsDialog(QDialog):
         setattr(self, f"list_{kind}_cols", self._column_list(layout, f"{kind}_cols"))
 
     def save_and_close(self):
+        for control, limits in ((self.font_size, INTERFACE_FONT_RANGE), (self.table_font_size, TABLE_FONT_RANGE)):
+            if not control.lineEdit().hasAcceptableInput():
+                self.navigation.setCurrentRow(0)
+                self.font_error.setText(tr('Для поля «{p0}» введите целое число от {p1} до {p2} пкс.',
+                    p0=control.accessibleName(), p1=limits[0], p2=limits[1]))
+                self.font_error.show()
+                self.pages.widget(0).ensureWidgetVisible(control)
+                control.setFocus()
+                control.lineEdit().selectAll()
+                return
+        self.font_error.hide()
         updated = self.settings.copy()
         updated.update({key: box.isChecked() for key, box in self.filters.items()})
         if not any(box.isChecked() for box in self.filters.values()):
@@ -253,6 +352,8 @@ class SettingsDialog(QDialog):
                 return
             updated[key] = selected
         updated.update(theme=self.theme.currentData(), density=self.density.currentData(),
+                       font_family=self.font_family.currentFont().family(),
+                       font_size=self.font_size.value(), table_font_size=self.table_font_size.value(),
                        language=self.language.currentData(), journal_language=self.language.currentData(), table_preset="custom",
                        timeout=self.timeout.value(), workers=self.workers.value(),
                        command_workers=self.command_workers.value(),

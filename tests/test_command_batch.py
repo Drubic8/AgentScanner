@@ -1,6 +1,7 @@
 """Bulk command tests use only synthetic transports, never a real network."""
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from copy import deepcopy
 from ipaddress import IPv4Address
 from threading import Event, Lock
 import time
@@ -193,3 +194,60 @@ class CommandBatchTests(unittest.TestCase):
         for workers in [0, 33, True, '32']:
             with self.subTest(workers=workers), self.assertRaises(ValueError):
                 list(self.batch([], workers=workers))
+
+    def test_unexpected_dispatch_failure_is_uncertain_and_does_not_abort_other_devices(self):
+        rows = self.targets(3)
+        original = dispatch_command
+
+        def dispatch(service, ip, action, **kwargs):
+            if ip == rows[0]['IP']:
+                # Simulate an adapter failure after an uncertain write, without
+                # leaking real command resources from this synthetic exception.
+                self.factory.writes.append(('/synthetic-write', 'POST', {}))
+                raise RuntimeError('password=must-not-appear-in-result')
+            return original(service, ip, action, **kwargs)
+
+        with patch('miner_scanner.batch.dispatch_command', side_effect=dispatch), \
+             patch.dict('miner_scanner.commands.EXECUTORS', antminer=lambda *_: (True, lambda: True)):
+            results = dict(self.batch(rows))
+        self.assertEqual(len(results), 3)
+        self.assertEqual(results[rows[0]['IP']].status, 'unconfirmed')
+        self.assertNotIn('must-not-appear', results[rows[0]['IP']].message)
+        self.assertTrue(all(results[row['IP']].succeeded for row in rows[1:]))
+        self.assertEqual(len(self.factory.writes), 1)
+
+    def test_unexpected_verifier_failure_releases_its_resources_and_continues(self):
+        rows = self.targets(3)
+        original = PendingCommand.complete
+
+        def complete(task):
+            if task.ip == rows[0]['IP']:
+                raise RuntimeError('sensitive response')
+            return original(task)
+
+        with patch.object(PendingCommand, 'complete', complete), \
+             patch.dict('miner_scanner.commands.EXECUTORS', antminer=lambda *_: (True, lambda: True)):
+            results = dict(self.batch(rows))
+        self.assertEqual(results[rows[0]['IP']].status, 'unconfirmed')
+        self.assertTrue(results[rows[0]['IP']].accepted_by_api)
+        self.assertTrue(all(results[row['IP']].succeeded for row in rows[1:]))
+        self.assertTrue(all(not self.service.command_lock_for(row['IP']).locked() for row in rows))
+
+    def test_original_selected_fingerprint_is_rechecked_after_intervening_poll(self):
+        row = self.targets(1)[0]
+        changed = deepcopy(self.service.get_record(row['IP']))
+        changed.identity.fingerprint = 'newer-firmware-after-selection'
+        self.service._records[row['IP']] = changed
+        with patch.object(self.service, 'poll', return_value=changed), \
+             patch.dict('miner_scanner.commands.EXECUTORS', antminer=lambda *_: self.fail('No write allowed')):
+            result = dict(self.batch([row]))[row['IP']]
+        self.assertEqual(result.status, 'skipped')
+        self.assertIn('паспорт выбранной строки', result.message)
+        self.assertFalse(self.factory.writes)
+
+    def test_broken_progress_observer_does_not_interrupt_control_results(self):
+        rows = self.targets(3)
+        with patch.dict('miner_scanner.commands.EXECUTORS', antminer=lambda *_: (True, lambda: True)):
+            results = list(self.batch(rows, on_dispatch=lambda *_: (_ for _ in ()).throw(RuntimeError('bad callback'))))
+        self.assertEqual(len(results), 3)
+        self.assertTrue(all(result.succeeded for _, result in results))

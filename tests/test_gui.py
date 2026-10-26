@@ -80,16 +80,20 @@ class DesktopTests(unittest.TestCase):
         finally:
             window.close()
 
-    def test_wakeup_confirmation_explains_avalon_reboot(self):
+    def test_wakeup_review_explains_avalon_reboot_before_any_command(self):
         window = self.gui.GeminiApp(settings={}, ranges=[])
         try:
             window.on_result([{'IP': '192.0.2.134', 'Model': 'Avalon 1346-110', 'ProfileId': 'canaan.avalon'}])
             window.table.item(0, 0).setCheckState(self.gui.Qt.CheckState.Checked)
-            with patch.object(self.gui.QMessageBox, 'question', return_value=self.gui.QMessageBox.StandardButton.No) as question, \
+            with patch.object(self.gui, 'PreflightWorker') as review, \
                  patch.object(self.gui, 'ActionWorker') as worker:
+                review.return_value.isRunning.return_value = False
                 window.run_action('wakeup')
-            self.assertIn('Avalon', question.call_args.args[2])
-            self.assertIn('перезагрузку', question.call_args.args[2])
+            dialog = window.command_batch_dialog
+            self.assertIn('Avalon', dialog.consequences.text())
+            self.assertIn('перезагрузку', dialog.consequences.text())
+            self.assertFalse(dialog.start_button.isEnabled())
+            dialog.finish_preflight()
             worker.assert_not_called()
         finally:
             window.close()

@@ -1,8 +1,10 @@
 """Sorting is applied before export columns are selected."""
 import ipaddress
+from pathlib import Path
 import re
 import pandas as pd
 from .preferences import COLUMNS
+from .spreadsheet_cells import csv_cell
 
 
 def _number(value):
@@ -41,3 +43,24 @@ def sorted_frame(records, column):
 def export_frame(records, columns, sort_column):
     frame = sorted_frame(records, sort_column).rename(columns={"Real": "Real HR", "Avg": "Avg HR"})
     return frame.reindex(columns=columns, fill_value="").rename(columns=COLUMNS)
+
+
+def write_spreadsheet(frame, destination):
+    """Write external strings literally; preserve numbers and the source frame."""
+    if Path(destination).suffix.lower() == '.csv':
+        safe = frame.map(csv_cell)
+        safe.columns = [csv_cell(column) for column in frame.columns]
+        safe.to_csv(destination, index=False, encoding='utf-8-sig')
+        return
+    # openpyxl otherwise truncates cell text silently before inferring its type.
+    values = (value for row in frame.itertuples(index=False, name=None) for value in row)
+    if (any(isinstance(value, str) and len(value) > 32767 for value in frame.columns)
+            or any(isinstance(value, str) and len(value) > 32767 for value in values)):
+        raise ValueError('XLSX: текст ячейки превышает 32767 символов; сохраните отчёт в CSV.')
+    with pd.ExcelWriter(destination, engine='openpyxl') as writer:
+        frame.to_excel(writer, index=False)
+        for sheet in writer.book:
+            for row in sheet:
+                for cell in row:
+                    if isinstance(cell.value, str):
+                        cell.data_type = 's'

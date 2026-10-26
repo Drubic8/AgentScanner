@@ -49,5 +49,6 @@ jobs:
         if: always()
         with:
           name: desktop-preview
+          retention-days: 3
           path: artifacts/ui-preview
           if-no-files-found: warn

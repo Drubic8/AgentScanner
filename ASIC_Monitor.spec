@@ -1,8 +1,12 @@
 # Build only through scripts/build_windows.py: it validates release metadata first.
 from pathlib import Path
+import sys
 from PyInstaller.utils.hooks import collect_data_files
 
 root = Path(SPECPATH)
+sys.path.insert(0, str(root))
+from scripts.build_windows import validate_native_sources
+
 resources = collect_data_files("miner_scanner.profiles")
 resources += collect_data_files("desktop_ui", includes=["locales/*.json"])
 resources += [(str(root / name), ".") for name in ("version.json", "app.ico", "LICENSE")]
@@ -12,6 +16,7 @@ a = Analysis(
     hookspath=[], hooksconfig={}, runtime_hooks=[],
     excludes=["tkinter", "matplotlib", "scipy", "IPython", "pytest"], noarchive=False,
 )
+validate_native_sources(a.binaries)
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, a.binaries, a.datas, [], name="ASIC_Monitor",

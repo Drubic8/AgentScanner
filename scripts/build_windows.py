@@ -11,6 +11,36 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def build_environment(environment=None):
+    """Keep native DLL discovery inside Python and Windows, independent of the caller."""
+    environment = dict(os.environ if environment is None else environment)
+    windows = Path(next((value for key, value in environment.items() if key.upper() == "SYSTEMROOT"), r"C:\Windows"))
+    paths = [Path(sys.prefix) / "Scripts", Path(sys.base_prefix),
+             windows / "System32", windows, windows / "System32" / "Wbem",
+             windows / "System32" / "WindowsPowerShell" / "v1.0"]
+    for key in list(environment):
+        if key.upper() in {"PATH", "PYTHONPATH", "PYTHONHOME", "QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH"}:
+            environment.pop(key)
+    environment["PATH"] = os.pathsep.join(dict.fromkeys(str(path) for path in paths))
+    return environment
+
+
+def validate_native_sources(binaries, allowed_roots=None):
+    """Reject native libraries accidentally discovered in unrelated application runtimes."""
+    if allowed_roots is None:
+        allowed_roots = (sys.prefix, sys.base_prefix, os.environ.get("SystemRoot", r"C:\Windows"))
+    roots = [Path(path).resolve() for path in allowed_roots]
+    unexpected = []
+    for destination, source, kind in binaries:
+        if kind not in {"BINARY", "EXTENSION"}:
+            continue
+        resolved = Path(source).resolve()
+        if not any(resolved.is_relative_to(root) for root in roots):
+            unexpected.append(f"{destination}: {resolved}")
+    if unexpected:
+        raise RuntimeError("Untrusted native library sources in Windows build:\n" + "\n".join(unexpected))
+
+
 def release_version(root=ROOT):
     manifest = json.loads((root / "version.json").read_text(encoding="utf-8"))
     package = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
@@ -46,8 +76,11 @@ def main():
     VarFileInfo([VarStruct('Translation', [1033, 1200])])])
 '''
     (work / "version_info.txt").write_text(resource, encoding="utf-8")
-    subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--workpath", str(work / "pyinstaller"),
-                    "--distpath", str(ROOT / "dist"), "ASIC_Monitor.spec"], cwd=ROOT, check=True)
+    isolated_env = build_environment()
+    # A fresh analysis must not reuse DLL paths collected from an earlier caller's PATH.
+    subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--workpath", str(work / "pyinstaller"),
+                    "--distpath", str(ROOT / "dist"), "ASIC_Monitor.spec"], cwd=ROOT, check=True,
+                   env=isolated_env)
     executable = ROOT / "dist" / "ASIC_Monitor.exe"
     # Run the packaged program, not Python source, in explicit offline smoke mode.
     output = ROOT / "artifacts" / "exe-smoke"
@@ -55,7 +88,7 @@ def main():
     if result_path.exists():
         result_path.unlink()
     result = subprocess.run([str(executable), "--smoke-test", str(output)], cwd=ROOT, timeout=120,
-                            env={**os.environ, "QT_QPA_PLATFORM": "offscreen"})
+                            env={**isolated_env, "QT_QPA_PLATFORM": "offscreen"})
     if result.returncode or not result_path.exists():
         raise RuntimeError(f"EXE smoke check failed; inspect {output}")
     report = json.loads(result_path.read_text(encoding="utf-8"))

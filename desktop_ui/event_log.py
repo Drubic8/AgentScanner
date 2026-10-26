@@ -6,8 +6,9 @@ import io
 import ipaddress
 import json
 import re
+from .spreadsheet_cells import csv_cell
 
-OUTCOMES = ("succeeded", "unconfirmed", "failed", "unsupported", "skipped")
+OUTCOMES = ("succeeded", "unconfirmed", "failed", "unsupported", "skipped", "cancelled")
 MAX_MESSAGE = 8192
 
 
@@ -76,6 +77,5 @@ def export_events(events, kind):
     writer.writerow(keys)
     for event in events:
         values = asdict(event)
-        writer.writerow(["'" + values[key] if values[key].lstrip().startswith(("=", "+", "-", "@"))
-                         else values[key] for key in keys])
+        writer.writerow([csv_cell(values[key]) for key in keys])
     return stream.getvalue()
