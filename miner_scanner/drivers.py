@@ -9,6 +9,7 @@ from uuid import uuid4
 import requests
 
 from .models import DeviceIdentity, DeviceRecord
+from .pools import pool_columns
 from .normalization import (normalize, format_rate, block, antminer_fan_channels,
                             antminer_fan_readings, antminer_model_name, STOCK_FAN_COUNTS)
 from .profiles import first_field
@@ -136,6 +137,7 @@ def make_record(profile, ip, data, previous=None):
         row = parse_generic(ip, data)
         row["Error"] = "PARTIAL DATA"
         row["ErrorDetails"] = "Ответ API не соответствует ожидаемой структуре"
+    row.update(pool_columns(data, profile.parser, row))
     raw_model = first_field(data, {"model", "minertype", "product_type", "type", "g-model"})
     if profile.parser == 'antminer':
         raw_model = stock_model(data)

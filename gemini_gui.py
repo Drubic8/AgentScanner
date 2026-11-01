@@ -1,5 +1,5 @@
 import sys
-CURRENT_VERSION = "2.5.0"
+CURRENT_VERSION = "2.6.0"
 if __name__ == "__main__" and "--apply-update" in sys.argv:
     from desktop_ui.update_installer import run_helper
     position = sys.argv.index("--apply-update") + 1
@@ -25,7 +25,7 @@ import webbrowser
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
-from desktop_ui.preferences import COLUMNS, TABLE_PRESETS, data_directory, normalize, load_json, write_json
+from desktop_ui.preferences import COLUMNS, POOL_COLUMNS, TABLE_PRESETS, data_directory, normalize, load_json, write_json
 from desktop_ui.storage import initialize_storage
 from desktop_ui.log_dialog import LogDialog
 from desktop_ui.device_filters import matches_device
@@ -33,6 +33,7 @@ from desktop_ui.summary_panel import SummaryPanel
 from desktop_ui.icons import theme_icon
 from desktop_ui.settings_dialog import SettingsDialog
 from desktop_ui.command_batch_dialog import CommandBatchDialog
+from desktop_ui.device_dialog import DeviceDialog
 from desktop_ui.range_dialog import IPRangeDialog
 from desktop_ui.ranges_panel import RangesPanel
 from desktop_ui.network_groups import (normalize_groups, selected_ranges, node_at,
@@ -461,6 +462,7 @@ class GeminiApp(QMainWindow):
         self.log_dialog = LogDialog(self, language=self.app_settings["language"])
         self.log_dialog.language_changed.connect(self.change_application_language)
         self.command_batch_dialog = None
+        self.device_dialogs = []
 
         self.stats_timer = QTimer(self)
         self.stats_timer.setSingleShot(True)
@@ -616,6 +618,11 @@ class GeminiApp(QMainWindow):
         ctrl_layout.addWidget(btn_remote)
         ctrl_layout.addWidget(self.lbl_selected_count) # <--- Добавлен счетчик
         ctrl_layout.addStretch()
+        self.btn_device_card = QPushButton(tr('Карточка устройства'))
+        self.btn_device_card.setEnabled(False)
+        self.btn_device_card.setToolTip(tr('Выберите строку устройства, чтобы открыть сведения и логи'))
+        self.btn_device_card.clicked.connect(lambda: self.open_device_card())
+        ctrl_layout.addWidget(self.btn_device_card)
 
         content_layout.addLayout(ctrl_layout)
 
@@ -690,6 +697,7 @@ class GeminiApp(QMainWindow):
         self.table.customContextMenuRequested.connect(self.show_context_menu)
 
         self.table.itemDoubleClicked.connect(self.open_web_interface)
+        self.table.currentCellChanged.connect(lambda *_: self.update_device_card_button())
 
         # === СИНХРОНИЗАЦИЯ ГАЛОЧЕК И ВЫДЕЛЕНИЯ ===
         self.table.itemSelectionChanged.connect(self.sync_checkboxes_with_selection)
@@ -853,7 +861,11 @@ class GeminiApp(QMainWindow):
             for index, width in enumerate(widths):
                 self.table.setColumnWidth(index, self.app_settings["column_widths"].get(density, {}).get(all_cols[index], width))
             for index in range(len(widths), len(all_cols)):
-                self.table.setColumnWidth(index, self.app_settings["column_widths"].get(density, {}).get(all_cols[index], 155 if compact else 190))
+                code = all_cols[index]
+                default_width = ((170 if compact else 240) if code.startswith("Pool") else
+                                 (125 if compact else 170) if code.startswith("Worker") else
+                                 (155 if compact else 190))
+                self.table.setColumnWidth(index, self.app_settings["column_widths"].get(density, {}).get(code, default_width))
             header = self.table.horizontalHeader()
             for position, code in enumerate(self.app_settings["column_order"]):
                 header.moveSection(header.visualIndex(all_cols.index(code)), position)
@@ -1024,7 +1036,7 @@ class GeminiApp(QMainWindow):
             return
         self.remember_table_layout()
         self.app_settings.update(table_preset=code, ui_cols=list(TABLE_PRESETS[code][1]),
-                                 density="compact" if code == "compact" else "comfortable")
+                                 density="compact" if code in ("compact", "pools") else "comfortable")
         self.apply_ui_settings()
         self.queue_preference_save()
 
@@ -1261,6 +1273,12 @@ class GeminiApp(QMainWindow):
     def show_context_menu(self, pos):
         # Контекстное меню (ПКМ) в таблице
         menu = QMenu()
+        cell = self.table.itemAt(pos)
+        row_item = self.table.item(cell.row(), 0) if cell is not None else None
+        record = row_item.data(Qt.ItemDataRole.UserRole + 1) if row_item is not None else None
+        details = menu.addAction(tr('Карточка устройства'), lambda: self.open_device_card(record))
+        details.setEnabled(isinstance(record, dict) and bool(record.get('IP')))
+        menu.addSeparator()
         menu.addAction(tr('🔑 Настроить доступ к выбранным ASIC'), self.configure_device_access)
         menu.addAction(tr('Включить подсветку'), lambda: self.run_action("led_on"))
         menu.addAction(tr('Выключить подсветку'), lambda: self.run_action("led_off"))
@@ -1268,6 +1286,42 @@ class GeminiApp(QMainWindow):
         menu.addAction(tr('Перезагрузить'), lambda: self.run_action("reboot"))
         self.add_mining_actions(menu)
         menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def update_device_card_button(self):
+        index = self.table.currentRow()
+        self.btn_device_card.setEnabled(index >= 0 and not self.table.isRowHidden(index)
+                                       and not self._closing_requested)
+
+    def open_device_card(self, record=None):
+        """Inspect one frozen scan snapshot without changing batch selection."""
+        if self._closing_requested:
+            return None
+        if record is None:
+            index = self.table.currentRow()
+            if index < 0 or self.table.isRowHidden(index):
+                return None
+            item = self.table.item(index, 0)
+            record = item.data(Qt.ItemDataRole.UserRole + 1) if item else None
+        if not isinstance(record, dict) or not record.get('IP'):
+            return None
+        for dialog in self.device_dialogs:
+            if dialog.row.get('IP') == record['IP']:
+                dialog.show()
+                dialog.raise_()
+                dialog.activateWindow()
+                return dialog
+        dialog = DeviceDialog(record, access_profiles=self.access_profiles,
+                              app_version=CURRENT_VERSION, parent=self)
+        self.device_dialogs.append(dialog)
+
+        def release_dialog():
+            if dialog in self.device_dialogs:
+                self.device_dialogs.remove(dialog)
+            dialog.deleteLater()
+
+        dialog.finished.connect(release_dialog)
+        dialog.show()
+        return dialog
 
     def run_action(self, action_type, confirm_needed=True):
 
@@ -1668,12 +1722,14 @@ class GeminiApp(QMainWindow):
                     # Мы удалили hr_item.setData(...), чтобы сортировка работала по тексту (как в Avg HR)
                     self.table.setItem(r, 6, hr_item)
 
-                    # === 7, 8, 9, 10, 11 (Остальные) ===
+                    # === Remaining metrics and configured pool/worker slots ===
                     self.table.setItem(r, 7, SmartSortItem(str(row.get('Avg'))))
                     self.table.setItem(r, 8, SmartSortItem(str(row.get('Temp'))))
                     self.table.setItem(r, 9, QTableWidgetItem(str(row.get('Fan'))))
-                    self.table.setItem(r, 10, QTableWidgetItem(str(row.get('Pool'))))
-                    self.table.setItem(r, 11, QTableWidgetItem(str(row.get('Worker', '-'))))
+                    for code in POOL_COLUMNS:
+                        value = row.get(code)
+                        text = str(value) if value is not None and value != "" else "—"
+                        self.table.setItem(r, list(COLUMNS).index(code), QTableWidgetItem(text))
                     from desktop_ui.led_indicator import led_item
                     self.table.setItem(r, list(COLUMNS).index("LED"), led_item(row))
                     row["Modes"] = ", ".join(action for action, supported in (row.get("Capabilities") or {}).items()
@@ -1909,6 +1965,7 @@ class GeminiApp(QMainWindow):
             selected_cols = [c for c in all_cols if c in pdf_cols_setting]
 
             base_widths = {"IP": 28, "Model": 40, "Algo": 20, "Status": 20, "Error": 25, "Uptime": 20, "Real HR": 20, "Avg HR": 20, "Temp": 20, "Fan": 25, "Pool": 40, "Worker": 35}
+            base_widths.update({code: 40 if code.startswith("Pool") else 35 for code in POOL_COLUMNS})
             widths = [base_widths.get(c, 20) for c in selected_cols]
 
             # === ГЕНЕРАЦИЯ PDF ===
@@ -1932,9 +1989,9 @@ class GeminiApp(QMainWindow):
                     dict_key = data_keys.get(col_name, col_name)
                     text = safe_text(str(row.get(dict_key, '')))
 
-                    if col_name == "Pool" and len(text) > 35:
+                    if col_name in POOL_COLUMNS and col_name.startswith("Pool") and len(text) > 35:
                         clean_text = "..." + text[-32:]
-                    elif col_name == "Worker" and len(text) > 25:
+                    elif col_name in POOL_COLUMNS and col_name.startswith("Worker") and len(text) > 25:
                         clean_text = "..." + text[-22:]
                     else:
                         clean_text = text[:38]
@@ -2015,6 +2072,7 @@ class GeminiApp(QMainWindow):
             visible += int(matches)
         self.table.blockSignals(False)
         self.update_selected_count()
+        self.update_device_card_button()
         if self.scan_data and not visible:
             self.empty_title.setText(tr('Нет совпадений'))
             self.empty_description.setText(tr('Измените запрос или сбросьте фильтры. Скрытые устройства не участвуют в командах.'))
@@ -2048,7 +2106,10 @@ class GeminiApp(QMainWindow):
         self._closing_requested = True
         workers = list(getattr(self, "workers", []))
         workers += [getattr(self, "worker", None), getattr(self, "update_worker", None), getattr(self, "download_worker", None)]
-        if any(worker is not None and worker.isRunning() for worker in workers):
+        if any(worker is not None and worker.isRunning() for worker in workers) or any(
+                dialog.active for dialog in self.device_dialogs):
+            for dialog in self.device_dialogs:
+                dialog.request_stop()
             if self.command_batch_dialog is not None and self.command_batch_dialog.active:
                 self.command_batch_dialog.reject()
             download = getattr(self, "download_worker", None)
@@ -2080,6 +2141,8 @@ class GeminiApp(QMainWindow):
                 QMessageBox.warning(self, tr('Обновление'), tr('Не удалось запустить установку. Текущая программа продолжает работать.\n{p0}', p0=exc))
                 event.ignore()
                 return
+        for dialog in list(self.device_dialogs):
+            dialog.close()
         event.accept()
 
 if __name__ == "__main__":

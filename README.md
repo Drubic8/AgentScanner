@@ -25,6 +25,26 @@
 
 *На снимках демонстрационные данные; это не результаты испытаний реальных моделей.*
 
+## 2.6.0: карточка ASIC и чтение логов
+
+В Windows откройте **Карточку устройства** для выбранного ASIC. В ней доступны
+снимок показаний и прошивки, поддерживаемые команды, три настроенных пула/worker,
+а также отдельная вкладка **Логи устройства**.
+
+Журнал запрашивается вручную: Antminer Stock и VNish — майнер/система,
+WhatsMiner RPC 3 — текущие журналы из архива, Elphapex DG1/DG1+ — журнал майнера.
+У WhatsMiner загрузка может занимать до 60 секунд; для больших журналов показаны
+последние строки в пределах 2 МиБ с соответствующей пометкой.
+
+Доступны поиск, копирование, импорт сохранённого текстового файла и очищенный
+экспорт в TXT/ZIP с предпросмотром. Перед передачей проверьте очищенный текст:
+автоматическое скрытие не распознаёт все личные данные. Подключение внешнего ИИ
+пока не реализовано. Новые окна относятся к Windows; Android остаётся на 2.5.0.
+
+[Скачать Windows 2.6.0](https://github.com/Drubic8/AgentScanner/releases/tag/v2.6.0)
+· [Описание выпуска](docs/releases/2.6.0.md)
+· [Как читать и передавать логи](docs/user_guide.md).
+
 ## 2.5.0: проверка массовых команд и настройка шрифта
 
 Windows показывает отдельное окно проверки выбранных устройств до отправки
@@ -92,11 +112,11 @@ Get-FileHash .\ASIC_Monitor.exe -Algorithm SHA256
 |---|---|
 | Поиск устройств | IPv4, CIDR, короткие и полные интервалы; до 4096 уникальных IP на задание |
 | Сохранённые сети | Названия, поиск, галочки с сохранением выбора, проверка адресов при вводе |
-| Таблица | Модель, прошивка, состояние, хешрейт, температура, вентиляторы, пул и воркер — по данным API устройства |
+| Таблица | Модель, прошивка, состояние, хешрейт, температура, вентиляторы, отдельные Pool/Worker 1–3 — по данным API устройства |
 | Управление | Команды через профиль устройства; доступность зависит от модели, прошивки и проверки команды |
 | Отчёты | PDF, CSV, XLSX и снимок таблицы в буфер обмена |
 | Интерфейс | Светлая, тёмная и системная темы; настройка столбцов и плотности таблицы |
-| Диагностика | Сбор ответов API только для чтения, обезличивание и ZIP для анализа |
+| Логи и диагностика | Чтение поддерживаемых журналов по запросу, импорт текста, поиск, очищенный TXT и ZIP с предпросмотром |
 | Разработка | Ядро без Qt, каталог профилей, CLI и тесты с искусственными ответами |
 
 ### Совместимость с ASIC
@@ -206,7 +226,7 @@ Android, аппаратное подтверждение совместимос�
 
 ## English summary
 
-ASIC Monitor is a local Windows desktop application for ASIC discovery, telemetry and reports. Download `ASIC_Monitor.exe` from [Releases](https://github.com/Drubic8/AgentScanner/releases/latest); Python is not required for the executable. The Windows and Android interfaces support Russian and English; choose Interface language in Settings. The Python scanner core can be used without Qt. Device profiles exist for several firmware families, but hardware compatibility and control commands require validation on the exact device and firmware. Contributions and bug reports in Russian or English are welcome.
+ASIC Monitor is a local Windows desktop application for ASIC discovery, telemetry and reports. Download `ASIC_Monitor.exe` from [Releases](https://github.com/Drubic8/AgentScanner/releases/latest); Python is not required for the executable. Windows 2.6.0 adds device details, three pool/worker slots and on-demand logs for supported Antminer Stock, VNish, WhatsMiner RPC 3 and Elphapex interfaces, with text import, search and previewable redacted TXT/ZIP exports. AI integration is not implemented yet. Android remains at 2.5.0. The Windows and Android interfaces support Russian and English; choose Interface language in Settings. The Python scanner core can be used without Qt. Device profiles exist for several firmware families, but hardware compatibility and control commands require validation on the exact device and firmware. Contributions and bug reports in Russian or English are welcome.
 
 ## Лицензия
 

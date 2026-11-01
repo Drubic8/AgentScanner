@@ -3,7 +3,7 @@ import ipaddress
 from pathlib import Path
 import re
 import pandas as pd
-from .preferences import COLUMNS
+from .preferences import COLUMNS, POOL_COLUMNS
 from .spreadsheet_cells import csv_cell
 
 
@@ -16,6 +16,11 @@ def sorted_frame(records, column):
     frame = pd.DataFrame(records)
     if frame.empty:
         return frame
+    # Mixed scan snapshots can include older records without backup pools.
+    # Keep absent slots blank in exports and text sorting, rather than "nan".
+    for field in POOL_COLUMNS:
+        if field in frame:
+            frame[field] = frame[field].astype(object).where(frame[field].notna(), "")
     if column == "IP":
         def key(value):
             try:

@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QListWid
     QListWidgetItem, QStackedWidget, QWidget, QScrollArea, QFormLayout, QComboBox,
     QSpinBox, QCheckBox, QLineEdit, QPushButton, QFileDialog, QMessageBox,
     QFontComboBox, QGroupBox, QFrame)
-from .preferences import (COLUMNS, TABLE_PRESETS, normalize, data_directory,
+from .preferences import (COLUMNS, POOL_COLUMNS, TABLE_PRESETS, normalize, data_directory,
     DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE, INTERFACE_FONT_RANGE, TABLE_FONT_RANGE)
 from .fonts import available_font_family, font_css
 from .font_controls import CompactFontComboBox, FontSizeComboBox
@@ -287,7 +287,7 @@ class SettingsDialog(QDialog):
         for index in range(self.list_ui_cols.count()):
             item = self.list_ui_cols.item(index)
             item.setCheckState(Qt.CheckState.Checked if item.data(Qt.ItemDataRole.UserRole) in columns else Qt.CheckState.Unchecked)
-        self.density.setCurrentIndex(self.density.findData("compact" if code == "compact" else "comfortable"))
+        self.density.setCurrentIndex(self.density.findData("compact" if code in ("compact", "pools") else "comfortable"))
 
     def reset_table_layout(self):
         from .preferences import defaults
@@ -313,7 +313,7 @@ class SettingsDialog(QDialog):
         copy.setChecked(self.settings[f"copy_{kind}"])
         layout.addWidget(copy)
         sort = QComboBox()
-        for code in ("IP", "Model", "Uptime", "Real HR", "Temp", "Status"):
+        for code in ("IP", "Model", "Uptime", "Real HR", "Temp", "Status", *POOL_COLUMNS):
             sort.addItem(COLUMNS[code], code)
         sort.setCurrentIndex(max(0, sort.findData(self.settings[f"{kind}_sort"])))
         form = QFormLayout()

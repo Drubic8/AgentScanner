@@ -3,7 +3,8 @@
 
 def matches_device(record, *, query="", status="", model="", firmware="", led="", errors=False):
     text = " ".join(str(record.get(key) or "") for key in
-                    ("IP", "Model", "Firmware", "FirmwareVersion", "Worker", "Pool", "Error")).casefold()
+                    ("IP", "Model", "Firmware", "FirmwareVersion", "Worker", "Pool",
+                     "Worker2", "Pool2", "Worker3", "Pool3", "Error")).casefold()
     if not all(word in text for word in query.casefold().split()):
         return False
     if status and (not bool(record.get("Stale")) if status == "stale" else record.get("Status") != status):

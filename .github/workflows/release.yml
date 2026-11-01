@@ -1,4 +1,4 @@
-name: Publish Windows and Android release
+name: Publish ASIC Monitor release
 on:
   push:
     tags: ['v*']
@@ -8,12 +8,39 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      windows_version: ${{ steps.plan.outputs.windows_version }}
+      android_version: ${{ steps.plan.outputs.android_version }}
+      build_windows: ${{ steps.plan.outputs.build_windows }}
+      build_android: ${{ steps.plan.outputs.build_android }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Plan platform versions and leave existing releases untouched
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/release_plan.py plan --github-output "$GITHUB_OUTPUT"
   windows:
+    needs: plan
+    if: needs.plan.outputs.build_windows == 'true'
     uses: ./.github/workflows/windows-build.yml
   android:
+    needs: plan
+    if: needs.plan.outputs.build_android == 'true'
     uses: ./.github/workflows/android.yml
   publish:
-    needs: [windows, android]
+    needs: [plan, windows, android]
+    if: >-
+      always() && needs.plan.result == 'success' && needs.windows.result == 'success' &&
+      ((needs.plan.outputs.build_android == 'true' && needs.android.result == 'success') ||
+       (needs.plan.outputs.build_android == 'false' && needs.android.result == 'skipped'))
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -21,29 +48,53 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recheck release before downloading artifacts
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/release_plan.py check-publication --github-output "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v4
+        if: steps.guard.outputs.publish_allowed == 'true'
         with:
           name: ASIC-Monitor-Windows
           path: release/windows
       - uses: actions/download-artifact@v4
+        if: steps.guard.outputs.publish_allowed == 'true' && needs.plan.outputs.build_android == 'true'
         with:
           name: ASIC-Monitor-Android
           path: release/android
-      - name: Verify assets and publish
+      - name: Verify platform checksums and prepare release assets
+        if: steps.guard.outputs.publish_allowed == 'true'
+        run: python scripts/release_plan.py prepare-assets
+      - name: Recheck release immediately before publication
+        id: final_guard
+        if: steps.guard.outputs.publish_allowed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+        run: python scripts/release_plan.py check-publication --github-output "$GITHUB_OUTPUT"
+      - name: Publish a new release
+        if: steps.final_guard.outputs.publish_allowed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WINDOWS_VERSION: ${{ needs.plan.outputs.windows_version }}
+          ANDROID_VERSION: ${{ needs.plan.outputs.android_version }}
+          INCLUDE_ANDROID: ${{ needs.plan.outputs.build_android }}
         shell: bash
         run: |
           set -euo pipefail
-          version=$(python -c 'import json; print(json.load(open("version.json"))["version"])')
+          version="$WINDOWS_VERSION"
           test "$GITHUB_REF_NAME" = "v$version"
           test -f "docs/releases/$version.md"
-          (cd release/windows && sha256sum -c SHA256SUMS.txt)
-          (cd release/android && sha256sum -c SHA256SUMS.txt)
-          cp release/windows/ASIC_Monitor.exe release/
-          cp "release/android/ASIC_Monitor-android-${version}-test.apk" release/
-          (cd release && sha256sum ASIC_Monitor.exe "ASIC_Monitor-android-${version}-test.apk" > SHA256SUMS.txt)
+          assets=(release/ASIC_Monitor.exe release/SHA256SUMS.txt)
+          title="ASIC Monitor $version — Windows"
+          if [ "$INCLUDE_ANDROID" = true ]; then
+            assets+=("release/ASIC_Monitor-android-${ANDROID_VERSION}-test.apk")
+            title="ASIC Monitor $version — Windows и Android (тестовый APK)"
+          fi
           gh release create "$GITHUB_REF_NAME" --verify-tag --latest \
-            --title "ASIC Monitor $version — Windows и Android (тестовый APK)" \
+            --title "$title" \
             --notes-file "docs/releases/$version.md" \
-            release/ASIC_Monitor.exe "release/ASIC_Monitor-android-${version}-test.apk" release/SHA256SUMS.txt
+            "${assets[@]}"

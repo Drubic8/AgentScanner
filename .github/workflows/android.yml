@@ -53,7 +53,7 @@ jobs:
       - name: Prepare test distribution
         run: |
           mkdir -p android-dist
-          version=$(python -c 'import json; print(json.load(open("version.json"))["version"])')
+          version=$(python scripts/release_plan.py android-version)
           cp apps/android/app/build/outputs/apk/debug/app-debug.apk "android-dist/ASIC_Monitor-android-${version}-test.apk"
           cd android-dist
           sha256sum *.apk > SHA256SUMS.txt

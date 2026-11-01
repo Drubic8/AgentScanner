@@ -12,17 +12,21 @@ COLUMNS = {
     "IP": "IP", "Model": "Model", "Algo": "Algo", "Status": "State",
     "Error": "Errors", "Uptime": "Uptime", "Real HR": "Real Hash",
     "Avg HR": "Avg Hash", "Temp": "Temp", "Fan": "Fans",
-    "Pool": "Pool", "Worker": "Worker", "LED": "LED",
+    "Pool": "Pool 1", "Worker": "Worker 1", "LED": "LED",
 }
 BASE_COLUMNS = list(COLUMNS)
 COLUMNS.update(Firmware="Firmware", FirmwareVersion="Version", Modes="Modes")
+# Keep the original logical IDs/positions for saved layouts and older exports.
+# Pool/Worker remain slot 1; secondary slots are opt-in in the main overview.
+POOL_COLUMNS = ("Pool", "Worker", "Pool2", "Worker2", "Pool3", "Worker3")
+COLUMNS.update(Pool2="Pool 2", Worker2="Worker 2", Pool3="Pool 3", Worker3="Worker 3")
 
 # Logical column IDs never change: existing exports and saved preferences use them.
 TABLE_PRESETS = {
     "overview": ("Обзор", BASE_COLUMNS),
     "compact": ("Компактный", ["IP", "LED", "Model", "Status", "Error", "Real HR", "Temp"]),
     "diagnostics": ("Диагностика", ["IP", "LED", "Model", "Status", "Error", "Uptime", "Real HR", "Avg HR", "Temp", "Fan", "Firmware", "FirmwareVersion"]),
-    "pools": ("Пулы и воркеры", ["IP", "Model", "Status", "Real HR", "Pool", "Worker"]),
+    "pools": ("Пулы и воркеры", ["IP", "Model", "Status", "Real HR", *POOL_COLUMNS]),
     "management": ("Управление", ["IP", "LED", "Model", "Status", "Error", "Real HR", "Firmware", "Modes"]),
 }
 
@@ -83,6 +87,10 @@ def normalize(settings):
     result["journal_language"] = result["language"]  # Compatibility with older settings files.
     if result["table_preset"] not in (*TABLE_PRESETS, "custom"):
         result["table_preset"] = "custom"
+    # Expand the old built-in pools preset, preserving explicitly custom views.
+    legacy_pools = {"IP", "Model", "Status", "Real HR", "Pool", "Worker"}
+    if result["table_preset"] == "pools" and set(result["ui_cols"]) - {"LED"} == legacy_pools:
+        result["ui_cols"] = list(TABLE_PRESETS["pools"][1]) + (["LED"] if "LED" in result["ui_cols"] else [])
     order = settings.get("column_order")
     if isinstance(order, list):
         result["column_order"] = ["IP"]

@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from desktop_ui.preferences import defaults, load_json, normalize, write_json
 from scripts.build_windows import release_version
+from scripts.release_plan import make_plan, release_versions
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -41,10 +42,14 @@ class PreferenceTests(unittest.TestCase):
     def test_release_versions_match(self):
         version, parts = release_version()
         self.assertEqual(parts, tuple(map(int, version.split("."))))
-        import re
-        android = (Path(__file__).resolve().parents[1] / 'apps/android/app/build.gradle.kts').read_text(encoding='utf-8')
-        self.assertEqual(re.search(r'versionName\s*=\s*"([^"]+)"', android).group(1), version)
-        self.assertGreater(int(re.search(r'versionCode\s*=\s*(\d+)', android).group(1)), 1)
+        root = Path(__file__).resolve().parents[1]
+        metadata = release_versions(root)
+        self.assertEqual(metadata['windows_version'], version)
+        android_parts = tuple(map(int, metadata['android_version'].split('.')))
+        self.assertEqual(metadata['android_code'], android_parts[0] * 10000 + android_parts[1] * 100 + android_parts[2])
+        plan = make_plan(root, 'v' + version)
+        self.assertTrue(plan['build_windows'])
+        self.assertEqual(plan['build_android'], metadata['android_version'] == version)
 
 
 @unittest.skipUnless(importlib.util.find_spec("PyQt6") and importlib.util.find_spec("pandas") and importlib.util.find_spec("fpdf"), "Desktop dependencies not installed")

@@ -134,10 +134,14 @@ class GoldshellTests(unittest.TestCase):
             {'url': 'stratum+tcp://unused.example', 'user': 'unused', 'active': False},
             {'url': 'stratum+tcp://active.example', 'user': 'demo.worker', 'pass': 'demo', 'active': True}]
         before = self.record()
-        self.assertEqual(before.display['Worker'], 'demo.worker')
-        self.assertEqual(before.display['Pool'], 'stratum+tcp://active.example')
+        self.assertEqual(before.display['Worker'], 'unused')
+        self.assertEqual(before.display['Pool'], 'stratum+tcp://unused.example')
+        self.assertEqual(before.display['Worker2'], 'demo.worker')
+        self.assertEqual(before.display['Pool2'], 'stratum+tcp://active.example')
         self.data['goldshell_pools'][1].update(user='new.worker', Type='Antminer S21', firmware_version='wrong')
         after = self.record()
+        self.assertEqual(after.display['Worker'], 'unused')
+        self.assertEqual(after.display['Worker2'], 'new.worker')
         self.assertEqual(before.identity.fingerprint, after.identity.fingerprint)
         self.assertEqual(ProfileRegistry().resolve(self.data).id, 'goldshell.mcb')
         self.assertIsNone(ProfileRegistry().resolve({'goldshell_pools': self.data['goldshell_pools']}))

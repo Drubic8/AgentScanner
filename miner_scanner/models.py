@@ -2,6 +2,7 @@
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
+from .pools import POOL_FIELDS
 
 
 def utc_now() -> str:
@@ -77,7 +78,7 @@ class DeviceRecord:
         if self.telemetry.stale:
             # Retain the historical snapshot internally, never present its metrics
             # as a new measurement to legacy GUI/export consumers.
-            for key in ("Real", "Avg", "Uptime", "Temp", "Fan", "Pool", "Worker"):
+            for key in ("Real", "Avg", "Uptime", "Temp", "Fan", *POOL_FIELDS):
                 result[key] = "—"
             result["RawHash"] = None
             result["Status"] = "Unknown"

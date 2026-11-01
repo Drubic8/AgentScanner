@@ -522,5 +522,7 @@
   "Сбой обработки команды; результат неизвестен. Команда не повторяется автоматически.": "Command processing failed; the outcome is unknown. The command is not retried automatically.",
   "Не удалось подтвердить актуальность профиля": "Could not confirm that the device profile is current",
   "Сначала выполните идентификацию устройства": "Identify the device first",
+  "Карточка устройства": "Device details",
+  "Выберите строку устройства, чтобы открыть сведения и логи": "Select a device row to view details and logs",
   "Программа закрывается. Команда не отправлялась.": "The application is closing. No command was sent."
 }

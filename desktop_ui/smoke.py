@@ -2,10 +2,13 @@
 import json
 import traceback
 import os
+import time
 from copy import deepcopy
 from PyQt6 import sip
 from pathlib import Path
+from threading import Event
 from unittest.mock import patch
+from zipfile import ZipFile
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
@@ -142,6 +145,122 @@ def _command_review_smoke(app, window, output):
         dialog.close()
 
 
+def _wait_for_smoke(app, condition, *, seconds=10):
+    deadline = time.monotonic() + seconds
+    while not condition() and time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(.005)
+    app.processEvents()
+    assert condition(), 'Device log worker exceeded the offline smoke budget'
+
+
+def _device_logs_smoke(app, window, output):
+    """Exercise the packaged card, import, redacted exports and close lifetime."""
+    from . import device_dialog as device_module
+
+    artifacts = Path(output) / 'device-card-smoke'
+    artifacts.mkdir(parents=True, exist_ok=True)
+    row = dict(IP='192.0.2.250', Model='Antminer T21', Make='Bitmain',
+        Firmware='Stock', FirmwareVersion='demo-card', ProfileId='bitmain.stock',
+        Status='Running', Real='188.50 TH/s', Avg='187.20 TH/s', Temp='65 66 67',
+        Fan='4200 4300', Uptime='2d 4h', Error='',
+        Identity={'ip': '192.0.2.250', 'profile_id': 'bitmain.stock',
+                  'serial': 'DEMO-CARD-SN', 'mac': '00:11:22:33:44:55'},
+        Telemetry={'observed_at': '2026-11-01T09:00:00+00:00', 'stale': False},
+        Capabilities={'sleep': 'supported'},
+        Pool='stratum+tcp://pool-one.example.invalid:3333', Worker='demo.owner.rig-one',
+        Pool2='stratum+tcp://pool-two.example.invalid:3333', Worker2='demo.owner.rig-two',
+        Pool3='stratum+tcp://pool-three.example.invalid:3333', Worker3='demo.owner.rig-three')
+    source = artifacts / 'source.log'
+    raw = ('chain[2] temperature sensor failed\n'
+           'worker=demo.owner.rig-one\nbackup: demo.owner.rig-two\n'
+           'third: demo.owner.rig-three\ntarget: 192.0.2.250\nserial=DEMO-CARD-SN\n')
+    source.write_text(raw, encoding='utf-8')
+    text_path, zip_path = artifacts / 'redacted.txt', artifacts / 'diagnostics.zip'
+    # The explicit smoke flag uses a disposable output directory. Remove only
+    # this check's own previous artifacts so exclusive exports are exercised.
+    for path in (text_path, zip_path):
+        path.unlink(missing_ok=True)
+    card = None
+    cancel_card = None
+    try:
+        with patch.object(device_module, 'read_device_log',
+                          side_effect=AssertionError('Opening/importing a card must not fetch a device')) as read:
+            card = window.open_device_card(row)
+            assert card is not None and not card.active
+            app.processEvents()
+            for slot in range(3):
+                suffix = '' if slot == 0 else str(slot + 1)
+                assert card.pool_table.item(slot, 1).text() == row['Pool' + suffix]
+                assert card.pool_table.item(slot, 2).text() == row['Worker' + suffix]
+            card.tabs.setCurrentIndex(1)
+            app.processEvents()
+            assert card.grab().save(str(Path(output) / 'device-card-pools.png'))
+            card.tabs.setCurrentIndex(2)
+            with patch.object(device_module.QFileDialog, 'getOpenFileName', return_value=(str(source), '')):
+                card.open_button.click()
+                _wait_for_smoke(app, lambda: not card.active)
+            read.assert_not_called()
+        assert card.log_result.status == 'succeeded' and card.log_result.kind == 'imported'
+        assert card.log_text.toPlainText() == raw
+        card.search.setText('temperature')
+        card.find_next()
+        assert card.log_text.textCursor().selectedText() == 'temperature'
+        card.copy_button.click()
+        assert app.clipboard().text() == 'temperature'
+        preview = card.preview.toPlainText()
+        for private in ('192.0.2.250', 'DEMO-CARD-SN', row['Worker'], row['Worker2'], row['Worker3']):
+            assert private not in preview, 'Diagnostic preview retained a fixture identifier'
+        assert 'temperature sensor failed' in preview
+        assert card.grab().save(str(Path(output) / 'device-card-logs.png'))
+        with patch.object(device_module.QFileDialog, 'getSaveFileName', return_value=(str(text_path), '')):
+            card.save_log_button.click()
+        with patch.object(device_module.QFileDialog, 'getSaveFileName', return_value=(str(zip_path), '')):
+            card.export_button.click()
+        assert text_path.read_text(encoding='utf-8') == card.bundle['log']['text']
+        with ZipFile(zip_path) as archive:
+            assert archive.namelist() == ['manifest.json', 'device.json', 'device.log']
+            payloads = [(name, archive.read(name).decode('utf-8')) for name in archive.namelist()]
+        assert '\n\n'.join(f'--- {name} ---\n{text}' for name, text in payloads) == preview
+        assert dict(payloads)['device.log'] == text_path.read_text(encoding='utf-8')
+        card.tabs.setCurrentIndex(3)
+        app.processEvents()
+        assert card.grab().save(str(Path(output) / 'device-card-diagnostics.png'))
+        card.close()
+        app.processEvents()
+        assert card not in window.device_dialogs
+        card = None
+
+        started, cancelled = Event(), Event()
+        outcomes = []
+        def blocked_read(row, kind, *, access_profiles, cancel):
+            started.set()
+            if cancel.wait(5):
+                cancelled.set()
+            return device_module.DeviceLogResult('cancelled', kind=kind)
+        with patch.object(device_module, 'read_device_log', side_effect=blocked_read):
+            cancel_card = window.open_device_card(dict(row, IP='192.0.2.251',
+                Identity={'ip': '192.0.2.251', 'profile_id': 'bitmain.stock'}))
+            cancel_card.idle.connect(lambda: outcomes.append(cancel_card.log_result.status))
+            cancel_card.fetch_button.click()
+            _wait_for_smoke(app, started.is_set)
+            assert cancel_card.active
+            cancel_card.close()
+            _wait_for_smoke(app, lambda: cancelled.is_set() and cancel_card not in window.device_dialogs)
+        assert outcomes == ['cancelled']
+        cancel_card = None
+    finally:
+        for dialog in (card, cancel_card):
+            if dialog is not None:
+                dialog.request_stop()
+                _wait_for_smoke(app, lambda: not dialog.active)
+                dialog.close()
+        app.processEvents()
+    return dict(device_card=True, pool_slots_1_3=True, device_log_import=True,
+                diagnostic_exports=['txt', 'zip'], diagnostic_preview_matches_zip=True,
+                device_log_cancel_close=True)
+
+
 def run_smoke(app, window_type, output):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
@@ -244,6 +363,7 @@ def run_smoke(app, window_type, output):
         english_settings.close()
         _font_controls_smoke(app, window, output)
         _command_review_smoke(app, window, output)
+        device_logs = _device_logs_smoke(app, window, output)
         journal.outcome.setCurrentIndex(journal.outcome.findData("unconfirmed"))
         assert journal.proxy.rowCount() == 6
         app.processEvents()
@@ -308,7 +428,7 @@ def run_smoke(app, window_type, output):
         result = {"ok": True, "version": app.applicationVersion(), "synthetic_rows": len(rows),
                   "profiles": len(registry.profiles), "exports": ["clipboard_png", "csv", "xlsx", "pdf"], "network_used": False,
                   "subnet_checkbox_lifetime": True, "editable_font_controls": True,
-                  "bulk_command_review": True}
+                  "bulk_command_review": True, **device_logs}
         (output / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
         return 0
     except Exception:
