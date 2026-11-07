@@ -370,7 +370,7 @@ class DeadlineTransportTests(unittest.TestCase):
                 raise AssertionError("TLS socket was not interrupted")
             raise OSError("synthetic secret")
         tls.do_handshake = handshake
-        context = SimpleNamespace(wrap_socket=lambda *args, **kw: tls)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         timer = threading.Timer(0.07, event.set)
         try:
             timer.start()
@@ -378,7 +378,8 @@ class DeadlineTransportTests(unittest.TestCase):
             with patch("miner_scanner.ai.yandex.socket.getaddrinfo", return_value=[
                     (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.0.2.1", 443))]) as resolve, \
                     patch("miner_scanner.ai.yandex.socket.socket", return_value=raw) as connect, \
-                    patch("miner_scanner.ai.yandex.ssl.create_default_context", return_value=context):
+                    patch("miner_scanner.ai.yandex.ssl.create_default_context", return_value=context), \
+                    patch.object(context, "wrap_socket", return_value=tls) as wrap:
                 with self.assertRaises(AnalysisError) as error:
                     _read_response(b"{}", {}, event, 1)
             elapsed = time.monotonic() - start
@@ -389,6 +390,9 @@ class DeadlineTransportTests(unittest.TestCase):
         self.assertLess(elapsed, 0.8)
         connect.assert_called_once()
         resolve.assert_called_once()
+        wrap.assert_called_once_with(raw, server_hostname="ai.api.cloud.yandex.net", do_handshake_on_connect=False)
+        self.assertTrue(context.check_hostname)
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
         self.assertTrue(tls.stopped.is_set() and tls.closed)
         self.assert_no_watchers()
 
@@ -401,13 +405,14 @@ class DeadlineTransportTests(unittest.TestCase):
         bad.connect = failed
         good.connect = lambda address: attempts.append(address)
         tls.do_handshake = lambda: None
-        context = SimpleNamespace(wrap_socket=lambda *args, **kw: tls)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         addresses = [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2001:db8::1", 443, 0, 0)),
                      (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.0.2.1", 443))]
         with _RequestAbort(Event(), 20) as abort:
             with patch("miner_scanner.ai.yandex.socket.getaddrinfo", return_value=addresses) as resolve, \
                     patch("miner_scanner.ai.yandex.socket.socket", side_effect=[bad, good]) as sockets, \
-                    patch("miner_scanner.ai.yandex.ssl.create_default_context", return_value=context):
+                    patch("miner_scanner.ai.yandex.ssl.create_default_context", return_value=context), \
+                    patch.object(context, "wrap_socket", return_value=tls) as wrap:
                 connection = _CancellableHTTPSConnection(abort)
                 try:
                     connection.connect()
@@ -418,6 +423,9 @@ class DeadlineTransportTests(unittest.TestCase):
         self.assertLessEqual(good.timeout, bad.timeout)
         self.assertEqual(sockets.call_count, 2)
         resolve.assert_called_once()
+        wrap.assert_called_once_with(good, server_hostname="ai.api.cloud.yandex.net", do_handshake_on_connect=False)
+        self.assertTrue(context.check_hostname)
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
         self.assert_no_watchers()
 
     def test_failed_candidate_cannot_reset_tcp_budget_for_each_address(self):
