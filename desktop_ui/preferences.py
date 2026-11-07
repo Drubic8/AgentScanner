@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 from .storage import atomic_write, data_directory
+from miner_scanner.ai.settings import AnalysisConfig
 
 DEFAULT_FONT_FAMILY = "Segoe UI"
 DEFAULT_FONT_SIZE = 13
@@ -39,7 +40,7 @@ def defaults():
                 column_order=["IP", "LED"] + [c for c in COLUMNS if c not in ("IP", "LED")],
                 column_widths={}, auto_fit_columns=True, export_dir="", export_csv_dir="", copy_pdf=False,
                 copy_csv=False, pdf_sort="IP", csv_sort="IP", ui_cols=list(BASE_COLUMNS),
-                pdf_cols=list(BASE_COLUMNS), csv_cols=list(BASE_COLUMNS))
+                pdf_cols=list(BASE_COLUMNS), csv_cols=list(BASE_COLUMNS), ai=AnalysisConfig().to_mapping())
 
 
 def normalize(settings):
@@ -103,6 +104,10 @@ def normalize(settings):
             if isinstance(values, dict):
                 result["column_widths"][density] = {code: width for code, width in values.items()
                     if code in COLUMNS and isinstance(width, int) and not isinstance(width, bool) and 36 <= width <= 32768}
+    try:
+        result['ai'] = AnalysisConfig.from_mapping(settings.get('ai', {})).to_mapping()
+    except (ValueError, TypeError):
+        result['ai'] = AnalysisConfig().to_mapping()
     return result
 
 

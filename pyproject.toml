@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 dependencies = ["requests>=2.31,<3", "urllib3>=2.2,<3"]
 
 [project.optional-dependencies]
-desktop = ["PyQt6>=6.6,<7", "pandas>=2.2,<3", "openpyxl>=3.1,<4", "fpdf2>=2.8,<3"]
+desktop = ["PyQt6>=6.6,<7", "pandas>=2.2,<3", "openpyxl>=3.1,<4", "fpdf2>=2.8,<3", "PyJWT[crypto]>=2.15.1,<3"]
 legacy-crypto = ["pycryptodome>=3.20,<4"]
 
 [project.scripts]
@@ -21,3 +21,4 @@ include = ["miner_scanner*"]
 
 [tool.setuptools.package-data]
 "miner_scanner.profiles" = ["*.json"]
+"miner_scanner.ai" = ["skills/*/SKILL.md"]

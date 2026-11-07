@@ -33,6 +33,7 @@ docs/pyasic_docs/
 
 # 5. РАЗРЕШИТЬ python-файлы внутри рабочей папки (но не кэш)
 !miner_scanner/**/*.py
+!miner_scanner/ai/skills/*/SKILL.md
 
 # 6. РАЗРЕШИТЬ папку с документацией
 !docs/**
@@ -113,6 +114,10 @@ docs/Whatsminer demo/
 /ip_ranges.json
 /app_settings.json
 /access_profiles.dat
+/ai_credentials.dat
+/chatgpt_credentials*
+/.chatgpt-*
+/.ai-key-*
 /.asic-monitor-storage.json
 /.settings-backup/
 /updates/

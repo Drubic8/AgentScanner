@@ -21,6 +21,7 @@ from miner_scanner.device_logs import (DeviceLogResult, load_log_file,
     read_device_log, supported_log_kinds)
 from miner_scanner.diagnostic_bundle import build_bundle, bundle_preview, write_bundle
 from .i18n import action_label, get_language
+from .ai_panel import AIAnalysisPanel
 
 
 TEXT = {
@@ -155,7 +156,7 @@ class _LogWorker(QThread):
 class DeviceDialog(QDialog):
     idle = pyqtSignal()
 
-    def __init__(self, row, *, access_profiles, app_version, parent=None):
+    def __init__(self, row, *, access_profiles, app_version, parent=None, ai_config=None, ai_store=None, chatgpt_store=None):
         super().__init__(parent)
         self.row = deepcopy(row)
         self.access_profiles, self.app_version = access_profiles, app_version
@@ -183,6 +184,11 @@ class DeviceDialog(QDialog):
         self._pools()
         self._logs()
         self._diagnostics()
+        self.ai_panel = AIAnalysisPanel(config=ai_config, store=ai_store,
+                                       chatgpt_store=chatgpt_store, language=self.language, parent=self)
+        self.tabs.addTab(self.ai_panel, self.ai_panel._t('title'))
+        self.ai_panel.idle.connect(self._ai_idle)
+        self.ai_panel.activity_changed.connect(self._ai_activity)
         footer = QHBoxLayout()
         self.notice = _plain_label('', muted=True)
         footer.addWidget(self.notice, 1)
@@ -197,7 +203,7 @@ class DeviceDialog(QDialog):
 
     @property
     def active(self):
-        return self._worker is not None
+        return self._worker is not None or self.ai_panel.active
 
     @property
     def stale(self):
@@ -443,6 +449,7 @@ class DeviceDialog(QDialog):
         if not kind:
             return
         self.notice.clear()
+        self.ai_panel.invalidate()
         self.log_result = None
         self.bundle = None
         self.log_text.clear()
@@ -517,15 +524,34 @@ class DeviceDialog(QDialog):
         self.kind_box.setEnabled(kinds)
         self.fetch_button.setEnabled(kinds)
         self._update_preview()
+        if self.log_result.status == 'succeeded':
+            self.ai_panel.set_bundle(self.bundle)
+        else:
+            self.ai_panel.invalidate()
         self.idle.emit()
         if self._close_pending:
             self.reject()
 
     def request_stop(self):
+        self.ai_panel.request_stop()
         if self._worker is not None:
             self._worker.cancel.set()
             self.cancel_button.setEnabled(False)
             self.log_status.setText(self._t('cancelling'))
+
+    def _ai_idle(self):
+        self._update_preview()
+        self.idle.emit()
+        if self._close_pending and not self.active:
+            self.reject()
+
+    def _ai_activity(self):
+        available = not self.active and not self._close_pending
+        kinds = bool(supported_log_kinds(self.row))
+        self.fetch_button.setEnabled(available and kinds)
+        self.kind_box.setEnabled(available and kinds)
+        self.open_button.setEnabled(available)
+        self._update_preview()
 
     def find_next(self, checked=False, *, backward=False):
         query = self.search.text()

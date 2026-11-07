@@ -143,7 +143,7 @@ def build_bundle(row, log_result=None, *, app_version="", secrets=()):
     snapshot["telemetry"]["stale"] = row.get("Stale") is True or telemetry.get("stale") is True
     led = telemetry.get("identify_enabled", row.get("IdentifyEnabled"))
     snapshot["telemetry"]["identify_enabled"] = led if type(led) is bool else None
-    for field in ("Status", "Error", "ErrorDetail", "Algo", "Real", "Avg", "Uptime", "Temp", "Fan"):
+    for field in ("Status", "Error", "ErrorDetail", "ErrorDetails", "Algo", "Real", "Avg", "Uptime", "Temp", "Fan"):
         if field in row:
             value = row[field]
             snapshot["display"][field] = clean(value) if isinstance(value, str) else _number(value)

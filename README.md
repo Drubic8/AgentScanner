@@ -38,12 +38,33 @@ WhatsMiner RPC 3 — текущие журналы из архива, Elphapex D
 
 Доступны поиск, копирование, импорт сохранённого текстового файла и очищенный
 экспорт в TXT/ZIP с предпросмотром. Перед передачей проверьте очищенный текст:
-автоматическое скрытие не распознаёт все личные данные. Подключение внешнего ИИ
-пока не реализовано. Новые окна относятся к Windows; Android остаётся на 2.5.0.
+автоматическое скрытие не распознаёт все личные данные. В опубликованном EXE
+2.6.0 подключения ИИ ещё нет. Новые окна относятся к Windows; Android остаётся на 2.5.0.
 
 [Скачать Windows 2.6.0](https://github.com/Drubic8/AgentScanner/releases/tag/v2.6.0)
 · [Описание выпуска](docs/releases/2.6.0.md)
 · [Как читать и передавать логи](docs/user_guide.md).
+
+### В текущих исходниках: ИИ-анализ логов
+
+В карточке ASIC доступен анализ через **Yandex AI Studio** или **аккаунт ChatGPT**.
+Встроенная инструкция задаёт формат диагностики; программа проверяет структуру
+заключения и ссылки на переданные строки лога и показания. Пользователь видит
+очищенный запрос и подтверждает каждую отправку. Заключение можно скопировать
+или сохранить в TXT.
+
+Для Яндекса нужны API-ключ, каталог и доступный баланс. Для ChatGPT используется
+официальный вход в браузере и список моделей аккаунта; доступ зависит от
+аккаунта, плана и региона. Ключ и сессии хранятся отдельно от обычных настроек,
+с защитой Windows DPAPI.
+
+ИИ доступен при [запуске из исходников](#запуск-из-исходников), но пока не входит
+в опубликованный Windows EXE 2.6.0 и Android APK 2.5.0.
+
+[Подключить Яндекс ИИ](docs/user_guide_ai.md)
+· [Войти через ChatGPT](docs/user_guide_chatgpt.md)
+· [Встроенный skill](miner_scanner/ai/skills/asic-monitor/SKILL.md)
+· [Контракты и ограничения](docs/development/ai_analysis.md).
 
 ## 2.5.0: проверка массовых команд и настройка шрифта
 
@@ -226,7 +247,25 @@ Android, аппаратное подтверждение совместимос�
 
 ## English summary
 
-ASIC Monitor is a local Windows desktop application for ASIC discovery, telemetry and reports. Download `ASIC_Monitor.exe` from [Releases](https://github.com/Drubic8/AgentScanner/releases/latest); Python is not required for the executable. Windows 2.6.0 adds device details, three pool/worker slots and on-demand logs for supported Antminer Stock, VNish, WhatsMiner RPC 3 and Elphapex interfaces, with text import, search and previewable redacted TXT/ZIP exports. AI integration is not implemented yet. Android remains at 2.5.0. The Windows and Android interfaces support Russian and English; choose Interface language in Settings. The Python scanner core can be used without Qt. Device profiles exist for several firmware families, but hardware compatibility and control commands require validation on the exact device and firmware. Contributions and bug reports in Russian or English are welcome.
+ASIC Monitor is a local Windows desktop application for ASIC discovery, telemetry
+and reports. Download `ASIC_Monitor.exe` from
+[Releases](https://github.com/Drubic8/AgentScanner/releases/latest); Python is not
+required for the executable. Windows 2.6.0 includes device details, three
+pool/worker slots and on-demand logs for supported Antminer Stock, VNish,
+WhatsMiner RPC 3 and Elphapex interfaces, with text import, search and previewable
+redacted TXT/ZIP exports. Android remains at 2.5.0. Both interfaces support
+Russian and English; choose Interface language in Settings.
+
+Current source adds opt-in analysis through [Yandex AI Studio](docs/user_guide_ai.md)
+or [Sign in with ChatGPT](docs/user_guide_chatgpt.md). Each request requires review
+and consent; assessments must pass schema and evidence-reference validation.
+Assessments can be copied or saved as TXT. **AI is available from source and is
+not included in the published Windows 2.6.0 EXE or Android 2.5.0 APK.**
+
+The Python scanner core can be used without Qt. Device profiles cover several
+firmware families; compatibility and control commands require validation on the
+exact device and firmware. Contributions and bug reports in Russian or English
+are welcome.
 
 ## Лицензия
 

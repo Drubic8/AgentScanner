@@ -8,6 +8,7 @@ sys.path.insert(0, str(root))
 from scripts.build_windows import validate_native_sources
 
 resources = collect_data_files("miner_scanner.profiles")
+resources += collect_data_files("miner_scanner.ai", includes=["skills/*/SKILL.md"])
 resources += collect_data_files("desktop_ui", includes=["locales/*.json"])
 resources += [(str(root / name), ".") for name in ("version.json", "app.ico", "LICENSE")]
 a = Analysis(

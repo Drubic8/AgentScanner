@@ -826,6 +826,7 @@ class GeminiApp(QMainWindow):
     def open_settings_dialog(self):
         self.remember_table_layout()
         dlg = SettingsDialog(self.app_settings, self, configure_access=self.configure_device_access)
+        dlg.ai_session_changed.connect(self._ai_session_changed)
         if dlg.exec(): # Если нажали Сохранить
             try:
                 save_app_settings(dlg.settings)
@@ -837,6 +838,12 @@ class GeminiApp(QMainWindow):
             self.change_application_language(self.app_settings["language"], preserve_layout=False)
             self.apply_theme()
             self.apply_ui_settings(restore=True)
+            for device_dialog in self.device_dialogs:
+                device_dialog.ai_panel.set_config(self.app_settings.get('ai', {}))
+
+    def _ai_session_changed(self):
+        for device_dialog in self.device_dialogs:
+            device_dialog.ai_panel.refresh_session()
 
     def apply_ui_settings(self, *, restore=False):
         """Apply table layout; keep manual column sizes until density changes."""
@@ -1311,7 +1318,8 @@ class GeminiApp(QMainWindow):
                 dialog.activateWindow()
                 return dialog
         dialog = DeviceDialog(record, access_profiles=self.access_profiles,
-                              app_version=CURRENT_VERSION, parent=self)
+                              app_version=CURRENT_VERSION, parent=self,
+                              ai_config=self.app_settings.get('ai', {}))
         self.device_dialogs.append(dialog)
 
         def release_dialog():

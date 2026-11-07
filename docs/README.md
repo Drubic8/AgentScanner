@@ -4,6 +4,8 @@
 
 - [Установка, сети, доступ к ASIC, отчёты и устранение проблем](user_guide.md)
 - [Автоматический доступ и сохранённые профили паролей Windows](access_profiles.md)
+- [ИИ в текущих исходниках: подключение Yandex AI Studio](user_guide_ai.md)
+- [ИИ в текущих исходниках: вход через аккаунт ChatGPT](user_guide_chatgpt.md)
 - [Android: установка APK, возможности и локальная сборка](../apps/android/README.md)
 - [Что нового](../CHANGELOG.md)
 - [Диагностика и аппаратные испытания](testing/README.md)
@@ -15,6 +17,8 @@
 - [Участие в разработке](../CONTRIBUTING.md)
 - [Архитектура и границы текущего рефакторинга](architecture/scanner_refactoring.md)
 - [Добавление устройств и прошивок](development/adding_device.md)
+- [Контракт ИИ-диагностики, ограничения и проверки](development/ai_analysis.md)
+- [Авторизация ChatGPT и обработка Responses API](development/chatgpt_sign_in.md)
 - [Antminer S21: сравнение с Tether MDK и план улучшений](reviews/s21_mdk_comparison.md)
 - [Сборка EXE и выпуск релиза](development/windows_release.md)
 - [Техническое задание](technical_specification.md)

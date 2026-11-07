@@ -19,11 +19,12 @@ class DeviceCardIntegrationTests(unittest.TestCase):
         cls.app = gemini_gui.QApplication.instance() or gemini_gui.QApplication([])
 
         class DetailStub(QDialog):
-            def __init__(self, row, *, access_profiles, app_version, parent=None):
+            def __init__(self, row, *, access_profiles, app_version, parent=None, ai_config=None):
                 super().__init__(parent)
                 self.row = deepcopy(row)
                 self.access_profiles = access_profiles
                 self.app_version = app_version
+                self.ai_config = ai_config
                 self.active = False
                 self.stop_requested = False
 
@@ -73,6 +74,7 @@ class DeviceCardIntegrationTests(unittest.TestCase):
             self.assertFalse(card.row['Telemetry']['stale'])
             self.assertEqual(card.app_version, self.gui.CURRENT_VERSION)
             self.assertIs(card.access_profiles, window.access_profiles)
+            self.assertEqual(card.ai_config, window.app_settings['ai'])
 
     def test_hidden_current_row_cannot_open_via_toolbar(self):
         window = self.window()

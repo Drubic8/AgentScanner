@@ -1,6 +1,6 @@
 """Preferences dialog. Changes are committed only after validation and Save."""
 from .i18n import tr
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QListWidget,
     QListWidgetItem, QStackedWidget, QWidget, QScrollArea, QFormLayout, QComboBox,
@@ -10,10 +10,14 @@ from .preferences import (COLUMNS, POOL_COLUMNS, TABLE_PRESETS, normalize, data_
     DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE, INTERFACE_FONT_RANGE, TABLE_FONT_RANGE)
 from .fonts import available_font_family, font_css
 from .font_controls import CompactFontComboBox, FontSizeComboBox
+from .i18n import get_language
+from .ai_settings_panel import AISettingsPanel
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, current_settings, parent=None, *, configure_access=None):
+    ai_session_changed = pyqtSignal()
+
+    def __init__(self, current_settings, parent=None, *, configure_access=None, ai_store=None, chatgpt_store=None):
         super().__init__(parent)
         self.setWindowTitle(tr('Настройки · ASIC Monitor'))
         self.resize(840, 650)
@@ -39,6 +43,13 @@ class SettingsDialog(QDialog):
         self._export_page("pdf", tr('PDF-отчёты'))
         self._export_page("csv", tr('Excel и CSV'))
         self._access_page(configure_access)
+        self._close_pending = False
+        self.ai_panel = AISettingsPanel(self.settings.get('ai'), store=ai_store,
+                                       chatgpt_store=chatgpt_store, language=get_language(), parent=self)
+        ai_layout = self._page(self.ai_panel._t('title'), self.ai_panel._t('hint'))
+        ai_layout.addWidget(self.ai_panel)
+        self.ai_panel.idle.connect(self._ai_idle)
+        self.ai_panel.session_changed.connect(self.ai_session_changed)
         self.navigation.ensurePolished()
         self.navigation.setFixedWidth(max(160, max(self.navigation.fontMetrics().horizontalAdvance(
             self.navigation.item(index).text()) for index in range(self.navigation.count())) + 32))
@@ -325,6 +336,9 @@ class SettingsDialog(QDialog):
         setattr(self, f"list_{kind}_cols", self._column_list(layout, f"{kind}_cols"))
 
     def save_and_close(self):
+        if self.ai_panel.active:
+            self.navigation.setCurrentRow(self.navigation.count() - 1)
+            return
         for control, limits in ((self.font_size, INTERFACE_FONT_RANGE), (self.table_font_size, TABLE_FONT_RANGE)):
             if not control.lineEdit().hasAcceptableInput():
                 self.navigation.setCurrentRow(0)
@@ -363,5 +377,33 @@ class SettingsDialog(QDialog):
             updated["export_dir" if kind == "pdf" else "export_csv_dir"] = getattr(self, f"{kind}_path").text().strip()
             updated[f"copy_{kind}"] = getattr(self, f"{kind}_copy").isChecked()
             updated[f"{kind}_sort"] = getattr(self, f"{kind}_sort").currentData()
+        try:
+            updated['ai'] = self.ai_panel.configuration().to_mapping()
+        except (ValueError, TypeError):
+            self.navigation.setCurrentRow(self.navigation.count() - 1)
+            self.ai_panel.status.setText(self.ai_panel._t('configuration'))
+            return
+        if not self.ai_panel.commit_credentials():
+            self.navigation.setCurrentRow(self.navigation.count() - 1)
+            return
         self.settings = updated
         self.accept()
+
+    def _ai_idle(self):
+        if self._close_pending:
+            self.reject()
+
+    def reject(self):
+        if self.ai_panel.active:
+            self._close_pending = True
+            self.ai_panel.request_stop()
+            return
+        super().reject()
+
+    def closeEvent(self, event):
+        if self.ai_panel.active:
+            self._close_pending = True
+            self.ai_panel.request_stop()
+            event.ignore()
+            return
+        super().closeEvent(event)
