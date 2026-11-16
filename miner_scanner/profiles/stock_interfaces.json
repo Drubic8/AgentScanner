@@ -304,6 +304,34 @@
         }
       }
     },
+    "f7cdaa3b4ebbb11b2afe7a39982818ee82f5c733bb36553e6a643e7f7046057e": {
+      "source_asset": "miner.8380a5.js",
+      "pages": ["87cdcad208890741cc424c477219094ff57cb5783b2f2e2843ea641fde550128"],
+      "config_fallback": false,
+      "write_mode": "miner-mode",
+      "preserve_mode_type": true,
+      "required": {
+        "pools": "pools",
+        "bitmain-fan-ctrl": "bitmain-fan-ctrl",
+        "bitmain-fan-pwm": "bitmain-fan-pwm",
+        "freq-level": "bitmain-freq-level"
+      },
+      "optional": {},
+      "read_only": [
+        "api-listen",
+        "api-network",
+        "api-groups",
+        "api-allow",
+        "bitmain-use-vil",
+        "bitmain-freq",
+        "bitmain-voltage",
+        "bitmain-ccdelay",
+        "bitmain-pwth"
+      ],
+      "modes": {
+        "S19k Pro": {}
+      }
+    },
     "f6a77087e1b0ac2389bb3d44afb057f26d1b7d5b78fc042b3bc2fdc6ff170c13": {
       "source_asset": "miner.dc8dd8.js",
       "write_mode": "miner-mode",

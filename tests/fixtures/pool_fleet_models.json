@@ -1,0 +1,33 @@
+{
+  "_fixture": "User-provided hardware model/rate inventory, 2026-11-09. These labels are not API responses and do not identify installed firmware, API support or device acceptance. Repeated manufacturer names were expanded from the supplied grouped list; rate spelling is retained.",
+  "source": "user_model_inventory",
+  "scope": "hardware_models_only",
+  "firmware": null,
+  "firmware_version": null,
+  "device_verified_pool_changes": false,
+  "models": [
+    {"make": "Bitmain", "model": "Antminer D9", "stock_pool_contract": "candidate", "labels": ["Antminer D9_1770G"]},
+    {"make": "Bitmain", "model": "Antminer KS5", "stock_pool_contract": "candidate", "labels": ["Antminer KS5_20T", "Antminer KS5_21T"]},
+    {"make": "Bitmain", "model": "Antminer L7", "stock_pool_contract": "candidate", "labels": ["Antminer L7_8550M", "Antminer L7_8800M", "Antminer L7_9050M"]},
+    {"make": "Bitmain", "model": "Antminer L9", "stock_pool_contract": "candidate", "labels": ["Antminer L9_15G", "Antminer L9_16.5G", "Antminer L9_16G", "Antminer L9_17G"]},
+    {"make": "Bitmain", "model": "Antminer S19k Pro", "stock_pool_contract": "candidate", "labels": ["Antminer S19k Pro_120T"]},
+    {"make": "Bitmain", "model": "Antminer S21 Pro", "stock_pool_contract": "candidate", "labels": ["Antminer S21 Pro_220T", "Antminer S21 Pro_234T"]},
+    {"make": "Bitmain", "model": "Antminer S21", "stock_pool_contract": "candidate", "labels": ["Antminer S21_175T", "Antminer S21_188T", "Antminer S21_195T", "Antminer S21_200T"]},
+    {"make": "Bitmain", "model": "Antminer S21+", "stock_pool_contract": "candidate", "labels": ["Antminer S21+_235T"]},
+    {"make": "Bitmain", "model": "Antminer S21++", "stock_pool_contract": "missing", "labels": ["Antminer S21++_216th"]},
+    {"make": "Bitmain", "model": "Antminer T21", "stock_pool_contract": "candidate", "labels": ["Antminer T21_180T", "Antminer T21_186T", "Antminer T21_190T"]},
+    {"make": "Bitmain", "model": "Antminer Z11", "stock_pool_contract": "missing", "labels": ["Antminer Z11_135kSol/s"]},
+    {"make": "Bitmain", "model": "Antminer Z15 Pro", "stock_pool_contract": "candidate", "labels": ["Antminer Z15 Pro_840kSol/s", "Antminer Z15 Pro_860kSol/s"]},
+    {"make": "Bitmain", "model": "Antminer Z15", "stock_pool_contract": "missing", "labels": ["Antminer Z15_420kSol/s"]},
+    {"make": "Bitmain", "model": "Antminer Z15e", "stock_pool_contract": "missing", "labels": ["Antminer Z15e_200"]},
+    {"make": "Canaan", "model": "AvalonMiner1346-110", "stock_pool_contract": "missing", "labels": ["AvalonMiner1346-110"]},
+    {"make": "Elphapex", "model": "Elphapex DG1", "stock_pool_contract": "missing", "labels": ["Elphapex DG1_11G"]},
+    {"make": "Elphapex", "model": "Elphapex DG1+", "stock_pool_contract": "missing", "labels": ["Elphapex DG1+_13,6G", "Elphapex DG1+_14,4G", "Elphapex DG1+_14G"]},
+    {"make": "MicroBT", "model": "Whatsminer M60", "stock_pool_contract": "missing", "labels": ["Whatsminer М60_176Т"]},
+    {"make": "MicroBT", "model": "Whatsminer M60S+", "stock_pool_contract": "missing", "labels": ["Whatsminer М60S+_206Т"]},
+    {"make": "MicroBT", "model": "Whatsminer M61S+", "stock_pool_contract": "missing", "labels": ["Whatsminer М61S+_236Т", "Whatsminer M61S+_238T"]},
+    {"make": "MicroBT", "model": "Whatsminer M50", "stock_pool_contract": "missing", "labels": ["Whatsminer M50_118T", "Whatsminer M50_122T"]},
+    {"make": "MicroBT", "model": "Whatsminer M50S++", "stock_pool_contract": "missing", "labels": ["Whatsminer M50S++"]},
+    {"make": "MicroBT", "model": "Whatsminer M61", "stock_pool_contract": "missing", "labels": ["Whatsminer M61_202T"]}
+  ]
+}

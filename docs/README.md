@@ -19,6 +19,8 @@
 - [Добавление устройств и прошивок](development/adding_device.md)
 - [Контракт ИИ-диагностики, ограничения и проверки](development/ai_analysis.md)
 - [Авторизация ChatGPT и обработка Responses API](development/chatgpt_sign_in.md)
+
+- [Пулы и workers: контракты, матрица совместимости и границы проверки](development/pool_configuration.md)
 - [Antminer S21: сравнение с Tether MDK и план улучшений](reviews/s21_mdk_comparison.md)
 - [Сборка EXE и выпуск релиза](development/windows_release.md)
 - [Техническое задание](technical_specification.md)

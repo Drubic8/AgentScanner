@@ -1,0 +1,63 @@
+{
+  "provenance": {
+    "observation_date": "2026-11-09",
+    "read_structure_observed": true,
+    "all_configuration_values_are_synthetic": true,
+    "native_fixture_retains_only_reviewed_identity_fields": true,
+    "hardware_write_verified": false,
+    "setter_requests_sent_in_observation": 0,
+    "scope": "The parent task observed native Type/Miner/API, the separate HTTP wrapper, exact static assets and the saved configuration schema. Settings, pool accounts, passwords and hardware identifiers below are synthetic. User pool indices 0/1/2 and the one separate hotel slot retain the observed structure. No hardware write, restart or firmware update was performed."
+  },
+  "identity": {
+    "make": "Bitmain",
+    "model": "Antminer S21+_i",
+    "firmware": "PitBit",
+    "firmware_version": "incm.C096",
+    "api_version": "3.1",
+    "profile_id": "bitmain.pitbit"
+  },
+  "static_hashes": {
+    "/index.html": "11ddd18083fbd9d89422667e1df7f5bbffb04af65340c539ff75d71ba777347b",
+    "/static/js/main.b3210ed9.js": "a29e3cd6ca15e21cb0ab63487e42035edae533912934fee2136f5fbd42685ec9"
+  },
+  "synthetic_system": {
+    "minertype": "Antminer S21+",
+    "system_filesystem_version": "Tue May 10 16:20:00 CST 2020",
+    "macaddr": "02:aa:bb:cc:dd:39"
+  },
+  "native_version": {
+    "STATUS": [{"STATUS": "S"}],
+    "VERSION": [{"Miner": "incm.C096", "Type": "Antminer S21+_i", "API": "3.1"}]
+  },
+  "config": {
+    "api-allow": "*",
+    "api-groups": "synthetic-api-group",
+    "api-listen": true,
+    "api-network": false,
+    "bitmain-ccdelay": "13",
+    "bitmain-fan-ctrl": true,
+    "bitmain-fan-pwm": "071",
+    "bitmain-freq": "577",
+    "bitmain-freq-level": "087",
+    "bitmain-hashrate-percent": "093",
+    "bitmain-pwth": "29",
+    "bitmain-use-vil": false,
+    "bitmain-voltage": "1350",
+    "bitmain-work-mode": 2,
+    "enable_working_voltage": false,
+    "freq_mode": "synthetic-frequency-mode",
+    "hotelfeepercent": "037",
+    "need_update_fw_now": false,
+    "pools": [
+      {"index": 0, "url": "stratum+tcp://synthetic-pitbit-primary.example.invalid:3333", "user": "FIXTURE.c096-1", "pass": "synthetic-pitbit-password-1"},
+      {"index": 1, "url": "stratum+tcp://synthetic-pitbit-secondary.example.invalid:4444", "user": "FIXTURE.c096-2", "pass": "synthetic-pitbit-password-2"},
+      {"index": 2, "url": "stratum+tcp://synthetic-pitbit-backup.example.invalid:5555", "user": "FIXTURE.c096-3", "pass": "synthetic-pitbit-password-3"}
+    ],
+    "poolshotelfee": [
+      {"url": "stratum+tcp://synthetic-hotel.example.invalid:6666", "user": "FIXTURE.hotel", "pass": "synthetic-hotel-password"}
+    ],
+    "target-temp": "72",
+    "target-temp-ctrl": false,
+    "working_voltage": "0.91"
+  }
+}

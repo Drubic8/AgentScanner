@@ -154,6 +154,123 @@ def _wait_for_smoke(app, condition, *, seconds=10):
     assert condition(), 'Device log worker exceeded the offline smoke budget'
 
 
+def _pool_settings_smoke(app, window, output):
+    """Exercise the packaged editor with simulated plans, never a transport."""
+    import base64
+    import socket
+    import sys
+    from types import SimpleNamespace
+    import requests
+    from . import pool_dialog as pool_module
+    from miner_scanner.pool_configuration import PoolChange, PoolPlan
+    from miner_scanner.whatsminer_pool_backend import encrypt_parameter
+
+    # A standard AES-256 block checks the packaged crypto implementation. The
+    # extra block must be PKCS7 even when plaintext already fits one block.
+    key = bytes(range(32))
+    plaintext = bytes.fromhex('00112233445566778899aabbccddeeff')
+    encrypted = base64.b64decode(encrypt_parameter(key, plaintext), validate=True)
+    assert len(encrypted) == 32
+    assert encrypted[:16].hex() == '8ea2b7ca516745bfeafc49904b496089'
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    decryptor = Cipher(algorithms.AES(key), modes.ECB()).decryptor()
+    assert decryptor.update(encrypted) + decryptor.finalize() == plaintext + bytes([16]) * 16
+
+    selected = {'192.0.2.1', '192.0.2.2', '192.0.2.4'}
+    checked_before = []
+    for index in range(window.table.rowCount()):
+        item = window.table.item(index, 0)
+        checked_before.append((item, item.checkState()))
+        item.setCheckState(Qt.CheckState.Checked if item.text() in selected else Qt.CheckState.Unchecked)
+    passwords = ('***', '  synthetic pool password  ', 'synthetic.\u00c5\u03b2 &+=\"')
+    url = 'stratum+tcp://pool-editor.example.invalid:3333'
+    service = SimpleNamespace(get_record=lambda ip: None)
+    dialog = None
+
+    def prepare(received_service, targets, edits, **kwargs):
+        assert received_service is service
+        assert [row['IP'] for row in targets] == sorted(selected)
+        assert [edit.password for edit in edits] == list(passwords)
+        assert edits[0].url == url and all(edit.url is None for edit in edits[1:])
+        assert edits[0].worker.name == 'TEST' and edits[0].worker.width == 3
+        for index, row in enumerate(targets):
+            ready = row['IP'] != '192.0.2.4'
+            yield PoolPlan(ip=row['IP'], model=row['Model'], firmware=row['Firmware'],
+                status='ready' if ready else 'unsupported', message='Synthetic editor smoke',
+                changes=(PoolChange(0, 'url', row['Pool'], url),
+                         PoolChange(0, 'user', row['Worker'], edits[0].worker.render(row['IP'], index)),
+                         PoolChange(0, 'pass', '<hidden>', '<changed>')))
+
+    def execute(received_service, plans, **kwargs):
+        assert received_service is service
+        assert [plan.ip for plan in plans] == ['192.0.2.1', '192.0.2.2']
+        for plan in plans:
+            status = 'succeeded' if plan.ip == '192.0.2.1' else 'unconfirmed'
+            yield plan.ip, CommandResult(plan.command_id, status, 'Synthetic editor outcome', True)
+
+    try:
+        with patch.object(sys.modules[type(window).__module__], 'default_service', return_value=service), \
+             patch.object(pool_module, 'prepare_pool_batch', side_effect=prepare) as prepared, \
+             patch.object(pool_module, 'execute_pool_batch', side_effect=execute) as executed, \
+             patch.object(socket.socket, 'connect', side_effect=AssertionError('Pool smoke attempted TCP')) as connected, \
+             patch.object(socket.socket, 'connect_ex', side_effect=AssertionError('Pool smoke attempted TCP')) as connected_ex, \
+             patch.object(requests.Session, 'request', side_effect=AssertionError('Pool smoke attempted HTTP')) as requested:
+            dialog = window.open_pool_settings()
+            assert isinstance(dialog, pool_module.PoolSettingsDialog)
+            assert window.open_pool_settings() is dialog
+            prepared.assert_not_called()
+            executed.assert_not_called()
+            assert not dialog.apply_button.isEnabled()
+            dialog.resize(820, 620)
+            dialog.worker_name.setText('TEST')
+            dialog.width_spin.setValue(3)
+            dialog.slots[0].worker.setChecked(True)
+            dialog.slots[0].url_mode.setCurrentIndex(1)
+            dialog.slots[0].url.setText(url)
+            for editor, password in zip(dialog.slots, passwords):
+                editor.password_mode.setCurrentIndex(1)
+                editor.password.setText(password)
+            app.processEvents()
+            assert dialog.grab().save(str(Path(output) / 'pool-settings-edit.png'))
+            dialog.preview_button.click()
+            _wait_for_smoke(app, lambda: not dialog.active)
+            assert dialog.phase == 'prepared' and prepared.call_count == 1
+            assert dialog.apply_button.isEnabled() and len(dialog.plans) == 3
+            assert [plan.status for plan in dialog.plans.values()].count('ready') == 2
+            workers = [row[6] for row in dialog.model.rows if row[4] == 'Worker']
+            assert workers == ['TEST.001', 'TEST.002', 'TEST.003']
+            assert all(password not in repr(dialog.model.rows) for password in passwords)
+            executed.assert_not_called()
+            assert dialog.grab().save(str(Path(output) / 'pool-settings-preview.png'))
+            dialog.apply_button.click()
+            dialog.apply_button.click()
+            _wait_for_smoke(app, lambda: not dialog.active)
+            assert executed.call_count == 1 and dialog.phase == 'finished'
+            assert {ip: result.status for ip, result in dialog.results.items()} == {
+                '192.0.2.1': 'succeeded', '192.0.2.2': 'unconfirmed'}
+            assert not dialog.plans and not dialog.apply_button.isEnabled()
+            assert all(not editor.password.text() for editor in dialog.slots)
+            assert dialog.grab().save(str(Path(output) / 'pool-settings-results.png'))
+            connected.assert_not_called()
+            connected_ex.assert_not_called()
+            requested.assert_not_called()
+            dialog.close()
+            app.processEvents()
+            assert window.pool_settings_dialog is None
+            dialog = None
+    finally:
+        if dialog is not None:
+            dialog.request_stop()
+            _wait_for_smoke(app, lambda: not dialog.active)
+            dialog.close()
+        for item, state in checked_before:
+            item.setCheckState(state)
+        app.processEvents()
+    return dict(pool_settings_editor=True, pool_settings_preview=True,
+                pool_settings_apply_simulated=True, pool_passwords_cleared=True,
+                whatsminer_aes_pkcs7=True)
+
+
 def _device_logs_smoke(app, window, output):
     """Exercise the packaged card, import, redacted exports and close lifetime."""
     from . import device_dialog as device_module
@@ -363,6 +480,7 @@ def run_smoke(app, window_type, output):
         english_settings.close()
         _font_controls_smoke(app, window, output)
         _command_review_smoke(app, window, output)
+        pool_settings = _pool_settings_smoke(app, window, output)
         device_logs = _device_logs_smoke(app, window, output)
         journal.outcome.setCurrentIndex(journal.outcome.findData("unconfirmed"))
         assert journal.proxy.rowCount() == 6
@@ -428,7 +546,7 @@ def run_smoke(app, window_type, output):
         result = {"ok": True, "version": app.applicationVersion(), "synthetic_rows": len(rows),
                   "profiles": len(registry.profiles), "exports": ["clipboard_png", "csv", "xlsx", "pdf"], "network_used": False,
                   "subnet_checkbox_lifetime": True, "editable_font_controls": True,
-                  "bulk_command_review": True, **device_logs}
+                  "bulk_command_review": True, **pool_settings, **device_logs}
         (output / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
         return 0
     except Exception:

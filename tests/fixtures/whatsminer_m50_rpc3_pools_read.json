@@ -1,0 +1,57 @@
+{
+  "provenance": {
+    "observation_date": "2026-11-09",
+    "report_generated_at": "2026-11-09T11:00:49.462161+00:00",
+    "source_reports": ["compatibility.json", "read-flags.json", "request-audit.json"],
+    "hardware_read_verified": true,
+    "hardware_write_verified": false,
+    "all_setting_values_are_synthetic": true,
+    "scope": "Observed technical identity, successful read framing, pool IDs [1,2,3], reviewed field names/types and absent pool passwords. URLs, accounts, salt, timestamps, rates, pool states and other leaf values below are synthetic. Runtime fields not retained by the safe schema are representative documented types, not reconstructed private settings. No write acceptance, persistence or omission-preservation claim."
+  },
+  "identity": {
+    "make": "MicroBT",
+    "model": "M50_VH75",
+    "firmware": "Stock",
+    "firmware_version": "20260908.12.Rel2",
+    "api_version": "3.0.5",
+    "profile_id": "microbt.rpc3",
+    "profile_version": 1
+  },
+  "observation_flags": {
+    "api_write_switch": true,
+    "pool_ids": [1, 2, 3],
+    "all_pool_passwords_missing": true,
+    "reading_kind": "runtime",
+    "settings_response_code": 0,
+    "settings_response_matches_command": true,
+    "firmware_worker_suffix": "empty"
+  },
+  "rpc_info": {
+    "code": 0,
+    "when": 1700000000,
+    "msg": {
+      "miner": {"type": "M50_VH75", "working": "true", "cointype": "BTC"},
+      "system": {"api": "3.0.5", "fwversion": "20260908.12.Rel2", "apiswitch": "1"},
+      "salt": "synthetic-rpc3-salt"
+    },
+    "desc": "get.device.info"
+  },
+  "rpc_pools": {
+    "code": 0,
+    "when": 1700000001,
+    "msg": {
+      "pools": [
+        {"id": 1, "url": "stratum+tcp://synthetic-primary.example.invalid:3333", "status": "alive", "account": "SYNTHETIC.pool1", "stratum-active": true, "reject-percent": 0, "last-share-time": 1700000000},
+        {"id": 2, "url": "stratum+tcp://synthetic-secondary.example.invalid:4444", "status": "dead", "account": "SYNTHETIC.pool2", "stratum-active": false, "reject-percent": 0, "last-share-time": 0},
+        {"id": 3, "url": "stratum+tcp://synthetic-backup.example.invalid:5555", "status": "alive", "account": "SYNTHETIC.pool3", "stratum-active": false, "reject-percent": 0, "last-share-time": 1700000000}
+      ]
+    },
+    "desc": "get.miner.status"
+  },
+  "rpc_summary": {
+    "code": 0,
+    "when": 1700000002,
+    "msg": {"summary": {"elapsed": 60, "hash-realtime": 100, "hash-average": 100}},
+    "desc": "get.miner.status"
+  }
+}

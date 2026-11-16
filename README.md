@@ -25,6 +25,25 @@
 
 *На снимках демонстрационные данные; это не результаты испытаний реальных моделей.*
 
+## 2.7.0: пулы и workers
+
+ИИ-диагностика не входит в 2.7.0 и оставлена следующему выпуску.
+
+В меню управления выбранными ASIC появился редактор URL, worker и отдельного
+пароля каждого из трёх пулов. Общее имя до точки можно дополнить IP или
+порядковым номером. Перед применением показываются точные изменения;
+поддержка определяется изученным интерфейсом конкретной прошивки.
+
+На одном S21+ Stock проверены смена worker третьего слота и восстановление
+исходного значения. Запись URL/паролей, группы и остальные интерфейсы требуют
+отдельной аппаратной проверки. У WhatsMiner RPC3 нужны явные пароли всех
+трёх слотов; runtime-чтение не подтверждает их сохранение.
+
+[Скачать Windows 2.7.0](https://github.com/Drubic8/AgentScanner/releases/tag/v2.7.0)
+· [Описание выпуска](docs/releases/2.7.0.md)
+· [Инструкция](docs/user_guide.md)
+· [Матрица совместимости](docs/development/pool_configuration.md).
+
 ## 2.6.0: карточка ASIC и чтение логов
 
 В Windows откройте **Карточку устройства** для выбранного ASIC. В ней доступны
@@ -39,7 +58,7 @@ WhatsMiner RPC 3 — текущие журналы из архива, Elphapex D
 Доступны поиск, копирование, импорт сохранённого текстового файла и очищенный
 экспорт в TXT/ZIP с предпросмотром. Перед передачей проверьте очищенный текст:
 автоматическое скрытие не распознаёт все личные данные. В опубликованном EXE
-2.6.0 подключения ИИ ещё нет. Новые окна относятся к Windows; Android остаётся на 2.5.0.
+2.7.0 подключения ИИ ещё нет: оно оставлено следующему выпуску. Новые окна относятся к Windows; Android остаётся на 2.5.0.
 
 [Скачать Windows 2.6.0](https://github.com/Drubic8/AgentScanner/releases/tag/v2.6.0)
 · [Описание выпуска](docs/releases/2.6.0.md)
@@ -58,8 +77,9 @@ WhatsMiner RPC 3 — текущие журналы из архива, Elphapex D
 аккаунта, плана и региона. Ключ и сессии хранятся отдельно от обычных настроек,
 с защитой Windows DPAPI.
 
-ИИ доступен при [запуске из исходников](#запуск-из-исходников), но пока не входит
-в опубликованный Windows EXE 2.6.0 и Android APK 2.5.0.
+ИИ доступен при [запуске из исходников](#запуск-из-исходников) и оставлен следующему
+выпуску. Опубликованный Windows EXE 2.7.0 содержит пуловые изменения без ИИ;
+в Android APK 2.5.0 ИИ также не включён.
 
 [Подключить Яндекс ИИ](docs/user_guide_ai.md)
 · [Войти через ChatGPT](docs/user_guide_chatgpt.md)
@@ -135,6 +155,7 @@ Get-FileHash .\ASIC_Monitor.exe -Algorithm SHA256
 | Сохранённые сети | Названия, поиск, галочки с сохранением выбора, проверка адресов при вводе |
 | Таблица | Модель, прошивка, состояние, хешрейт, температура, вентиляторы, отдельные Pool/Worker 1–3 — по данным API устройства |
 | Управление | Команды через профиль устройства; доступность зависит от модели, прошивки и проверки команды |
+| Пулы и workers | URL и отдельные пароли слотов 1–3, общее имя с суффиксом IP/номера, предпросмотр и результат каждого ASIC; [условия совместимости](docs/development/pool_configuration.md) |
 | Отчёты | PDF, CSV, XLSX и снимок таблицы в буфер обмена |
 | Интерфейс | Светлая, тёмная и системная темы; настройка столбцов и плотности таблицы |
 | Логи и диагностика | Чтение поддерживаемых журналов по запросу, импорт текста, поиск, очищенный TXT и ZIP с предпросмотром |
@@ -260,7 +281,8 @@ Current source adds opt-in analysis through [Yandex AI Studio](docs/user_guide_a
 or [Sign in with ChatGPT](docs/user_guide_chatgpt.md). Each request requires review
 and consent; assessments must pass schema and evidence-reference validation.
 Assessments can be copied or saved as TXT. **AI is available from source and is
-not included in the published Windows 2.6.0 EXE or Android 2.5.0 APK.**
+reserved for a later release: the published Windows 2.7.0 EXE adds pool settings
+without AI, and the Android 2.5.0 APK also excludes AI.**
 
 The Python scanner core can be used without Qt. Device profiles cover several
 firmware families; compatibility and control commands require validation on the

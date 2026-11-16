@@ -11,6 +11,15 @@ from miner_scanner.access import AccessProfile, AccessProfiles, standard_profile
 
 MAGIC = b'ASIC-ACCESS-1\n'
 
+# Frozen factory set from defaults revision 2. A missing family alone cannot
+# authorize new credentials: it may be an intentional user choice.
+_PRE_ELPHAPEX_DEFAULTS = (
+    AccessProfile('Antminer — стандартный', 'antminer', 'root', 'root'),
+    AccessProfile('VNish — admin', 'vnish', '', 'admin'),
+    AccessProfile('VNish — root', 'vnish', '', 'root'),
+    AccessProfile('WhatsMiner — все устройства', 'whatsminer', 'super', 'super'),
+)
+
 
 def protect(data, *, decrypt=False):
     if os.name != 'nt':
@@ -50,17 +59,25 @@ class AccessStore:
         if data.get('version') != 1:
             raise ValueError('Неподдерживаемая версия профилей доступа.')
         profiles = [AccessProfile(**item) for item in data['profiles']]
-        if data.get('defaults_revision', 1) < 2:
+        revision = data.get('defaults_revision', 1)
+        if type(revision) is not int or revision < 1:
+            raise ValueError('Неподдерживаемая версия профилей доступа.')
+        if revision < 2:
             # Migrate only our former empty template. Preserve custom accounts,
             # passwords, scopes, disabled profiles and intentionally empty lists.
             profiles = [replace(p, password='super') if (
                 p.name == 'WhatsMiner — все устройства' and p.family == 'whatsminer'
                 and p.username == 'super' and not p.password and p.targets == '*'
                 and p.enabled) else p for p in profiles]
+        if revision < 3 and tuple(profiles) == _PRE_ELPHAPEX_DEFAULTS:
+            # Only untouched former defaults gain the visible Elphapex profile.
+            # Loading never writes the file. Revision 3 on explicit Save prevents
+            # a later user removal from being undone on the next load.
+            profiles.append(next(p for p in standard_profiles() if p.family == 'elphapex'))
         return AccessProfiles(profiles)
 
     def save(self, profiles):
-        payload = json.dumps({'version': 1, 'defaults_revision': 2,
+        payload = json.dumps({'version': 1, 'defaults_revision': 3,
                               'profiles': [asdict(p) for p in profiles.profiles]}, ensure_ascii=True).encode()
         encrypted = MAGIC + self.crypt(payload)
         self.path.parent.mkdir(parents=True, exist_ok=True)
