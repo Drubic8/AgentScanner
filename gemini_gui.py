@@ -1,5 +1,5 @@
 import sys
-CURRENT_VERSION = "2.6.0"
+CURRENT_VERSION = "2.7.0"
 if __name__ == "__main__" and "--apply-update" in sys.argv:
     from desktop_ui.update_installer import run_helper
     position = sys.argv.index("--apply-update") + 1
@@ -33,6 +33,7 @@ from desktop_ui.summary_panel import SummaryPanel
 from desktop_ui.icons import theme_icon
 from desktop_ui.settings_dialog import SettingsDialog
 from desktop_ui.command_batch_dialog import CommandBatchDialog
+from desktop_ui.pool_dialog import PoolSettingsDialog
 from desktop_ui.device_dialog import DeviceDialog
 from desktop_ui.range_dialog import IPRangeDialog
 from desktop_ui.ranges_panel import RangesPanel
@@ -462,6 +463,7 @@ class GeminiApp(QMainWindow):
         self.log_dialog = LogDialog(self, language=self.app_settings["language"])
         self.log_dialog.language_changed.connect(self.change_application_language)
         self.command_batch_dialog = None
+        self.pool_settings_dialog = None
         self.device_dialogs = []
 
         self.stats_timer = QTimer(self)
@@ -1253,6 +1255,7 @@ class GeminiApp(QMainWindow):
     def add_mining_actions(self, menu):
         """Use the same mining actions in the toolbar and row context menu."""
         menu.addSeparator()
+        menu.addAction(tr('Настроить пулы и воркеры…'), self.open_pool_settings)
         menu.addAction(tr('Сон (остановить майнинг)'), lambda: self.run_action("sleep"))
         menu.addAction(tr('Пробуждение (возобновить майнинг)'), lambda: self.run_action("wakeup"))
         power_menu = menu.addMenu(tr('Режим мощности'))
@@ -1343,6 +1346,45 @@ class GeminiApp(QMainWindow):
 
         # The review dialog is the confirmation; only its Send button writes.
         self.prepare_command_batch(targets, action_type)
+
+    def open_pool_settings(self, checked=False):
+        """Use the explicit checked selection; opening a dialog never writes."""
+        if self._closing_requested:
+            return None
+        current = self.pool_settings_dialog
+        if current is not None:
+            current.show()
+            current.raise_()
+            current.activateWindow()
+            return current
+        targets = []
+        for index in range(self.table.rowCount()):
+            item = self.table.item(index, 0)
+            if item is not None and item.checkState() == Qt.CheckState.Checked:
+                row = item.data(Qt.ItemDataRole.UserRole + 1)
+                if isinstance(row, dict) and row.get('IP'):
+                    targets.append(deepcopy(row))
+        if not targets:
+            QMessageBox.warning(self, tr('Внимание'), tr('Сначала отметьте галочками устройства в таблице!'))
+            return None
+        dialog = PoolSettingsDialog(default_service(), targets, self)
+        self.pool_settings_dialog = dialog
+
+        def refresh_cached_rows():
+            # Core readback has already updated the password-free pool display.
+            # Do not start another network operation from the GUI callback.
+            records = [default_service().get_record(row['IP']) for row in targets]
+            self.on_result([record.to_legacy() for record in records if record is not None])
+
+        def release_dialog():
+            if self.pool_settings_dialog is dialog:
+                self.pool_settings_dialog = None
+            dialog.deleteLater()
+
+        dialog.completed.connect(refresh_cached_rows)
+        dialog.finished.connect(release_dialog)
+        dialog.show()
+        return dialog
 
     def show_command_results(self):
         if self.command_batch_dialog is not None:
@@ -2106,8 +2148,11 @@ class GeminiApp(QMainWindow):
         self._closing_requested = True
         workers = list(getattr(self, "workers", []))
         workers += [getattr(self, "worker", None), getattr(self, "update_worker", None), getattr(self, "download_worker", None)]
+        pool_dialog = self.pool_settings_dialog
         if any(worker is not None and worker.isRunning() for worker in workers) or any(
-                dialog.active for dialog in self.device_dialogs):
+                dialog.active for dialog in self.device_dialogs) or (pool_dialog is not None and pool_dialog.active):
+            if pool_dialog is not None:
+                pool_dialog.request_stop()
             for dialog in self.device_dialogs:
                 dialog.request_stop()
             if self.command_batch_dialog is not None and self.command_batch_dialog.active:
@@ -2143,6 +2188,8 @@ class GeminiApp(QMainWindow):
                 return
         for dialog in list(self.device_dialogs):
             dialog.close()
+        if self.pool_settings_dialog is not None:
+            self.pool_settings_dialog.close()
         event.accept()
 
 if __name__ == "__main__":

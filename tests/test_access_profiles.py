@@ -46,6 +46,7 @@ class AccessProfileTests(unittest.TestCase):
         self.assertEqual(profiles.candidates('192.0.2.1')[0].password, 'root')
         self.assertEqual([c.password for c in profiles.candidates('192.0.2.1', 'vnish')], ['admin', 'root'])
         self.assertEqual(profiles.candidates('192.0.2.1', 'whatsminer'), [Credentials('super', 'super')])
+        self.assertEqual(profiles.candidates('192.0.2.1', 'elphapex'), [Credentials('root', 'root', 'basic')])
         scoped = AccessProfile('WhatsMiner site', 'whatsminer', 'user1', 'site-secret', targets='10.33.6.0/24')
         wm = AccessProfiles([*standard_profiles(), scoped])
         self.assertEqual(wm.candidates('10.33.6.13', 'whatsminer')[0], scoped.credentials)
@@ -138,7 +139,7 @@ class AccessProfileTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'profiles.dat'
             store = AccessStore(path)
-            self.assertEqual(len(store.load().profiles), 4)
+            self.assertEqual(len(store.load().profiles), 5)
             profiles = AccessProfiles([AccessProfile('Site', 'antminer', 'root', 'unique-test-secret-928')])
             store.save(profiles)
             self.assertNotIn(b'unique-test-secret-928', path.read_bytes())
@@ -174,3 +175,128 @@ class AccessProfileTests(unittest.TestCase):
             self.assertEqual(migrated.profiles[1:], tuple(original[1:]))
             store.save(AccessProfiles([template]))  # User explicitly clears it after migration.
             self.assertEqual(store.load().profiles, (template,))
+
+    @staticmethod
+    def former_defaults():
+        return (
+            AccessProfile('Antminer — стандартный', 'antminer', 'root', 'root'),
+            AccessProfile('VNish — admin', 'vnish', '', 'admin'),
+            AccessProfile('VNish — root', 'vnish', '', 'root'),
+            AccessProfile('WhatsMiner — все устройства', 'whatsminer', 'super', 'super'),
+        )
+
+    def test_elphapex_default_is_visible_basic_and_family_scoped(self):
+        from dataclasses import replace
+        defaults = standard_profiles()
+        elphapex = [profile for profile in defaults if profile.family == 'elphapex']
+        self.assertEqual(len(elphapex), 1)
+        self.assertEqual(elphapex[0].name, 'Elphapex — стандартный')
+        self.assertEqual(elphapex[0].credentials, Credentials('root', 'root', 'basic'))
+        profiles = AccessProfiles(defaults)
+        self.assertEqual(profiles.candidates('192.0.2.17', 'elphapex'), [elphapex[0].credentials])
+        self.assertEqual(profiles.candidates('192.0.2.17'), [Credentials('root', 'root', 'digest')])
+        self.assertEqual(AccessProfiles([]).candidates('192.0.2.17', 'elphapex'), [])
+        disabled = AccessProfiles([replace(profile, enabled=False) if profile.family == 'elphapex' else profile
+                                   for profile in defaults])
+        self.assertEqual(disabled.candidates('192.0.2.17', 'elphapex'), [])
+
+    def test_new_store_returns_defaults_without_creating_file_or_using_dpapi(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'not-created.dat'
+            crypt = Mock(side_effect=AssertionError('No encrypted file exists'))
+            loaded = AccessStore(path, crypt=crypt).load()
+            self.assertEqual(loaded.profiles, standard_profiles())
+            self.assertFalse(path.exists())
+            crypt.assert_not_called()
+
+    def test_exact_old_defaults_gain_elphapex_in_memory_only_after_whatsminer_migration(self):
+        from dataclasses import asdict, replace
+        old = self.former_defaults()
+        for revision in (None, 1, 2):
+            with self.subTest(revision=revision), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / 'synthetic-profiles.dat'
+                profiles = list(old)
+                if revision in (None, 1):
+                    profiles[-1] = replace(profiles[-1], password='')
+                data = {'version': 1, 'profiles': [asdict(profile) for profile in profiles]}
+                if revision is not None:
+                    data['defaults_revision'] = revision
+                original = MAGIC + json.dumps(data).encode()
+                path.write_bytes(original)
+                # Identity crypt is confined to this synthetic storage test.
+                store = AccessStore(path, crypt=lambda value, **_: value)
+                loaded = store.load()
+                self.assertEqual(loaded.profiles, standard_profiles())
+                self.assertEqual(loaded.profiles[:4], old)
+                self.assertEqual(path.read_bytes(), original)
+
+    def test_elphapex_migration_preserves_any_custom_disabled_scoped_or_empty_set(self):
+        from dataclasses import asdict, replace
+        old = self.former_defaults()
+        custom = AccessProfile('Elphapex custom', 'elphapex', 'operator', 'test-only', auth='basic')
+        variants = {
+            'empty': (),
+            'custom_family_only': (custom,),
+            'disabled_family_only': (replace(custom, enabled=False),),
+            'custom_family': (*old, custom),
+            'disabled_family': (*old, replace(custom, enabled=False)),
+            'scoped_family': (*old, replace(custom, targets='192.0.2.17')),
+            'scoped_disabled_family': (*old, replace(custom, targets='192.0.2.17', enabled=False)),
+            'disabled_existing_default': (replace(old[0], enabled=False), *old[1:]),
+            'custom_existing_password': (replace(old[0], password='test-only'), *old[1:]),
+            'scoped_existing_default': (replace(old[0], targets='192.0.2.0/24'), *old[1:]),
+            'missing_default': old[:-1],
+            'reordered_defaults': tuple(reversed(old)),
+            'extra_profile': (*old, AccessProfile('Other', 'other', 'admin', 'test-only')),
+        }
+        for label, profiles in variants.items():
+            for revision in (1, 2):
+                with self.subTest(case=label, revision=revision), tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / 'synthetic-profiles.dat'
+                    data = {'version': 1, 'defaults_revision': revision,
+                            'profiles': [asdict(profile) for profile in profiles]}
+                    original = MAGIC + json.dumps(data).encode()
+                    path.write_bytes(original)
+                    loaded = AccessStore(path, crypt=lambda value, **_: value).load()
+                    self.assertEqual(loaded.profiles, profiles)
+                    self.assertEqual(path.read_bytes(), original)
+
+    def test_saved_revision_three_prevents_removed_elphapex_profile_from_resurrecting(self):
+        from dataclasses import asdict
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'synthetic-profiles.dat'
+            path.write_bytes(MAGIC + json.dumps({'version': 1, 'defaults_revision': 2,
+                'profiles': [asdict(profile) for profile in self.former_defaults()]}).encode())
+            store = AccessStore(path, crypt=lambda value, **_: value)
+            self.assertEqual(store.load().profiles, standard_profiles())
+            # Simulate the user's explicit removal followed by Save.
+            store.save(AccessProfiles(self.former_defaults()))
+            saved = json.loads(path.read_bytes()[len(MAGIC):])
+            self.assertEqual(saved['defaults_revision'], 3)
+            self.assertEqual(store.load().profiles, self.former_defaults())
+            store.save(AccessProfiles([]))
+            self.assertEqual(store.load().profiles, ())
+
+    def test_current_or_future_defaults_revision_never_adds_a_missing_family(self):
+        from dataclasses import asdict
+        for revision in (3, 4):
+            with self.subTest(revision=revision), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / 'synthetic-profiles.dat'
+                original = MAGIC + json.dumps({'version': 1, 'defaults_revision': revision,
+                    'profiles': [asdict(profile) for profile in self.former_defaults()]}).encode()
+                path.write_bytes(original)
+                self.assertEqual(AccessStore(path, crypt=lambda value, **_: value).load().profiles,
+                                 self.former_defaults())
+                self.assertEqual(path.read_bytes(), original)
+
+    def test_invalid_defaults_revision_fails_closed_without_migration_or_write(self):
+        from dataclasses import asdict
+        for revision in (None, False, 0, '2', 2.5):
+            with self.subTest(revision=revision), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / 'synthetic-profiles.dat'
+                original = MAGIC + json.dumps({'version': 1, 'defaults_revision': revision,
+                    'profiles': [asdict(profile) for profile in self.former_defaults()]}).encode()
+                path.write_bytes(original)
+                with self.assertRaises(ValueError):
+                    AccessStore(path, crypt=lambda value, **_: value).load()
+                self.assertEqual(path.read_bytes(), original)

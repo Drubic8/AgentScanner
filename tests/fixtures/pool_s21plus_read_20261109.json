@@ -1,0 +1,75 @@
+{
+  "provenance": {
+    "observation_date": "2026-11-09",
+    "report_generated_at": "2026-11-09T10:24:26.527252+00:00",
+    "source_reports": ["compatibility.json", "request-audit.json"],
+    "read_structure_observed": true,
+    "all_configuration_values_are_synthetic": true,
+    "vnish_unknown_nonpool_property_names_are_synthetic": true,
+    "hardware_write_verified": false,
+    "setter_requests_sent_in_observation": 0,
+    "scope": "Two selected S21+ devices were read by the parent task. This fixture preserves observed technical identity and Stock field types only. It contains no original pool accounts, passwords, addresses or tuning values. VNish opaque settings are representative synthetic properties, not a reconstruction of unknown field names. Tests perform offline previews only."
+  },
+  "stock": {
+    "identity": {
+      "make": "Bitmain",
+      "model": "Antminer S21+",
+      "firmware": "Stock",
+      "firmware_version": "Wed Feb 12 18:01:32 CST 2025",
+      "api_version": null,
+      "profile_id": "bitmain.stock",
+      "profile_version": 2
+    },
+    "observed_asset": "miner.c8af43.js",
+    "observed_schema_digest": "fcb676294c94eeccacfc8e83479cbcc1d92f91cd6b10414f53ea5b65d9217e34",
+    "config": {
+      "pools": [
+        {"url": "stratum+tcp://synthetic-primary.example.invalid:3333", "user": "FIXTURE.stock1", "pass": "synthetic-pool-pass-1"},
+        {"url": "stratum+tcp://synthetic-secondary.example.invalid:4444", "user": "FIXTURE.stock2", "pass": "synthetic-pool-pass-2"},
+        {"url": "stratum+tcp://synthetic-backup.example.invalid:5555", "user": "FIXTURE.stock3", "pass": "synthetic-pool-pass-3"}
+      ],
+      "bitmain-user-ip-cat": false,
+      "bitmain-fan-ctrl": true,
+      "bitmain-fan-pwm": 77,
+      "bitmain-freq": 512,
+      "bitmain-voltage": 13.7,
+      "bitmain-work-mode": 1,
+      "bitmain-freq-level": 88
+    }
+  },
+  "vnish": {
+    "identity": {
+      "make": "Bitmain",
+      "model": "s21plus",
+      "firmware": "VNish",
+      "firmware_version": "1.3.3",
+      "api_version": null,
+      "profile_id": "bitmain.vnish",
+      "profile_version": 1
+    },
+    "observed_schema_digest_reference_only": "63616550c8f18a77542e484b248f84ac25a7a231f462f2b656be0ba419aedf57",
+    "opaque_properties_representative_only": true,
+    "config": {
+      "miner": {
+        "cooling": {
+          "mode": {"fixture_mode": "synthetic-fixed", "fixture_enabled": true},
+          "fixture_fan_percent": 63,
+          "fixture_temp_limit": 77,
+          "fixture_guard_enabled": false
+        },
+        "misc": {"fixture_marker": "synthetic-misc", "fixture_nested": {"fixture_keep": "unchanged"}},
+        "overclock": {"fixture_marker": "synthetic-overclock", "fixture_profile": 2},
+        "pools": [
+          {"url": "stratum+tcp://synthetic-primary.example.invalid:3333", "user": "FIXTURE.vnish1", "pass": "synthetic-vnish-pass-1"},
+          {"url": "stratum+tcp://synthetic-secondary.example.invalid:4444", "user": "FIXTURE.vnish2", "pass": "synthetic-vnish-pass-2"},
+          {"url": "stratum+tcp://synthetic-backup.example.invalid:5555", "user": "FIXTURE.vnish3", "pass": "synthetic-vnish-pass-3"}
+        ]
+      },
+      "ui": {"timezone": "Etc/UTC", "fixture_theme": "synthetic"},
+      "regional": {"timezone": {"fixture_name": "UTC"}},
+      "network": {"hostname": "synthetic-s21plus", "dhcp": true, "gateway": "192.0.2.1", "fixture_network_marker": "synthetic"},
+      "password": null,
+      "layout": null
+    }
+  }
+}

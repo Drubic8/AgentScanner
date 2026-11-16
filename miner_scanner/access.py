@@ -55,6 +55,7 @@ def standard_profiles():
         AccessProfile('VNish — root', 'vnish', '', 'root'),
         # Official docs/Whatsminer demo/whatsminer.py uses this API default.
         AccessProfile('WhatsMiner — все устройства', 'whatsminer', 'super', 'super'),
+        AccessProfile('Elphapex — стандартный', 'elphapex', 'root', 'root', auth='basic'),
     )
 
 

@@ -138,6 +138,13 @@ def prepare_update(candidate, target, version, digest):
     return path
 
 
+def _restart_environment():
+    """Let a frozen executable outlive its caller with independent resources."""
+    environment = os.environ.copy()
+    environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    return environment
+
+
 def launch_updater(plan_path):
     path = Path(plan_path)
     startup = subprocess.STARTUPINFO()
@@ -145,7 +152,8 @@ def launch_updater(plan_path):
     startup.wShowWindow = 0
     return subprocess.Popen([str(path.parent / "updater.exe"), "--apply-update", str(path)],
                             cwd=str(path.parent), close_fds=True, startupinfo=startup,
-                            creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS)
+                            creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+                            env=_restart_environment())
 
 
 def validate_plan(plan, staging):
@@ -186,7 +194,8 @@ def apply_transaction(plan, staging, *, wait=wait_for_processes, verify_version=
         raise ValueError("Application or update package changed")
     if verify_version(candidate) != plan["version"]:
         raise ValueError("Update EXE version mismatch")
-    launch = launch or (lambda args: subprocess.Popen(args, cwd=str(target.parent), close_fds=True))
+    launch = launch or (lambda args: subprocess.Popen(args, cwd=str(target.parent), close_fds=True,
+                                                     env=_restart_environment()))
     def stop_process(child):
         if child.poll() is None:
             subprocess.run(["taskkill", "/PID", str(child.pid), "/T", "/F"], capture_output=True, timeout=15, check=False)

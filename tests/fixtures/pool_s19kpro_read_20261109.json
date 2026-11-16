@@ -1,0 +1,42 @@
+{
+  "provenance": {
+    "observation_date": "2026-11-09",
+    "source_reports": ["configuration-fields.json", "js_miner.8380a5.js.sanitized.txt"],
+    "read_structure_observed": true,
+    "all_configuration_values_are_synthetic": true,
+    "hardware_write_verified": false,
+    "setter_requests_sent_in_observation": 0,
+    "scope": "The parent task observed the technical identity, web asset and configuration field names/types through authorized reads. Every setting, pool address, worker and password below is synthetic. Offline tests emulate settings writes; they do not establish hardware write compatibility. No device address, serial number or MAC address is retained."
+  },
+  "identity": {
+    "make": "Bitmain",
+    "model": "Antminer S19k Pro",
+    "firmware": "Stock",
+    "firmware_version": "Wed Nov 15 14:47:56 CST 2023",
+    "api_version": null,
+    "profile_id": "bitmain.stock"
+  },
+  "observed_asset": "miner.8380a5.js",
+  "observed_asset_sha256": "f7cdaa3b4ebbb11b2afe7a39982818ee82f5c733bb36553e6a643e7f7046057e",
+  "observed_page_sha256": "87cdcad208890741cc424c477219094ff57cb5783b2f2e2843ea641fde550128",
+  "config": {
+    "pools": [
+      {"url": "stratum+tcp://synthetic-primary.example.invalid:3333", "user": "FIXTURE.s19k1", "pass": "synthetic-s19k-password-1"},
+      {"url": "stratum+tcp://synthetic-secondary.example.invalid:4444", "user": "FIXTURE.s19k2", "pass": "synthetic-s19k-password-2"},
+      {"url": "stratum+tcp://synthetic-backup.example.invalid:5555", "user": "FIXTURE.s19k3", "pass": "synthetic-s19k-password-3"}
+    ],
+    "api-listen": true,
+    "api-network": false,
+    "api-groups": "synthetic-api-group",
+    "api-allow": "synthetic-api-allow",
+    "bitmain-fan-ctrl": true,
+    "bitmain-fan-pwm": "071",
+    "bitmain-use-vil": false,
+    "bitmain-freq": "555",
+    "bitmain-voltage": "1350",
+    "bitmain-ccdelay": "17",
+    "bitmain-pwth": "29",
+    "bitmain-work-mode": "2",
+    "bitmain-freq-level": "087"
+  }
+}

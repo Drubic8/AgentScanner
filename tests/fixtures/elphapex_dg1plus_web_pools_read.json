@@ -1,0 +1,43 @@
+{
+  "provenance": {
+    "observation_date": "2026-11-09",
+    "read_structure_observed": true,
+    "all_configuration_values_are_synthetic": true,
+    "hardware_write_verified": false,
+    "setter_requests_sent_in_observation": 0,
+    "scope": "The parent task read one selected DG1+ web interface and both config getters. The primary GET and LuCI GET were equal in memory. Technical model/firmware, static asset hashes and configuration wire keys/types were observed. All settings, pools, passwords and hardware identifiers in this fixture are synthetic. This is not hardware write or apply evidence."
+  },
+  "identity": {
+    "make": "Elphapex",
+    "model": "DG1+",
+    "firmware": "Stock",
+    "firmware_version": "DG1+_SW_V1.0.4",
+    "api_version": null,
+    "profile_id": "elphapex.luci"
+  },
+  "static_hashes": {
+    "/index.html": "fa14fcfb892e357a336637905b69063d5693187865acc99208acdb56e54f2e87",
+    "/assets/index-575a0936.js": "81704ae716ee6354865fd65cddd3bfde63bc8053efc48d18697e31106fd54cb7",
+    "/assets/Miner-f770af99.js": "e5bda05b68bd26ae4a354feb7cf8423644631383d0345ef971b941c5cb770416",
+    "/assets/axios-82afda87.js": "f07c16d181da60ba16073976f341b39d9ead8fa0c1ce4f432af5f5e71732f9b2"
+  },
+  "synthetic_system": {
+    "minertype": "DG1+",
+    "system_filesystem_version": "DG1+_SW_V1.0.4",
+    "macaddr": "02:00:00:00:00:17"
+  },
+  "config": {
+    "pools": [
+      {"url": "stratum+tcp://synthetic-elpha-primary.example.invalid:3333", "user": "FIXTURE.dg1plus1", "pass": "synthetic-elpha-password-1"},
+      {"url": "stratum+tcp://synthetic-elpha-secondary.example.invalid:4444", "user": "FIXTURE.dg1plus2", "pass": "synthetic-elpha-password-2"},
+      {"url": "stratum+tcp://synthetic-elpha-backup.example.invalid:5555", "user": "FIXTURE.dg1plus3", "pass": "synthetic-elpha-password-3"}
+    ],
+    "fc-voltage": "1350",
+    "fc-fan-ctrl": true,
+    "fc-freq-level": "083",
+    "fc-fan-pwm": "071",
+    "algo": "synthetic-algorithm",
+    "fc-work-mode": 1,
+    "fc-freq": "777"
+  }
+}

@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 
 from desktop_ui.update_package import (ASSET_NAME, MANIFEST_URL, RELEASE_API,
     UpdateCancelled, asset_url, discover_release, download_package, parse_checksums)
-from desktop_ui.update_installer import apply_transaction, file_hash, validate_plan
+from desktop_ui.update_installer import apply_transaction, file_hash, launch_updater, validate_plan
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -114,6 +114,64 @@ class UpdateInstallerTests(unittest.TestCase):
             backup=str(target.with_name(target.name+".previous-"+token+".bak")),
             temporary=str(target.with_name(target.name+".update-"+token+".tmp")),
             version="2.2.2", sha256=DIGEST, old_sha256=file_hash(target), token=token, parents=[123])
+
+    def test_helper_launch_uses_independent_restart_env_and_preserves_hidden_launch_flags(self):
+        from desktop_ui import update_installer as installer
+        startup = Mock(dwFlags=0)
+        plan = Path('synthetic-stage') / 'plan.json'
+        inherited = {'UPDATER_ENV_TEST': 'parent', 'PYINSTALLER_RESET_ENVIRONMENT': '0',
+                     '_PYI_ARCHIVE_FILE': 'synthetic-archive'}
+        with patch.dict(os.environ, inherited, clear=True), \
+             patch.object(installer.subprocess, 'STARTUPINFO', return_value=startup, create=True), \
+             patch.object(installer.subprocess, 'STARTF_USESHOWWINDOW', 1, create=True), \
+             patch.object(installer.subprocess, 'CREATE_NO_WINDOW', 0x08000000, create=True), \
+             patch.object(installer.subprocess, 'DETACHED_PROCESS', 8, create=True), \
+             patch.object(installer.subprocess, 'Popen') as popen:
+            self.assertIs(launch_updater(plan), popen.return_value)
+            first = popen.call_args.kwargs['env']
+            self.assertEqual(popen.call_args.args, ([str(plan.parent / 'updater.exe'), '--apply-update', str(plan)],))
+            self.assertEqual(first, {**inherited, 'PYINSTALLER_RESET_ENVIRONMENT': '1'})
+            self.assertEqual(popen.call_args.kwargs['cwd'], str(plan.parent))
+            self.assertTrue(popen.call_args.kwargs['close_fds'])
+            self.assertIs(popen.call_args.kwargs['startupinfo'], startup)
+            self.assertEqual(popen.call_args.kwargs['creationflags'], 0x08000000 | 8)
+            self.assertEqual(startup.dwFlags, 1)
+            self.assertEqual(startup.wShowWindow, 0)
+            first['UPDATER_ENV_TEST'] = 'child-only'
+            launch_updater(plan)
+            second = popen.call_args.kwargs['env']
+            self.assertIsNot(first, second)
+            self.assertEqual(second, {**inherited, 'PYINSTALLER_RESET_ENVIRONMENT': '1'})
+            self.assertEqual(dict(os.environ), inherited)
+
+    def test_new_app_and_rollback_each_get_a_fresh_restart_env_without_mutating_parent(self):
+        from desktop_ui import update_installer as installer
+        with TemporaryDirectory() as directory:
+            stage, plan = self.transaction(Path(directory))
+            child = Mock()
+            child.poll.return_value = 1
+            stop = Mock()
+            inherited = {'UPDATER_ENV_TEST': 'parent', '_PYI_ARCHIVE_FILE': 'synthetic-archive'}
+            with patch.dict(os.environ, inherited, clear=True), \
+                 patch.object(installer.subprocess, 'Popen', return_value=child) as popen:
+                with self.assertRaisesRegex(RuntimeError, 'exited'):
+                    apply_transaction(plan, stage, wait=lambda p: None,
+                                      verify_version=lambda p: '2.2.2', stop=stop)
+                self.assertEqual(popen.call_count, 2)
+                application, rollback = popen.call_args_list
+                self.assertEqual(application.args, ([plan['target'], '--update-startup',
+                    str(stage / 'startup.json'), '--update-token', plan['token']],))
+                self.assertEqual(rollback.args, ([plan['target'], '--update-rollback', str(stage / 'status.json')],))
+                expected_env = {**inherited, 'PYINSTALLER_RESET_ENVIRONMENT': '1'}
+                for call in (application, rollback):
+                    self.assertEqual(call.kwargs, dict(cwd=str(Path(plan['target']).parent),
+                        close_fds=True, env=expected_env))
+                self.assertIsNot(application.kwargs['env'], rollback.kwargs['env'])
+                application.kwargs['env']['UPDATER_ENV_TEST'] = 'application-only'
+                self.assertEqual(rollback.kwargs['env'], expected_env)
+                self.assertEqual(dict(os.environ), inherited)
+                stop.assert_called_once_with(child)
+                self.assertEqual(Path(plan['target']).read_bytes(), b'MZ-original-program')
 
     def test_success_keeps_original_backup_and_requires_matching_startup_receipt(self):
         with TemporaryDirectory() as directory:
