@@ -244,9 +244,9 @@ def normalize(data, row, parser, metrics=None):
     if snapshot.rate is None:
         snapshot.diagnostics.append("Hashrate missing or source unit not established")
     state = str(row.get("Status", "Unknown"))
-    snapshot.mining_state = {"Sleep": "stopped", "Stopping": "stopping",
+    snapshot.mining_state = {"Sleep": "stopped", "Stopping": "stopping", "Tuning": "tuning",
                              "Starting": "starting", "WaitWork": "starting", "Init": "starting"}.get(state, "unknown")
-    explicit_state = parser in ('avalon', 'goldshell') and 'Status' in row
+    explicit_state = parser in ('avalon', 'goldshell', 'vnish') and 'Status' in row
     if explicit_state and state == 'Running':
         snapshot.mining_state = 'running'
     if (not explicit_state and snapshot.mining_state not in ("stopped", "stopping")

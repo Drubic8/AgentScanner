@@ -20,6 +20,11 @@ VNish использует продвинутую систему авториз�
   * Хешрейт: `hr_realtime`, `hr_average`, `hr_stock`.
   * Платы (`chains`), Кулеры (`cooling`), Пулы (`pools`), Температуры (`chip_temp`, `pcb_temp`).
 
+На S21+ с VNish 1.2.7 при автоматической настройке прошивка возвращает
+`auto-tuning` в `/summary → miner.miner_status.miner_state` и в `/status → miner_state`.
+В этом состоянии платы могут майнить и отправлять шары. Монитор показывает
+«Автонастройка» и текущий хешрейт одновременно. Сообщение об ошибке платы имеет приоритет.
+
 ### Единицы хешрейта: аппаратная проверка L9, 28.09.2026
 
 На Antminer L9 с VNish **1.2.6 и 1.2.7** `/info` возвращает `hr_measure: "MH/s"`.
@@ -79,7 +84,8 @@ HTTP-пути команд сверены
 ## 4. Определение статуса (MinerState)
 Прошивка сама отдает точный статус в поле `miner_state`. Варианты:
 * `mining` — Штатная работа.
-* `initializing`, `starting`, `auto-tuning` — Прогрев / Настройка (WaitWork).
+* `initializing`, `starting` — «Запускается» (`Starting`).
+* `auto-tuning`, `tuning` — «Автонастройка» (`Tuning`).
 * `stopped` — Принудительно остановлен (Sleep).
 * `failure` — Аппаратная ошибка (Error).
 * `shutting-down`, `restarting` — Перезагрузка.

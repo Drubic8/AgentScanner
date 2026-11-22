@@ -64,6 +64,27 @@ class ApplicationLanguageTests(unittest.TestCase):
     def tearDown(self):
         set_language("ru")
 
+    def test_tuning_and_starting_have_distinct_labels_filters_and_totals(self):
+        from miner_scanner.access import AccessProfiles
+        with patch.object(self.gui.AccessStore, "load", return_value=AccessProfiles([])):
+            window = self.gui.GeminiApp(settings={"language": "ru"}, ranges=[])
+        self.addCleanup(window.close)
+        window.on_result([dict(IP="192.0.2.1", Status="Tuning", Real="140 TH/s"),
+                          dict(IP="192.0.2.2", Status="Starting")])
+        for language, tuning, starting in (("ru", "Автонастройка", "Запускается"),
+                                           ("en", "Auto-tuning", "Starting")):
+            window.change_application_language(language)
+            window.update_stats()
+            self.assertEqual(window.table.item(0, 3).text(), tuning)
+            self.assertEqual(window.table.item(1, 3).text(), starting)
+            window.status_filter.setCurrentIndex(window.status_filter.findData("Tuning"))
+            self.assertEqual(window.status_filter.currentText(), tuning)
+            self.assertFalse(window.table.isRowHidden(0))
+            self.assertTrue(window.table.isRowHidden(1))
+            summary = window.summary_panel.detail_texts[0].toPlainText()
+            self.assertIn(tuning, summary)
+            self.assertIn(starting, summary)
+
     def test_live_switch_preserves_rows_stale_records_filters_selection_and_journal(self):
         from PyQt6.QtCore import Qt
         from miner_scanner.access import AccessProfiles

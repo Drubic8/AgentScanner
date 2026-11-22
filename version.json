@@ -1,6 +1,6 @@
 {
-  "version": "2.7.0",
+  "version": "2.7.1",
   "url": "https://github.com/Drubic8/AgentScanner/releases/latest/download/ASIC_Monitor.exe",
-  "changelog": "Windows: настройка URL, worker и пароля каждого из трёх пулов для одного ASIC или группы. Общее имя worker до точки и индивидуальная часть по IP или номеру. Предпросмотр, свежая проверка устройства и настроек, отдельный результат каждого ASIC без автоматического повтора записи. Реализованы изученные интерфейсы Bitmain Stock, VNish, WhatsMiner RPC 3, Elphapex DG1+ V1.0.4 и PitBit C096. Аппаратно проверена замена и восстановление worker третьего слота S21+ Stock FR-1.15; остальные операции требуют отдельной проверки. Android остаётся на 2.5.0. ИИ-подключения в этот выпуск не включены.",
-  "changelog_en": "Windows: edit the URL, worker and password of each of three pools on one ASIC or a selected group. Use a common worker name before the dot with an IP or numbered suffix. Preview changes, recheck device identity and settings, and show individual outcomes without automatic write retries. Implements reviewed Bitmain Stock, VNish, WhatsMiner RPC 3, Elphapex DG1+ V1.0.4 and PitBit C096 interfaces. Hardware testing covers changing and restoring the third-slot worker on S21+ Stock FR-1.15; other operations require separate validation. Android remains at 2.5.0. AI connections are excluded from this release."
+  "changelog": "Монитор показывает «Автонастройка», когда VNish сообщает auto-tuning. Добавлены сон и пробуждение для Antminer L9 Stock FR-1.19(260302-L9). Совместимость проверена чтением устройства, переключение режима — на эмуляторе.",
+  "changelog_en": "VNish auto-tuning now appears as Auto-tuning. Added sleep and wake support for the Antminer L9 running stock FR-1.19(260302-L9). Compatibility was checked on the device using read-only requests. Mode switching was tested on an emulator."
 }

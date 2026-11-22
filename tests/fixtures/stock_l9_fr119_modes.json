@@ -1,0 +1,21 @@
+{
+  "source": "Observed L9 read configuration and static UI, with synthetic field values",
+  "model": "Antminer L9",
+  "firmware": "FR-1.19(260302-L9)",
+  "source_asset": "miner.a9d476.js",
+  "config": {
+    "pools": [
+      {"url": "pool-1.example.invalid", "user": "test.one", "pass": "p1"},
+      {"url": "pool-2.example.invalid", "user": "test.two", "pass": "p2"},
+      {"url": "pool-3.example.invalid", "user": "test.three", "pass": "p3"}
+    ],
+    "algo": "scrypt",
+    "bitmain-fan-ctrl": false,
+    "bitmain-fan-pwm": "81",
+    "bitmain-freq": "1234",
+    "bitmain-voltage": "0",
+    "bitmain-work-mode": "1",
+    "bitmain-user-ip-cat": "0",
+    "bitmain-freq-level": "98"
+  }
+}

@@ -96,6 +96,7 @@ TEXT = {
     'exists': ('Файл уже существует. Выберите другое имя.', 'The file already exists. Choose a different name.'),
     'close': ('Закрыть', 'Close'),
     'running': ('Работает', 'Running'), 'sleeping': ('Сон', 'Sleeping'),
+    'starting': ('Запускается', 'Starting'), 'tuning': ('Автонастройка', 'Auto-tuning'),
     'idle': ('Ожидание', 'Idle'), 'offline': ('Оффлайн', 'Offline'),
     'stopping': ('Останавливается', 'Stopping'),
     'unknown': ('Неизвестно', 'Unknown'), 'state_error': ('Ошибка', 'Error'),
@@ -259,7 +260,7 @@ class DeviceDialog(QDialog):
         raw_state = self.row.get('Status') or telemetry.get('mining_state') or 'unknown'
         state_key = {'running': 'running', 'mining': 'running', 'sleep': 'sleeping',
             'sleeping': 'sleeping', 'idle': 'idle', 'waitwork': 'idle',
-            'stopping': 'stopping', 'offline': 'offline',
+            'starting': 'starting', 'tuning': 'tuning', 'stopping': 'stopping', 'offline': 'offline',
             'error': 'state_error', 'unknown': 'unknown'}.get(str(raw_state).lower())
         state = self._t('unknown') if self.stale else self._t(state_key) if state_key else _value(raw_state)
         readings = (

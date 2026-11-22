@@ -98,6 +98,15 @@ class DeviceDialogTests(unittest.TestCase):
         self.assertEqual(waiting.overview_values['State'].text(), 'Ожидание')
         self.assertEqual(stopping.overview_values['State'].text(), 'Останавливается')
 
+    def test_tuning_uses_localized_name_from_display_or_telemetry(self):
+        from desktop_ui.i18n import set_language
+        for language, label in (('ru', 'Автонастройка'), ('en', 'Auto-tuning')):
+            set_language(language)
+            for state in ('Tuning', None):
+                with self.subTest(language=language, state=state):
+                    dialog, _ = self.dialog(Status=state, Telemetry={'mining_state': 'tuning'})
+                    self.assertEqual(dialog.overview_values['State'].text(), label)
+
     def test_device_text_is_plain_and_search_wraps_without_rendering_html(self):
         from PyQt6.QtCore import Qt
         dialog, _ = self.dialog(Model='<img src="file:///private">', Error='<b>alarm</b>')

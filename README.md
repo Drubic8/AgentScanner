@@ -25,6 +25,17 @@
 
 *На снимках демонстрационные данные; это не результаты испытаний реальных моделей.*
 
+## 2.7.1 — статус VNish и сон Antminer L9
+
+Windows-версия от 22 ноября распознаёт автонастройку VNish и показывает
+«Автонастройка» вместе с текущим хешрейтом. Для Antminer L9 Stock
+FR-1.19(260302-L9) добавлено переключение Normal/Sleep при совпадении
+веб-интерфейса и конфигурации. На L9 проверено чтение, в эмуляторе — запись
+и повторное чтение режима.
+
+[Скачать Windows EXE](https://github.com/Drubic8/AgentScanner/releases/download/v2.7.1/ASIC_Monitor.exe)
+· [Выпуск 2.7.1](https://github.com/Drubic8/AgentScanner/releases/tag/v2.7.1)
+
 ## 2.7.0: пулы и workers
 
 ИИ-диагностика не входит в 2.7.0 и оставлена следующему выпуску.
@@ -58,7 +69,7 @@ WhatsMiner RPC 3 — текущие журналы из архива, Elphapex D
 Доступны поиск, копирование, импорт сохранённого текстового файла и очищенный
 экспорт в TXT/ZIP с предпросмотром. Перед передачей проверьте очищенный текст:
 автоматическое скрытие не распознаёт все личные данные. В опубликованном EXE
-2.7.0 подключения ИИ ещё нет: оно оставлено следующему выпуску. Новые окна относятся к Windows; Android остаётся на 2.5.0.
+2.7.1 доступна диагностика логов. Подключение ИИ доступно в исходниках Windows.
 
 [Скачать Windows 2.6.0](https://github.com/Drubic8/AgentScanner/releases/tag/v2.6.0)
 · [Описание выпуска](docs/releases/2.6.0.md)
@@ -78,8 +89,7 @@ WhatsMiner RPC 3 — текущие журналы из архива, Elphapex D
 с защитой Windows DPAPI.
 
 ИИ доступен при [запуске из исходников](#запуск-из-исходников) и оставлен следующему
-выпуску. Опубликованный Windows EXE 2.7.0 содержит пуловые изменения без ИИ;
-в Android APK 2.5.0 ИИ также не включён.
+выпуску. Текущие опубликованные версии — Windows 2.7.1 и Android 2.5.0.
 
 [Подключить Яндекс ИИ](docs/user_guide_ai.md)
 · [Войти через ChatGPT](docs/user_guide_chatgpt.md)
@@ -280,9 +290,8 @@ Russian and English; choose Interface language in Settings.
 Current source adds opt-in analysis through [Yandex AI Studio](docs/user_guide_ai.md)
 or [Sign in with ChatGPT](docs/user_guide_chatgpt.md). Each request requires review
 and consent; assessments must pass schema and evidence-reference validation.
-Assessments can be copied or saved as TXT. **AI is available from source and is
-reserved for a later release: the published Windows 2.7.0 EXE adds pool settings
-without AI, and the Android 2.5.0 APK also excludes AI.**
+Assessments can be copied or saved as TXT. **AI is available in the Windows source
+for a future release. The current downloads are Windows 2.7.1 and Android 2.5.0.**
 
 The Python scanner core can be used without Qt. Device profiles cover several
 firmware families; compatibility and control commands require validation on the

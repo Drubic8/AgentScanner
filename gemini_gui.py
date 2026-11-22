@@ -1,5 +1,5 @@
 import sys
-CURRENT_VERSION = "2.7.0"
+CURRENT_VERSION = "2.7.1"
 if __name__ == "__main__" and "--apply-update" in sys.argv:
     from desktop_ui.update_installer import run_helper
     position = sys.argv.index("--apply-update") + 1
@@ -76,6 +76,12 @@ def is_system_dark_mode():
 
 # Константы автообновления
 UPDATE_INFO_URL = "https://raw.githubusercontent.com/Drubic8/AgentScanner/main/version.json"
+
+STATUS_LABELS = {
+    "Running": "Работает", "Sleep": "Сон", "Stopping": "Засыпает",
+    "Starting": "Запускается", "Tuning": "Автонастройка", "WaitWork": "Ожидание",
+    "Error": "Ошибка", "Unknown": "Неизвестно",
+}
 
 # --- ФИКС ПУТЕЙ ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -634,11 +640,10 @@ class GeminiApp(QMainWindow):
         self.search_input.setClearButtonEnabled(True)
         self.search_input.textChanged.connect(self.apply_table_filter)
         self.status_filter = QComboBox()
-        for text, code in ((tr('Все состояния'), ""), (tr('Работает'), "Running"), (tr('Сон'), "Sleep"),
-                           (tr('Засыпает'), "Stopping"),
-                           (tr('Ожидание'), "WaitWork"), (tr('Ошибка'), "Error"), (tr('Неизвестно'), "Unknown"),
-                           (tr('Устаревшие данные'), "stale")):
-            self.status_filter.addItem(text, code)
+        self.status_filter.addItem(tr('Все состояния'), "")
+        for code, label in STATUS_LABELS.items():
+            self.status_filter.addItem(tr(label), code)
+        self.status_filter.addItem(tr('Устаревшие данные'), "stale")
         self.status_filter.currentIndexChanged.connect(self.apply_table_filter)
         filters.addWidget(self.search_input, 1)
         filters.addWidget(self.status_filter)
@@ -1723,12 +1728,13 @@ class GeminiApp(QMainWindow):
 
                     # === 3. Status ===
                     status_str = str(row.get('Status', 'Running'))
-                    status_item = QTableWidgetItem({"Running": tr('Работает'), "Sleep": tr('Сон'), "Stopping": tr('Засыпает'), "WaitWork": tr('Ожидание'), "Error": tr('Ошибка'), "Unknown": tr('Неизвестно')}.get(status_str, status_str))
+                    status_text = tr(STATUS_LABELS[status_str]) if status_str in STATUS_LABELS else status_str
+                    status_item = QTableWidgetItem(status_text)
                     status_item.setFont(bold_cell_font(self.table.font()))
                     if status_str == "Running":
                         status_item.setForeground(QColor("#00E676") if getattr(self, 'dark_mode', False) else QColor("#007e33"))
-                    elif status_str in ("WaitWork", "Stopping"):
-                        status_item.setForeground(QColor("#FFA000"))
+                    elif status_str in ("WaitWork", "Stopping", "Starting", "Tuning"):
+                        status_item.setForeground(QColor("#eebc65" if self.dark_mode else "#93600d"))
                     self.table.setItem(r, 3, status_item)
 
                     # === 4. Error ===
@@ -1854,11 +1860,9 @@ class GeminiApp(QMainWindow):
     def update_stats(self):
         states = Counter(row.get("Status", "Unknown") for row in self.scan_data)
         statuses = {tr('Всего устройств'): {"val": str(len(self.scan_data)), "color": None}}
-        for code, label in (("Running", tr('Работает')), ("Sleep", tr('Сон')), ("WaitWork", tr('Ожидание')),
-                            ("Stopping", tr('Засыпает')),
-                            ("Error", tr('Ошибка')), ("Unknown", tr('Неизвестно'))):
+        for code, label in STATUS_LABELS.items():
             if states[code]:
-                statuses[label] = {"val": str(states[code]), "color": None}
+                statuses[tr(label)] = {"val": str(states[code]), "color": None}
         stale = sum(bool(row.get("Stale")) for row in self.scan_data)
         if stale:
             statuses[tr('Устаревшие данные')] = {"val": str(stale), "color": None}
@@ -2089,6 +2093,8 @@ class GeminiApp(QMainWindow):
                 colors = {"Running": "#69d7ad" if self.dark_mode else "#147652",
                           "WaitWork": "#eebc65" if self.dark_mode else "#93600d",
                           "Stopping": "#eebc65" if self.dark_mode else "#93600d",
+                          "Starting": "#eebc65" if self.dark_mode else "#93600d",
+                          "Tuning": "#eebc65" if self.dark_mode else "#93600d",
                           "Sleep": "#a4b3c6" if self.dark_mode else "#5e7088",
                           "Error": "#ff919b" if self.dark_mode else "#b93649"}
                 record = self.table.item(row, 0).data(Qt.ItemDataRole.UserRole + 1) or {}
