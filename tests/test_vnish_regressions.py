@@ -22,6 +22,31 @@ class ResponseBytes(io.BytesIO):
 
 
 class VnishRegressionTests(unittest.TestCase):
+    def test_s21plus_state_survives_positive_hashrate(self):
+        fixture = Path(__file__).parent / 'fixtures/vnish_s21plus_auto_tuning.json'
+        data = json.loads(fixture.read_text(encoding='utf-8'))
+        profile = ProfileRegistry().by_id['bitmain.vnish']
+        miner = data['vnish_summary']['miner']
+        self.assertEqual(miner['miner_status']['miner_state'], 'auto-tuning')
+        for state, display, telemetry in (
+            ('auto-tuning', 'Tuning', 'tuning'),
+            ('tuning', 'Tuning', 'tuning'),
+            ('starting', 'Starting', 'starting'),
+            ('mining', 'Running', 'running'),
+        ):
+            with self.subTest(state=state):
+                miner['miner_status']['miner_state'] = state
+                record = make_record(profile, '192.0.2.1', data)
+                self.assertEqual(record.display['Status'], display)
+                self.assertEqual(record.telemetry.mining_state, telemetry)
+                self.assertEqual(record.telemetry.rate, miner['hr_realtime'] * 1e9)
+
+        miner['miner_status']['miner_state'] = 'auto-tuning'
+        miner['chains'][0]['status']['state'] = 'failure'
+        record = make_record(profile, '192.0.2.1', data)
+        self.assertEqual(record.display['Status'], 'Error')
+        self.assertIn('ERR (B0)', record.display['Error'])
+
     def test_actual_l9_rates_use_rest_measure_on_both_firmwares(self):
         fixtures = json.loads((Path(__file__).parent / 'fixtures/vnish_l9_hardware.json').read_text())
         for fixture in fixtures:

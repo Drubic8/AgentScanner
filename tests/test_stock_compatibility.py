@@ -1,6 +1,8 @@
 """Contract discovery and command execution against a synthetic HTTP device."""
 from copy import deepcopy
 import hashlib
+import json
+from pathlib import Path
 import time
 import unittest
 from unittest.mock import patch
@@ -120,6 +122,54 @@ class StockCompatibilityTests(unittest.TestCase):
                 self.assertEqual(payload['pools'], baseline['pools'])
                 self.assertEqual(payload['bitmain-fan-pwm'], baseline['bitmain-fan-pwm'])
                 self.assertNotIn('bitmain-work-mode' if field == 'miner-mode' else 'miner-mode', payload)
+
+    def l9_fr119(self):
+        path = Path(__file__).parent / 'fixtures' / 'stock_l9_fr119_modes.json'
+        fixture = json.loads(path.read_text(encoding='utf-8'))
+        asset = fixture['source_asset']
+        service, factory, _ = self.service(fixture['model'], asset, fixture['firmware'])
+        factory.data['config'] = fixture['config']
+        digest = hashlib.sha256(factory.web['/js/' + asset]).hexdigest()
+        page = hashlib.sha256(factory.web['/miner.html']).hexdigest()
+        compat.interfaces()['miner'][digest]['pages'] = [page]
+        return service, factory, service.poll('192.0.2.1', force_identify=True)
+
+    def test_l9_fr119_changes_only_mode_and_preserves_available_fields(self):
+        service, factory, record = self.l9_fr119()
+        self.assertEqual({action for action in compat.MODE_ACTIONS if
+                          record.capabilities.get(action) == 'supported'}, {'mining_stop', 'mining_start'})
+        config = factory.data['config']
+        expected = {'pools': deepcopy(config['pools']), 'bitmain-fan-ctrl': False,
+                    'bitmain-fan-pwm': '81', 'bitmain-user-ip-cat': '0', 'freq-level': '98'}
+        for action, target in (('wakeup', 0), ('sleep', 1)):
+            with self.subTest(action=action):
+                if action == 'sleep':
+                    explicit = {'bitmain-power-target': '4200', 'bitmain-hashrate-percent': '94'}
+                    config.update(explicit)
+                    expected.update(explicit)
+                self.assertEqual(execute_command(service, '192.0.2.1', action).status, 'succeeded')
+                self.assertEqual(factory.writes[-1][2], {**expected, 'miner-mode': target})
+                self.assertEqual(config['bitmain-work-mode'], str(target))
+        self.assertEqual(len(factory.writes), 2)
+
+    def test_l9_fr119_blocks_uncertain_pools_schema_and_page(self):
+        service, factory, _ = self.l9_fr119()
+        baseline = deepcopy(factory.data['config'])
+        for key, value in (
+                ('pools', baseline['pools'][:2]),
+                ('pools', [*baseline['pools'][:2], {'url': '', 'user': ''}]),
+                ('pools', [*baseline['pools'][:2], {**baseline['pools'][2], 'pass': '•'}]),
+                ('bitmain-power-target', None), ('unknown-setting', 10)):
+            with self.subTest(field=key, value=value):
+                factory.data['config'] = {**baseline, key: value}
+                result = execute_command(service, '192.0.2.1', 'sleep', allow_unverified=True)
+                self.assertEqual(result.status, 'unsupported')
+        factory.data['config'] = baseline
+        factory.web['/miner.html'] += b'<!-- different page -->'
+        self.assertEqual(execute_command(service, '192.0.2.1', 'wakeup').status, 'unsupported')
+        factory.web.clear()
+        self.assertEqual(execute_command(service, '192.0.2.1', 'wakeup').status, 'unsupported')
+        self.assertFalse(factory.writes)
 
     def extended_s21_service(self, flags):
         service, factory, _ = self.service('Antminer S21+', 'miner.05438c.js')

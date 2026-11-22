@@ -1,6 +1,26 @@
 {
   "schema_version": 1,
   "miner": {
+    "088242fbc7f1ba958e8df562b4996caabe1cd5f6ef79564ad19f389c71b7782e": {
+      "source_asset": "miner.a9d476.js",
+      "pages": ["3e87f653b9584af8bd4a3c9b02da58facca165697609634ed3f7dd78d0ba2cca"],
+      "config_fallback": false,
+      "mode_update_only": true,
+      "write_mode": "miner-mode",
+      "required": {
+        "pools": "pools",
+        "bitmain-user-ip-cat": "bitmain-user-ip-cat",
+        "bitmain-fan-ctrl": "bitmain-fan-ctrl",
+        "bitmain-fan-pwm": "bitmain-fan-pwm",
+        "freq-level": "bitmain-freq-level"
+      },
+      "optional": {
+        "bitmain-hashrate-percent": "bitmain-hashrate-percent",
+        "bitmain-power-target": "bitmain-power-target"
+      },
+      "read_only": ["algo", "bitmain-freq", "bitmain-voltage"],
+      "modes": {"L9": {"mining_start": 0, "mining_stop": 1}}
+    },
     "fe9d41d74a13816090afa29f5f23161447e6d70fc625a5c7a0c694f680d407d3": {
       "source_asset": "miner.05438c.js",
       "pages": ["0ed7ef26b4c368297331f5652c6e0bf96d568d74de656b50ef0b78152ac3bf2d"],

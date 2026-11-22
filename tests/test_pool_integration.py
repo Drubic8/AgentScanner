@@ -249,6 +249,7 @@ class PoolIntegrationTests(unittest.TestCase):
         source_values = {
             "bitmain-fan-ctrl": True, "bitmain-fan-pwm": "78", "bitmain-user-ip-cat": False,
             "bitmain-freq-level": "100", "bitmain-hashrate-percent": "88", "bitmain-freq": "0",
+            "bitmain-power-target": "4200",
             "bitmain-voltage": "0", "bitmain-chip-temp-threshold": 97,
             "bitmain-drop-freq-scale": 100, "bitmain-power-off-delay": 0, "algo": "fixture-algorithm",
             "api-listen": True, "api-network": False, "api-groups": "synthetic-api-groups",
@@ -280,6 +281,11 @@ class PoolIntegrationTests(unittest.TestCase):
                             identity.firmware_version = "arbitrary-build-" + str(include_optional)
                             identity.fingerprint = "offline-" + digest + "-" + model + "-" + str(include_optional)
                             plans = self.prepare([PoolEdit(0, worker=WorkerNaming("TEST", width=3))])
+                            if definition.get("mode_update_only"):
+                                self.assertEqual(plans[0].status, "unsupported")
+                                self.assertFalse(device.writes)
+                                covered.add((digest, model))
+                                continue
                             self.assertEqual(plans[0].status, "ready", plans[0].message)
                             result = self.apply(plans)[ip]
                             self.assertEqual(result.status, "succeeded", result.message)

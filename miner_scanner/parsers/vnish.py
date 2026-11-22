@@ -115,7 +115,7 @@ def parse_antminer_vnish(ip, resp, api_data=None):
        # Маппинг статусов (с учетом особенностей VNish)
         if m_state == "mining": status = "Running"
         elif m_state in ["sleep", "stopped", "paused", "standby"]: status = "Sleep"
-        elif m_state == "tuning": status = "WaitWork"
+        elif m_state in ("auto-tuning", "tuning"): status = "Tuning"
         elif m_state == "failure": status = "Error"
         else: status = "Starting"
 

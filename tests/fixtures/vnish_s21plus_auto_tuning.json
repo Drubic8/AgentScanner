@@ -1,0 +1,22 @@
+{
+  "vnish_info": {
+    "miner": "Antminer S21+",
+    "model": "s21plus",
+    "fw_version": "1.2.7",
+    "algorithm": "sha256d",
+    "hr_measure": "GH/s"
+  },
+  "vnish_summary": {
+    "miner": {
+      "miner_type": "Antminer S21+ (Vnish 1.2.7)",
+      "miner_status": {"miner_state": "auto-tuning"},
+      "hr_realtime": 142027.17,
+      "hr_average": 134864.72,
+      "chains": [
+        {"id": 1, "status": {"state": "mining"}},
+        {"id": 2, "status": {"state": "mining"}},
+        {"id": 3, "status": {"state": "mining"}}
+      ]
+    }
+  }
+}

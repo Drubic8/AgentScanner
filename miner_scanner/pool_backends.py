@@ -133,7 +133,7 @@ def _stock_contract(record, config, evidence):
     catalog = stock_compatibility.interfaces()["miner"]
     known = catalog.get(evidence.get("miner"))
     if known is not None:
-        if (model not in known["modes"] or
+        if (known.get("mode_update_only") or model not in known["modes"] or
                 ("pages" in known and evidence.get("miner_page") not in known["pages"])):
             raise PoolBackendError("Текущая страница настройки пулов не соответствует изученному интерфейсу")
         mapping = stock_compatibility.config_mapping(config, known)
@@ -141,7 +141,8 @@ def _stock_contract(record, config, evidence):
     else:
         candidates = []
         for definition in catalog.values():
-            if model not in definition["modes"] or not definition.get("config_fallback", True):
+            if (definition.get("mode_update_only") or model not in definition["modes"]
+                    or not definition.get("config_fallback", True)):
                 continue
             mapping = stock_compatibility.config_mapping(config, definition)
             if mapping:

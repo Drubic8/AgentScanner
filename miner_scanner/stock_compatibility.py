@@ -137,6 +137,15 @@ def config_mapping(config, contract):
     if any(not isinstance(p, dict) or set(p) - {'url', 'user', 'pass'}
            or any(not isinstance(value, str) for value in p.values()) for p in pools):
         return None
+    if contract.get('mode_update_only'):
+        # Bitmain documents that a standalone mode change can clear the pools.
+        # This partial update must carry the entire current pool configuration.
+        if len(pools) != 3 or any(set(p) != {'url', 'user', 'pass'} for p in pools):
+            return None
+        if any(value and set(value) <= {'*', '•'} for pool in pools for value in pool.values()):
+            return None
+        if any(source in config and config[source] is None for source in optional.values()):
+            return None
     for key in sources - {'pools', 'bitmain-work-mode'}:
         if key in config and config[key] is not None and type(config[key]) not in (str, int, float, bool):
             return None
